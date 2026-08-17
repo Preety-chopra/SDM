@@ -1,0 +1,66 @@
+SDM Project Requirements
+========================
+
+Backend
+-------
+- PHP 8.3 or newer (Laravel Sail uses PHP 8.5)
+- Composer 2
+- Laravel Framework 13.8 or newer within the 13.x release
+
+Frontend
+--------
+- Node.js with npm
+- Vite 8
+- Tailwind CSS 3.4
+- Alpine.js 3
+
+Database
+--------
+- MySQL 8.4
+
+Container Runtime
+-----------------
+- Docker Desktop
+- Docker Compose
+
+Required Local Ports
+--------------------
+- Application: 8000 (configured using APP_PORT=8000)
+- Vite development server: 5173
+- MySQL: 3306
+
+Required .env Values for Windows Docker
+---------------------------------------
+APP_PORT=8000
+WWWUSER=1000
+WWWGROUP=1000
+
+DB_CONNECTION=mysql
+DB_HOST=mysql
+DB_PORT=3306
+DB_DATABASE=sdm
+DB_USERNAME=sail
+DB_PASSWORD=password
+
+Initial Setup
+-------------
+1. composer install
+2. Copy .env.example to .env if .env does not exist.
+3. php artisan key:generate
+4. npm install
+5. docker compose up -d
+6. docker compose exec laravel.test php artisan migrate
+7. docker compose exec laravel.test npm run dev -- --host 0.0.0.0
+
+Application URL
+---------------
+http://localhost:8000
+
+Dependency Sources
+------------------
+- PHP dependencies: composer.json and composer.lock
+- JavaScript dependencies: package.json and package-lock.json
+- Docker services: compose.yaml
+
+Note: requirement.txt is documentation only. Composer and npm use the
+dependency manifest and lock files listed above for installation.
