@@ -16,6 +16,10 @@
                         {{ __('Dashboard') }}
                     </x-nav-link>
 
+                    @canany([\App\Enums\UserPermission::ViewOwnMemos->value, \App\Enums\UserPermission::ViewAllMemos->value])
+                        <x-nav-link :href="route('sdm-memos.index')" :active="request()->routeIs('sdm-memos.*')">SDM Memos</x-nav-link>
+                    @endcanany
+
                     @can(\App\Enums\UserPermission::ViewUsers->value)
                         <x-dropdown align="left" width="w-56">
                             <x-slot name="trigger">
@@ -30,6 +34,10 @@
                                 @endforeach
                             </x-slot>
                         </x-dropdown>
+                    @endcan
+
+                    @can(\App\Enums\UserPermission::ManageLines->value)
+                        <x-dropdown align="left" width="w-48"><x-slot name="trigger"><button type="button" class="inline-flex h-16 items-center border-b-2 border-transparent px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400">Master Data</button></x-slot><x-slot name="content"><x-dropdown-link :href="route('lines.index')">Lines</x-dropdown-link><x-dropdown-link :href="route('stations.index')">Stations</x-dropdown-link><x-dropdown-link :href="route('contractors.index')">Contractors</x-dropdown-link></x-slot></x-dropdown>
                     @endcan
                 </div>
             </div>
@@ -87,6 +95,10 @@
                 {{ __('Dashboard') }}
             </x-responsive-nav-link>
 
+            @canany([\App\Enums\UserPermission::ViewOwnMemos->value, \App\Enums\UserPermission::ViewAllMemos->value])
+                <x-responsive-nav-link :href="route('sdm-memos.index')" :active="request()->routeIs('sdm-memos.*')">SDM Memos</x-responsive-nav-link>
+            @endcanany
+
             @can(\App\Enums\UserPermission::ViewUsers->value)
                 <div class="px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-gray-400" aria-label="Users menu">Users</div>
                 @foreach (\App\Enums\UserRole::managed() as $role)
@@ -94,6 +106,13 @@
                         {{ $role->pluralLabel() }}
                     </x-responsive-nav-link>
                 @endforeach
+            @endcan
+
+            @can(\App\Enums\UserPermission::ManageLines->value)
+                <div class="px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Master Data</div>
+                <x-responsive-nav-link :href="route('lines.index')" :active="request()->routeIs('lines.*')">Lines</x-responsive-nav-link>
+                <x-responsive-nav-link :href="route('stations.index')" :active="request()->routeIs('stations.*')">Stations</x-responsive-nav-link>
+                <x-responsive-nav-link :href="route('contractors.index')" :active="request()->routeIs('contractors.*')">Contractors</x-responsive-nav-link>
             @endcan
         </div>
 

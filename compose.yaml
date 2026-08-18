@@ -19,10 +19,16 @@ services:
             IGNITION_LOCAL_SITES_PATH: '${PWD}'
         volumes:
             - '.:/var/www/html'
+            # Docker Desktop is extremely slow when PHP and Node traverse thousands
+            # of dependency files through a Windows bind mount. Keep dependencies
+            # on Docker's native Linux filesystem while source remains editable.
+            - 'sail-vendor:/var/www/html/vendor'
+            - 'sail-node-modules:/var/www/html/node_modules'
         networks:
             - sail
         depends_on:
             - mysql
+            - redis
     mysql:
         image: 'mysql:8.4'
         ports:
@@ -48,9 +54,28 @@ services:
                 - '-p${DB_PASSWORD}'
             retries: 3
             timeout: 5s
+    redis:
+        image: 'redis:8-alpine'
+        volumes:
+            - 'sail-redis:/data'
+        networks:
+            - sail
+        healthcheck:
+            test:
+                - CMD
+                - redis-cli
+                - ping
+            retries: 3
+            timeout: 5s
 networks:
     sail:
         driver: bridge
 volumes:
     sail-mysql:
+        driver: local
+    sail-vendor:
+        driver: local
+    sail-node-modules:
+        driver: local
+    sail-redis:
         driver: local

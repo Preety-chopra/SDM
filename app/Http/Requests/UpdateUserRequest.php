@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\UserRole;
+use App\Models\Line;
 use App\Models\Station;
 use App\Models\User;
 use App\Rules\Username;
@@ -34,7 +35,15 @@ class UpdateUserRequest extends FormRequest
                 Rule::requiredIf($role?->requiresStation() === true),
                 Rule::prohibitedIf($role !== null && ! $role->requiresStation()),
                 'nullable',
-                Rule::exists(Station::class, 'id')->where(fn (Builder $query) => $query->where('is_active', true)),
+                Rule::exists(Station::class, 'id')->where(fn (Builder $query) => $query
+                    ->where('is_active', true)
+                    ->when($role === UserRole::Station, fn (Builder $query) => $query->where('line_id', $this->input('line_id')))),
+            ],
+            'line_id' => [
+                Rule::requiredIf($role === UserRole::Station),
+                Rule::prohibitedIf($role !== null && $role !== UserRole::Station),
+                'nullable',
+                Rule::exists(Line::class, 'id')->where(fn (Builder $query) => $query->where('is_active', true)),
             ],
             'is_enabled' => ['required', 'boolean'],
             'password' => ['nullable', 'confirmed', Password::defaults()],

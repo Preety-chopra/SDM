@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Enums\UserRole;
+use App\Models\Line;
 use App\Models\Station;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class UserManagementTest extends TestCase
@@ -190,7 +192,7 @@ class UserManagementTest extends TestCase
         ])->assertSessionHasErrors(['email', 'employee_number']);
     }
 
-    public function test_username_must_be_a_unique_name(): void
+    public function test_username_must_be_unique_and_may_contain_integers(): void
     {
         $administrator = $this->userWithRole(UserRole::Administrator);
         $existingUser = $this->userWithRole(UserRole::Station, [
@@ -202,12 +204,66 @@ class UserManagementTest extends TestCase
             'name' => $existingUser->name,
         ])->assertSessionHasErrors('name');
 
-        foreach (['station_12', 'person@example.com', 'Administrator 1'] as $invalidName) {
+        foreach (['Administrator 1', '12345'] as $validName) {
+            $this->actingAs($administrator)->post(route('users.store'), [
+                ...$this->validUserData(UserRole::AssistantManager),
+                'name' => $validName,
+                'email' => Str::of($validName)->remove(' ')->lower().'@example.com',
+                'employee_number' => 'EMP-'.$validName,
+            ])->assertSessionDoesntHaveErrors('name');
+        }
+
+        $managedUser = User::query()->where('name', 'Administrator 1')->sole();
+        $this->actingAs($administrator)->put(route('users.update', $managedUser), [
+            ...$this->validUserData(UserRole::AssistantManager),
+            'name' => 'Administrator 2026',
+            'email' => $managedUser->email,
+            'employee_number' => $managedUser->employee_number,
+            'password' => '',
+            'password_confirmation' => '',
+        ])->assertSessionDoesntHaveErrors('name');
+        $this->assertSame('Administrator 2026', $managedUser->fresh()->name);
+
+        foreach (['station_12', 'person@example.com'] as $invalidName) {
             $this->actingAs($administrator)->post(route('users.store'), [
                 ...$this->validUserData(UserRole::Station),
                 'name' => $invalidName,
             ])->assertSessionHasErrors('name');
         }
+    }
+
+    public function test_station_user_requires_a_matching_active_line_and_station_pair(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $redLine = Line::query()->create(['code' => 'RED', 'name' => 'Red Line', 'is_active' => true]);
+        $blueLine = Line::query()->create(['code' => 'BLUE', 'name' => 'Blue Line', 'is_active' => true]);
+        $station = Station::query()->create([
+            'code' => 'RED-01',
+            'name' => 'Red Station',
+            'line_id' => $redLine->id,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($administrator)->post(route('users.store'), [
+            ...$this->validUserData(UserRole::Station),
+            'station_id' => $station->id,
+        ])->assertSessionHasErrors('line_id');
+
+        $this->actingAs($administrator)->post(route('users.store'), [
+            ...$this->validUserData(UserRole::Station),
+            'line_id' => $blueLine->id,
+            'station_id' => $station->id,
+        ])->assertSessionHasErrors('station_id');
+
+        $this->actingAs($administrator)->post(route('users.store'), [
+            ...$this->validUserData(UserRole::Station),
+            'line_id' => $redLine->id,
+            'station_id' => $station->id,
+        ])->assertRedirect(route('users.index', UserRole::Station->value));
+
+        $createdUser = User::query()->where('email', 'managed@example.com')->sole();
+        $this->assertSame($station->id, $createdUser->station_id);
+        $this->assertSame($redLine->id, $createdUser->station->line_id);
     }
 
     public function test_invalid_and_administrator_role_directories_are_not_available(): void

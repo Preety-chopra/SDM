@@ -1,6 +1,6 @@
-@props(['action', 'method' => 'POST', 'managedUser' => null, 'selectedRole', 'roles', 'stations', 'submitLabel'])
+@props(['action', 'method' => 'POST', 'managedUser' => null, 'selectedRole', 'roles', 'lines', 'stations', 'submitLabel'])
 
-<form method="POST" action="{{ $action }}" class="flex flex-col gap-6">
+<form method="POST" action="{{ $action }}" class="flex flex-col gap-6" x-data="userForm" data-role="{{ old('role', $selectedRole->value) }}" data-station-role="{{ \App\Enums\UserRole::Station->value }}">
     @csrf
     @if (strtoupper($method) !== 'POST')
         @method($method)
@@ -20,19 +20,29 @@
         </div>
         <div>
             <x-input-label for="role" value="Role" />
-            <select id="role" name="role" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
+            <select id="role" name="role" x-model="role" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
                 @foreach ($roles as $role)
                     <option value="{{ $role->value }}" @selected(old('role', $selectedRole->value) === $role->value)>{{ $role->label() }}</option>
                 @endforeach
             </select>
             <x-input-error :messages="$errors->get('role')" class="mt-2" />
         </div>
+        <div x-cloak x-show="role === stationRole">
+            <x-input-label for="line_id" value="Line (required for Station roles)" />
+            <select id="line_id" name="line_id" :disabled="role !== stationRole" :required="role === stationRole" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                <option value="">Select a line</option>
+                @foreach ($lines as $line)
+                    <option value="{{ $line->id }}" @selected((string) old('line_id', $managedUser?->station?->line_id) === (string) $line->id)>{{ $line->code }} · {{ $line->name }}</option>
+                @endforeach
+            </select>
+            <x-input-error :messages="$errors->get('line_id')" class="mt-2" />
+        </div>
         <div>
             <x-input-label for="station_id" value="Station (required for Station roles)" />
             <select id="station_id" name="station_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
                 <option value="">Select a station</option>
                 @foreach ($stations as $station)
-                    <option value="{{ $station->id }}" @selected((string) old('station_id', $managedUser?->station_id) === (string) $station->id)>{{ $station->code }} · {{ $station->name }}</option>
+                    <option value="{{ $station->id }}" @selected((string) old('station_id', $managedUser?->station_id) === (string) $station->id)>{{ $station->metroLine->code }} · {{ $station->code }} · {{ $station->name }}</option>
                 @endforeach
             </select>
             <x-input-error :messages="$errors->get('station_id')" class="mt-2" />

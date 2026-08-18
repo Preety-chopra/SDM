@@ -36,6 +36,14 @@
                 <div class="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                     <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">You are logged in</h3>
                     <p class="mt-2 text-gray-600 dark:text-gray-400">Your SDM workspace is ready. Use the navigation above to access available features.</p>
+                    @if ($canUseMemos)
+                        <div class="mt-6 flex flex-wrap gap-3">
+                            <a href="{{ route('sdm-memos.index') }}" class="rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">View SDM memos</a>
+                            @can('create', \App\Models\ServiceDeficiencyMemo::class)
+                                <a href="{{ route('sdm-memos.create') }}" class="rounded-lg border border-emerald-700 px-4 py-2.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300">Create memo</a>
+                            @endcan
+                        </div>
+                    @endif
                 </div>
             @endif
         </div>

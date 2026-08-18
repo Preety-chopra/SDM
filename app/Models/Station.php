@@ -5,8 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable(['code', 'name', 'line_id', 'is_active'])]
 class Station extends Model
@@ -18,9 +18,9 @@ class Station extends Model
         return $this->hasMany(User::class);
     }
 
-    public function line(): BelongsTo
+    public function metroLine(): BelongsTo
     {
-        return $this->belongsTo(Line::class);
+        return $this->belongsTo(Line::class, 'line_id');
     }
 
     public function memos(): HasMany

@@ -19,13 +19,40 @@ class ServiceDeficiencyMemo extends Model
 
     protected $attributes = ['status' => MemoStatus::Draft->value];
 
-    public function station(): BelongsTo { return $this->belongsTo(Station::class); }
-    public function contractor(): BelongsTo { return $this->belongsTo(Contractor::class); }
-    public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
-    public function deficiencies(): HasMany { return $this->hasMany(MemoDeficiency::class, 'memo_id'); }
-    public function publicComplaint(): HasOne { return $this->hasOne(MemoPublicComplaint::class, 'memo_id'); }
-    public function cashCheck(): HasOne { return $this->hasOne(MemoCashCheck::class, 'memo_id'); }
-    public function attachments(): HasMany { return $this->hasMany(MemoAttachment::class, 'memo_id'); }
+    public function station(): BelongsTo
+    {
+        return $this->belongsTo(Station::class);
+    }
+
+    public function contractor(): BelongsTo
+    {
+        return $this->belongsTo(Contractor::class);
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function deficiencies(): HasMany
+    {
+        return $this->hasMany(MemoDeficiency::class, 'memo_id');
+    }
+
+    public function publicComplaint(): HasOne
+    {
+        return $this->hasOne(MemoPublicComplaint::class, 'memo_id');
+    }
+
+    public function cashCheck(): HasOne
+    {
+        return $this->hasOne(MemoCashCheck::class, 'memo_id');
+    }
+
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(MemoAttachment::class, 'memo_id');
+    }
 
     protected function casts(): array
     {

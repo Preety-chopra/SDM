@@ -21,9 +21,9 @@ final class StationRepository implements StationRepositoryInterface
     {
         return Station::query()
             ->select(['id', 'code', 'name', 'line_id'])
-            ->with('line:id,code,name')
+            ->with('metroLine:id,code,name')
             ->where('is_active', true)
-            ->whereHas('line', fn ($query) => $query->where('is_active', true))
+            ->whereHas('metroLine', fn ($query) => $query->where('is_active', true))
             ->orderBy('name')
             ->get();
     }

@@ -28,6 +28,7 @@ class AuthenticationTest extends TestCase
             ->assertDontSee('Every decision starts with a clearer view')
             ->assertSee('name="username"', false)
             ->assertSee('name="password"', false)
+            ->assertDontSee('name="line_id"', false)
             ->assertSee('action="'.route('login').'"', false);
     }
 

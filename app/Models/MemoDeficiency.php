@@ -11,7 +11,18 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 #[Fillable(['memo_id', 'type', 'remarks'])]
 class MemoDeficiency extends Model
 {
-    public function memo(): BelongsTo { return $this->belongsTo(ServiceDeficiencyMemo::class, 'memo_id'); }
-    public function lateReporting(): HasOne { return $this->hasOne(MemoLateReportingDetail::class, 'memo_deficiency_id'); }
-    protected function casts(): array { return ['type' => DeficiencyType::class]; }
+    public function memo(): BelongsTo
+    {
+        return $this->belongsTo(ServiceDeficiencyMemo::class, 'memo_id');
+    }
+
+    public function lateReporting(): HasOne
+    {
+        return $this->hasOne(MemoLateReportingDetail::class, 'memo_deficiency_id');
+    }
+
+    protected function casts(): array
+    {
+        return ['type' => DeficiencyType::class];
+    }
 }

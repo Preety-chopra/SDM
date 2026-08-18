@@ -5,6 +5,10 @@ This schema supports both source forms:
 - Token Vending Services (`token_vending`)
 - Customer Facilitation Services (`customer_facilitation`)
 
+The application presents these values as `TICKETING` and `CFS`. Lines are maintained
+as master records and stations reference them through `line_id`; the original
+`stations.line` text is retained only for safe legacy-data migration.
+
 Both formats use `service_deficiency_memos` as their common header. Optional and
 repeatable sections are stored separately so the Customer Facilitation form does
 not carry empty Token Vending cash-check fields.
@@ -12,6 +16,7 @@ not carry empty Token Vending cash-check fields.
 ```mermaid
 erDiagram
     STATIONS ||--o{ SERVICE_DEFICIENCY_MEMOS : records
+    LINES ||--o{ STATIONS : contains
     CONTRACTORS ||--o{ EMPLOYEES : employs
     CONTRACTORS ||--o{ SERVICE_DEFICIENCY_MEMOS : serves
     EMPLOYEES ||--o{ SERVICE_DEFICIENCY_MEMOS : receives

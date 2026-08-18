@@ -9,8 +9,8 @@ final class Username implements ValidationRule
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if (! is_string($value) || preg_match("/\A[\pL\pM](?:[\pL\pM .'-]*[\pL\pM])?\z/u", $value) !== 1) {
-            $fail('The :attribute must be a name and may only contain letters, spaces, periods, apostrophes, and hyphens.');
+        if (! is_string($value) || preg_match("/\A[\pL\pM\pN](?:[\pL\pM\pN .'-]*[\pL\pM\pN])?\z/u", $value) !== 1) {
+            $fail('The :attribute may only contain letters, numbers, spaces, periods, apostrophes, and hyphens.');
         }
     }
 }

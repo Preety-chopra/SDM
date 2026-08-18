@@ -15,11 +15,16 @@ class DashboardController extends Controller
     public function __invoke(Request $request): View
     {
         $canManageUsers = $request->user()->can(UserPermission::ViewUsers->value);
+        $canUseMemos = $request->user()->canAny([
+            UserPermission::ViewOwnMemos->value,
+            UserPermission::ViewAllMemos->value,
+        ]);
 
         return view('dashboard', [
             'canManageUsers' => $canManageUsers,
             'roles' => UserRole::managed(),
             'roleCounts' => $canManageUsers ? $this->users->managedRoleCounts() : [],
+            'canUseMemos' => $canUseMemos,
         ]);
     }
 }

@@ -38,11 +38,13 @@ class UserController extends Controller
     public function create(string $role): View
     {
         Gate::authorize('create', User::class);
+        $stations = $this->stations->activeWithLines();
 
         return view('users.create', [
             'selectedRole' => UserRole::managedFrom($role),
             'roles' => UserRole::managed(),
-            'stations' => $this->stations->active(),
+            'stations' => $stations,
+            'lines' => $stations->pluck('metroLine')->filter()->unique('id')->sortBy('name')->values(),
         ]);
     }
 
@@ -58,13 +60,15 @@ class UserController extends Controller
     public function edit(User $user): View
     {
         Gate::authorize('update', $user);
-        $user->loadMissing('roles');
+        $user->loadMissing(['roles', 'station.metroLine']);
+        $stations = $this->stations->activeWithLines();
 
         return view('users.edit', [
             'managedUser' => $user,
             'selectedRole' => UserRole::from($user->roles->sole()->name),
             'roles' => UserRole::managed(),
-            'stations' => $this->stations->active(),
+            'stations' => $stations,
+            'lines' => $stations->pluck('metroLine')->filter()->unique('id')->sortBy('name')->values(),
         ]);
     }
 

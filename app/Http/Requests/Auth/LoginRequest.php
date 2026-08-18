@@ -48,14 +48,16 @@ class LoginRequest extends FormRequest
             'password' => $this->string('password')->toString(),
             'is_enabled' => true,
         ], $this->boolean('remember'))) {
-            RateLimiter::hit($this->throttleKey());
-
-            throw ValidationException::withMessages([
-                'username' => trans('auth.failed'),
-            ]);
+            $this->failAuthentication();
         }
 
         RateLimiter::clear($this->throttleKey());
+    }
+
+    private function failAuthentication(): never
+    {
+        RateLimiter::hit($this->throttleKey());
+        throw ValidationException::withMessages(['username' => trans('auth.failed')]);
     }
 
     /**

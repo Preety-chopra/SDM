@@ -74,7 +74,7 @@ final class UserService
      */
     private function attributesForRole(array $data, UserRole $role): array
     {
-        $attributes = Arr::except($data, ['role', 'password_confirmation']);
+        $attributes = Arr::except($data, ['role', 'line_id', 'password_confirmation']);
 
         if (! $role->requiresStation()) {
             $attributes['station_id'] = null;
