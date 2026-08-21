@@ -26,12 +26,19 @@ class RolesAndPermissionsSeeder extends Seeder
 
         foreach (UserRole::managed() as $role) {
             Role::findByName($role->value, 'web')->syncPermissions(
-                $role === UserRole::Station ? [
-                    UserPermission::CreateMemos->value,
-                    UserPermission::ViewOwnMemos->value,
-                    UserPermission::UpdateOwnDraftMemos->value,
-                    UserPermission::SubmitOwnDraftMemos->value,
-                ] : [],
+                match ($role) {
+                    UserRole::Station => [
+                        UserPermission::CreateMemos->value,
+                        UserPermission::ViewOwnMemos->value,
+                        UserPermission::UpdateOwnDraftMemos->value,
+                        UserPermission::SubmitOwnDraftMemos->value,
+                    ],
+                    UserRole::StationManager, UserRole::AssistantManager, UserRole::ManagerOperations, UserRole::DeputyGeneralManager => [
+                        UserPermission::ViewRoutedMemos->value,
+                        UserPermission::ActOnRoutedMemos->value,
+                    ],
+                    default => [],
+                },
             );
         }
 

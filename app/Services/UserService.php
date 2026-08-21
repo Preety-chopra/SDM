@@ -11,9 +11,12 @@ use Illuminate\Support\Facades\DB;
 
 final class UserService
 {
-    public function __construct(private UserRepositoryInterface $users) {}
+    public function __construct(
+        private UserRepositoryInterface $users,
+        private StationHierarchyService $hierarchies,
+    ) {}
 
-    public function paginate(UserRole $role, ?string $search, ?string $status): LengthAwarePaginator
+    public function paginate(string $role, ?string $search, ?string $status): LengthAwarePaginator
     {
         $enabled = match ($status) {
             'enabled' => true,
@@ -25,21 +28,25 @@ final class UserService
     }
 
     /** @return array<string, array{total: int, enabled: int, disabled: int}> */
-    public function managedRoleCounts(): array
+    public function managedRoleCounts(array $roles): array
     {
-        return $this->users->managedRoleCounts();
+        return $this->users->managedRoleCounts($roles);
     }
 
     /** @param array<string, mixed> $data */
     public function create(array $data): User
     {
         return DB::transaction(function () use ($data): User {
-            $role = UserRole::from($data['role']);
+            $roleName = $data['role'];
+            $role = UserRole::tryFrom($roleName);
             $attributes = $this->attributesForRole($data, $role);
             $attributes['email_verified_at'] = now();
 
             $user = $this->users->create($attributes);
-            $user->syncRoles([$role->value]);
+            $user->syncRoles([$roleName]);
+            if ($role === UserRole::StationManager) {
+                $this->hierarchies->syncStationManager($user, $data['station_ids']);
+            }
 
             return $user;
         });
@@ -49,7 +56,11 @@ final class UserService
     public function update(User $user, array $data): User
     {
         return DB::transaction(function () use ($user, $data): User {
-            $role = UserRole::from($data['role']);
+            if ($user->roles()->value('name') !== $data['role']) {
+                $this->hierarchies->ensureUserCanBeChanged($user);
+            }
+            $roleName = $data['role'];
+            $role = UserRole::tryFrom($roleName);
             $attributes = $this->attributesForRole($data, $role);
 
             if (blank($attributes['password'] ?? null)) {
@@ -57,7 +68,8 @@ final class UserService
             }
 
             $user = $this->users->update($user, $attributes);
-            $user->syncRoles([$role->value]);
+            $user->syncRoles([$roleName]);
+            $this->hierarchies->syncStationManager($user, $role === UserRole::StationManager ? $data['station_ids'] : []);
 
             return $user;
         });
@@ -65,6 +77,10 @@ final class UserService
 
     public function setEnabled(User $user, bool $enabled): User
     {
+        if (! $enabled) {
+            $this->hierarchies->ensureUserCanBeChanged($user);
+        }
+
         return $this->users->setEnabled($user, $enabled);
     }
 
@@ -72,11 +88,11 @@ final class UserService
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
-    private function attributesForRole(array $data, UserRole $role): array
+    private function attributesForRole(array $data, ?UserRole $role): array
     {
-        $attributes = Arr::except($data, ['role', 'line_id', 'password_confirmation']);
+        $attributes = Arr::except($data, ['role', 'line_id', 'station_ids', 'password_confirmation']);
 
-        if (! $role->requiresStation()) {
+        if (! $role?->requiresStation()) {
             $attributes['station_id'] = null;
         }
 

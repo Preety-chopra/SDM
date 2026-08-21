@@ -6,6 +6,7 @@ use App\Contracts\Repositories\ServiceDeficiencyMemoRepositoryInterface;
 use App\Enums\DeficiencyType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
+use App\Enums\WorkflowStage;
 use App\Models\Contractor;
 use App\Models\MemoAttachment;
 use App\Models\ServiceDeficiencyMemo;
@@ -15,17 +16,33 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 final class ServiceDeficiencyMemoService
 {
-    public function __construct(private ServiceDeficiencyMemoRepositoryInterface $memos) {}
+    public function __construct(
+        private ServiceDeficiencyMemoRepositoryInterface $memos,
+        private StationHierarchyService $hierarchies,
+    ) {}
 
-    public function paginateFor(User $user): LengthAwarePaginator
+    public function paginateFor(User $user, ?WorkflowStage $pendingStage = null): LengthAwarePaginator
     {
-        return $this->memos->paginateFor($user);
+        return $this->memos->paginateFor($user, $pendingStage);
+    }
+
+    /** @return array<string, array{memos: Collection, total: int}> */
+    public function pendingByStage(int $limit = 5): array
+    {
+        return $this->memos->pendingByStage($limit);
+    }
+
+    public function pendingActionCount(User $user): int
+    {
+        return $this->memos->pendingActionCount($user);
     }
 
     public function createDraft(User $user, array $data): ServiceDeficiencyMemo
@@ -35,6 +52,13 @@ final class ServiceDeficiencyMemoService
 
     public function createSubmitted(User $user, array $data): ServiceDeficiencyMemo
     {
+        try {
+            $this->hierarchies->resolveForSubmission($user);
+        } catch (ValidationException $exception) {
+            $this->createDraft($user, $data);
+            throw $exception;
+        }
+
         return $this->persist(null, $user, $data, true);
     }
 
@@ -45,6 +69,8 @@ final class ServiceDeficiencyMemoService
 
     public function submit(ServiceDeficiencyMemo $memo, User $user, array $data): ServiceDeficiencyMemo
     {
+        $this->hierarchies->resolveForSubmission($user);
+
         return $this->persist($memo, $user, $data, true);
     }
 
@@ -52,6 +78,12 @@ final class ServiceDeficiencyMemoService
     {
         DB::transaction(fn () => $attachment->delete());
         Storage::disk('local')->delete($attachment->storage_path);
+    }
+
+    public function deleteDraft(ServiceDeficiencyMemo $memo): void
+    {
+        DB::transaction(fn () => $this->memos->forceDelete($memo));
+        Storage::disk('local')->deleteDirectory('sdm-memos/'.$memo->id);
     }
 
     private function persist(?ServiceDeficiencyMemo $memo, User $user, array $data, bool $submit): ServiceDeficiencyMemo
@@ -70,16 +102,18 @@ final class ServiceDeficiencyMemoService
                     'station_id' => $station->id,
                     'station_name' => $station->name,
                     'line_name' => $station->metroLine->name,
+                    'line_code' => $station->metroLine->code,
                     'contractor_id' => $contractor?->id,
                     'contractor_name' => $contractor?->name,
                     'staff_name' => $data['staff_name'] ?? null,
                     'employee_number' => $data['employee_number'] ?? null,
-                    'incident_date' => filled($data['incident_date'] ?? null) ? CarbonImmutable::createFromFormat('d-m-Y', $data['incident_date'])->toDateString() : null,
+                    'incident_date' => filled($data['incident_date'] ?? null) ? CarbonImmutable::createFromFormat('Y-m-d', $data['incident_date'])->toDateString() : null,
                     'updated_by' => $user->id,
                 ];
 
                 if ($submit) {
                     $attributes['status'] = MemoStatus::Submitted->value;
+                    $attributes['current_stage'] = WorkflowStage::StationManager->value;
                     $attributes['submitted_at'] = now();
                 }
 
@@ -91,6 +125,9 @@ final class ServiceDeficiencyMemoService
                 }
 
                 $this->syncSections($memo, $data);
+                if ($submit && $memo->approvals()->doesntExist()) {
+                    $this->createApprovalRoute($memo, $user);
+                }
                 foreach (Arr::wrap($data['attachments'] ?? []) as $file) {
                     if ($file instanceof UploadedFile) {
                         $path = $file->store('sdm-memos/'.$memo->id, 'local');
@@ -110,6 +147,23 @@ final class ServiceDeficiencyMemoService
         } catch (Throwable $exception) {
             Storage::disk('local')->delete($storedPaths);
             throw $exception;
+        }
+    }
+
+    private function createApprovalRoute(ServiceDeficiencyMemo $memo, User $creator): void
+    {
+        $assignees = $this->hierarchies->resolveForSubmission($creator);
+
+        foreach (WorkflowStage::cases() as $stage) {
+            $assignee = $assignees[$stage->value];
+            $memo->approvals()->create([
+                'role' => $stage->value,
+                'sequence' => $stage->sequence(),
+                'assigned_to' => $assignee->id,
+                'assigned_name' => $assignee->name,
+                'assigned_employee_number' => $assignee->employee_number,
+                'decision' => 'pending',
+            ]);
         }
     }
 
@@ -143,7 +197,7 @@ final class ServiceDeficiencyMemoService
             $checkDate = $data['cash_check']['check_date'] ?? null;
             $checkTime = $data['cash_check']['check_time'] ?? null;
             $cash['checked_at'] = filled($checkDate) && filled($checkTime)
-                ? CarbonImmutable::createFromFormat('d-m-Y H:i', "{$checkDate} {$checkTime}")
+                ? CarbonImmutable::createFromFormat('Y-m-d H:i', "{$checkDate} {$checkTime}")
                 : null;
             $memo->cashCheck()->create($cash);
         }

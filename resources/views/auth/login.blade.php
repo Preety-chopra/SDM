@@ -20,10 +20,10 @@
                         {{-- <span class="grid h-10 w-10 place-items-center rounded-xl bg-[#0f766e] font-bold text-white">S</span> --}}
                         {{-- <span class="text-lg font-bold tracking-tight">SDM</span> --}}
                     </a>
-                    <p class="text-sm text-slate-500">
+                    {{-- <p class="text-sm text-slate-500">
                         Need help?
                         <a href="mailto:support@example.com" class="font-semibold text-[#0f766e] transition hover:text-[#115e59] focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">Contact support</a>
-                    </p>
+                    </p> --}}
                 </div>
 
                 <div class="mt-10 w-full max-w-md self-center py-4 sm:py-6">

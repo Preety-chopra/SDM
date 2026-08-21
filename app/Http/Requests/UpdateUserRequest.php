@@ -11,6 +11,7 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
+use Spatie\Permission\Models\Role as PermissionRole;
 
 class UpdateUserRequest extends FormRequest
 {
@@ -27,7 +28,12 @@ class UpdateUserRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255', new Username, Rule::unique(User::class)->ignore($managedUser)],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class)->ignore($managedUser)],
-            'role' => ['required', Rule::in(UserRole::managedValues())],
+            'role' => [
+                'required',
+                Rule::exists(PermissionRole::class, 'name')->where(fn (Builder $query) => $query
+                    ->where('guard_name', 'web')
+                    ->where('name', '!=', UserRole::Administrator->value)),
+            ],
             'employee_number' => [Rule::requiredIf($role?->requiresEmployeeNumber() === true), 'nullable', 'string', 'max:100', Rule::unique(User::class)->ignore($managedUser)],
             'phone' => ['nullable', 'string', 'max:30'],
             'designation' => ['nullable', 'string', 'max:100'],
@@ -39,6 +45,13 @@ class UpdateUserRequest extends FormRequest
                     ->where('is_active', true)
                     ->when($role === UserRole::Station, fn (Builder $query) => $query->where('line_id', $this->input('line_id')))),
             ],
+            'station_ids' => [
+                Rule::requiredIf($role === UserRole::StationManager),
+                Rule::prohibitedIf($role !== null && $role !== UserRole::StationManager),
+                'array',
+                'min:1',
+            ],
+            'station_ids.*' => ['integer', 'distinct', Rule::exists(Station::class, 'id')->where('is_active', true)],
             'line_id' => [
                 Rule::requiredIf($role === UserRole::Station),
                 Rule::prohibitedIf($role !== null && $role !== UserRole::Station),

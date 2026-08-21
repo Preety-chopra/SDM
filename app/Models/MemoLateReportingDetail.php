@@ -9,8 +9,23 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['memo_deficiency_id', 'booked_shift_from', 'booked_shift_to', 'actual_reporting_time'])]
 class MemoLateReportingDetail extends Model
 {
+    public function delayInMinutes(): int
+    {
+        $bookedMinutes = $this->minutesSinceMidnight($this->booked_shift_from);
+        $actualMinutes = $this->minutesSinceMidnight($this->actual_reporting_time);
+
+        return max(0, $actualMinutes - $bookedMinutes);
+    }
+
     public function deficiency(): BelongsTo
     {
         return $this->belongsTo(MemoDeficiency::class, 'memo_deficiency_id');
+    }
+
+    private function minutesSinceMidnight(string $time): int
+    {
+        [$hours, $minutes] = array_map('intval', explode(':', $time));
+
+        return ($hours * 60) + $minutes;
     }
 }

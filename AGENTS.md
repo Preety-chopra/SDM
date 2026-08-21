@@ -355,6 +355,7 @@ sail npm run dev
 - Avoid large business rules in JavaScript.
 - Keep authorization and security decisions on the server.
 - Use Tailwind utility classes consistently.
+- Do not use inline CSS anywhere in the project.
 - Extract repeated UI into Blade components rather than duplicating markup.
 - Maintain accessibility: labels, semantic controls, keyboard interactions, and useful validation feedback.
 
@@ -922,7 +923,36 @@ sail artisan --version
 
 ---
 
-## 20. Definition of Done
+## 20. Audit Logging
+
+Auditable application activity must produce durable audit logs for accountability and investigation.
+
+At minimum, audit:
+
+- authentication events and relevant access failures;
+- creation, update, and deletion of important business records;
+- workflow and status transitions;
+- role, permission, account-status, and other security-sensitive changes;
+- privileged administrator actions.
+
+Audit entries should capture, where applicable:
+
+- the actor's user ID;
+- the action or event name;
+- the affected entity type and ID;
+- relevant before and after values;
+- the timestamp;
+- request context such as IP address, user agent, or request/correlation ID when useful.
+
+Create audit records in the service layer and within the same database transaction as the audited change when atomicity is required. Audit logs must be append-only for normal application users, access-controlled, and covered by tests.
+
+Never record passwords, password hashes, authentication tokens, API keys, session identifiers, private keys, or other secrets. Avoid storing complete request payloads or unnecessary personal data; record only the fields required for the audit purpose.
+
+Prefer an audit mechanism already established in the repository. Do not introduce a new audit package without approval when the existing application can meet the requirement cleanly.
+
+---
+
+## 21. Definition of Done
 
 A task is complete only when all relevant items below are satisfied:
 
@@ -941,11 +971,12 @@ A task is complete only when all relevant items below are satisfied:
 - [ ] Migrations were added for schema changes.
 - [ ] The stack versions remain within the approved ranges.
 - [ ] Relevant Laravel Boost guidance was followed.
+- [ ] Required audit events were implemented and tested without recording secrets.
 - [ ] No unrelated refactoring was bundled into the change.
 
 ---
 
-## 21. Agent Working Style
+## 22. Agent Working Style
 
 When implementing a task:
 
@@ -977,7 +1008,7 @@ Do not:
 
 ---
 
-## 22. Conflict Resolution
+## 23. Conflict Resolution
 
 When instructions conflict, use this order:
 
@@ -993,7 +1024,7 @@ If a conflict could change architecture, security, data integrity, or the techno
 
 ---
 
-## 23. Project-Specific Fixed Decisions
+## 24. Project-Specific Fixed Decisions
 
 Unless explicitly changed by the developer:
 
@@ -1012,13 +1043,14 @@ Architecture:   Service Repository
 Development:    Test Driven Development
 Test Framework: Pest for a new project
 AI Tooling:     Laravel Boost
+Auditing:       Required for security-sensitive and business-data changes
 ```
 
 These are deliberate project decisions, not suggestions.
 
 ---
 
-## 24. Reference Sources
+## 25. Reference Sources
 
 Primary setup source:
 

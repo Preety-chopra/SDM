@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\DeficiencyType;
 use App\Enums\SdmType;
+use App\Http\Requests\ListMemosRequest;
 use App\Http\Requests\StoreAndSubmitMemoRequest;
 use App\Http\Requests\StoreMemoRequest;
 use App\Http\Requests\SubmitMemoRequest;
@@ -23,11 +24,16 @@ class ServiceDeficiencyMemoController extends Controller
         private MasterDataService $masterData,
     ) {}
 
-    public function index(Request $request): View
+    public function index(ListMemosRequest $request): View
     {
         Gate::authorize('viewAny', ServiceDeficiencyMemo::class);
 
-        return view('sdm-memos.index', ['memos' => $this->memos->paginateFor($request->user())]);
+        $pendingStage = $request->pendingStage();
+
+        return view('sdm-memos.index', [
+            'memos' => $this->memos->paginateFor($request->user(), $pendingStage),
+            'pendingStage' => $pendingStage,
+        ]);
     }
 
     public function create(Request $request): View
@@ -54,7 +60,7 @@ class ServiceDeficiencyMemoController extends Controller
     public function show(ServiceDeficiencyMemo $sdmMemo): View
     {
         Gate::authorize('view', $sdmMemo);
-        $sdmMemo->load(['creator:id,name', 'deficiencies.lateReporting', 'publicComplaint.station', 'cashCheck', 'attachments']);
+        $sdmMemo->load(['creator:id,name', 'deficiencies.lateReporting', 'publicComplaint.station', 'cashCheck', 'attachments', 'approvals.assignee', 'approvals.actor', 'approvals.attachments']);
 
         return view('sdm-memos.show', ['memo' => $sdmMemo]);
     }
@@ -79,6 +85,14 @@ class ServiceDeficiencyMemoController extends Controller
         $memo = $this->memos->submit($sdmMemo, $request->user(), $request->validated());
 
         return redirect()->route('sdm-memos.show', $memo)->with('status', 'SDM memo submitted successfully.');
+    }
+
+    public function destroy(ServiceDeficiencyMemo $sdmMemo): RedirectResponse
+    {
+        Gate::authorize('delete', $sdmMemo);
+        $this->memos->deleteDraft($sdmMemo);
+
+        return redirect()->route('sdm-memos.index')->with('status', 'Draft deleted.');
     }
 
     private function formView(Request $request, ?ServiceDeficiencyMemo $memo = null): View

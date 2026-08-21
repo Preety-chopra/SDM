@@ -2,10 +2,10 @@
     <x-slot name="header">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-                <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-100">{{ $role->pluralLabel() }}</h2>
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Create, update, enable, or disable {{ strtolower($role->pluralLabel()) }}.</p>
+                <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-100">{{ \App\Support\RoleLabel::plural($role->name) }}</h2>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Create, update, enable, or disable users in this role.</p>
             </div>
-            <a href="{{ route('users.create', $role->value) }}" class="inline-flex items-center justify-center rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">Create {{ $role->label() }}</a>
+            <a href="{{ route('users.create', $role->name) }}" class="inline-flex items-center justify-center rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">Create {{ \App\Support\RoleLabel::singular($role->name) }}</a>
         </div>
     </x-slot>
 
@@ -15,7 +15,7 @@
                 <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">{{ session('status') }}</div>
             @endif
 
-            <form method="GET" action="{{ route('users.index', $role->value) }}" class="grid gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-[1fr_12rem_auto] dark:border-gray-700 dark:bg-gray-800">
+            <form method="GET" action="{{ route('users.index', $role->name) }}" class="grid gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-[1fr_12rem_auto] dark:border-gray-700 dark:bg-gray-800">
                 <div>
                     <label for="search" class="sr-only">Search users</label>
                     <input id="search" name="search" value="{{ request('search') }}" placeholder="Search name, email, employee no. or phone" class="block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" />
@@ -38,7 +38,7 @@
                             <tr>
                                 <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">User</th>
                                 <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Personnel</th>
-                                <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Station</th>
+                                <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ $role->name === \App\Enums\UserRole::StationManager->value ? 'Station mapping' : 'Station' }}</th>
                                 <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Status</th>
                                 <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Actions</th>
                             </tr>
@@ -48,7 +48,21 @@
                                 <tr>
                                     <td class="px-5 py-4"><p class="font-semibold text-gray-900 dark:text-gray-100">{{ $managedUser->name }}</p><p class="text-sm text-gray-500 dark:text-gray-400">{{ $managedUser->email }}</p></td>
                                     <td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300"><p>{{ $managedUser->employee_number ?: '—' }}</p><p class="text-gray-400">{{ $managedUser->phone ?: 'No phone' }}</p></td>
-                                    <td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $managedUser->station ? $managedUser->station->code.' · '.$managedUser->station->name : '—' }}</td>
+                                    <td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
+                                        @if ($role->name === \App\Enums\UserRole::StationManager->value)
+                                            <div class="flex min-w-56 flex-wrap gap-2">
+                                                @forelse ($managedUser->managedStationHierarchies->sortBy('station.name') as $mapping)
+                                                    @if ($mapping->station)
+                                                        <span class="inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800 dark:bg-sky-950 dark:text-sky-300">{{ $mapping->station->code }} · {{ $mapping->station->name }}</span>
+                                                    @endif
+                                                @empty
+                                                    <span>—</span>
+                                                @endforelse
+                                            </div>
+                                        @else
+                                            {{ $managedUser->station ? $managedUser->station->code.' · '.$managedUser->station->name : '—' }}
+                                        @endif
+                                    </td>
                                     <td class="px-5 py-4"><span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $managedUser->is_enabled ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' }}">{{ $managedUser->is_enabled ? 'Enabled' : 'Disabled' }}</span></td>
                                     <td class="px-5 py-4">
                                         <div class="flex justify-end gap-2" x-data="{ confirming: false }">

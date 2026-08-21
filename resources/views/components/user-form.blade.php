@@ -1,6 +1,6 @@
-@props(['action', 'method' => 'POST', 'managedUser' => null, 'selectedRole', 'roles', 'lines', 'stations', 'submitLabel'])
+@props(['action', 'method' => 'POST', 'managedUser' => null, 'selectedRole', 'roles', 'lines', 'stations', 'managedStationIds' => [], 'submitLabel'])
 
-<form method="POST" action="{{ $action }}" class="flex flex-col gap-6" x-data="userForm" data-role="{{ old('role', $selectedRole->value) }}" data-station-role="{{ \App\Enums\UserRole::Station->value }}">
+<form method="POST" action="{{ $action }}" class="flex flex-col gap-6" x-data="userForm" data-role="{{ old('role', $selectedRole->name) }}" data-station-role="{{ \App\Enums\UserRole::Station->value }}" data-station-manager-role="{{ \App\Enums\UserRole::StationManager->value }}">
     @csrf
     @if (strtoupper($method) !== 'POST')
         @method($method)
@@ -22,7 +22,7 @@
             <x-input-label for="role" value="Role" />
             <select id="role" name="role" x-model="role" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
                 @foreach ($roles as $role)
-                    <option value="{{ $role->value }}" @selected(old('role', $selectedRole->value) === $role->value)>{{ $role->label() }}</option>
+                    <option value="{{ $role->name }}" @selected(old('role', $selectedRole->name) === $role->name)>{{ \App\Support\RoleLabel::singular($role->name) }}</option>
                 @endforeach
             </select>
             <x-input-error :messages="$errors->get('role')" class="mt-2" />
@@ -39,13 +39,23 @@
         </div>
         <div>
             <x-input-label for="station_id" value="Station (required for Station roles)" />
-            <select id="station_id" name="station_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+            <select id="station_id" name="station_id" :disabled="role !== stationRole" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
                 <option value="">Select a station</option>
                 @foreach ($stations as $station)
                     <option value="{{ $station->id }}" @selected((string) old('station_id', $managedUser?->station_id) === (string) $station->id)>{{ $station->metroLine->code }} · {{ $station->code }} · {{ $station->name }}</option>
                 @endforeach
             </select>
             <x-input-error :messages="$errors->get('station_id')" class="mt-2" />
+        </div>
+        <div class="md:col-span-2" x-cloak x-show="role === stationManagerRole">
+            <x-input-label for="station_ids" value="Stations managed by this Station Manager" />
+            <select id="station_ids" name="station_ids[]" multiple size="8" :disabled="role !== stationManagerRole" :required="role === stationManagerRole" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                @foreach ($stations as $station)
+                    <option value="{{ $station->id }}" @selected(in_array($station->id, old('station_ids', $managedStationIds)))>{{ $station->metroLine->code }} · {{ $station->code }} · {{ $station->name }}</option>
+                @endforeach
+            </select>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Hold Ctrl (Windows) or Command (Mac) to select multiple stations.</p>
+            <x-input-error :messages="$errors->get('station_ids')" class="mt-2" />
         </div>
         <div>
             <x-input-label for="employee_number" value="Employee number (required for managers)" />
@@ -80,7 +90,7 @@
     </div>
 
     <div class="flex items-center justify-end gap-3 border-t border-gray-200 pt-6 dark:border-gray-700">
-        <a href="{{ route('users.index', $selectedRole->value) }}" class="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">Cancel</a>
+        <a href="{{ route('users.index', $selectedRole->name) }}" class="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">Cancel</a>
         <button class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">{{ $submitLabel }}</button>
     </div>
 </form>

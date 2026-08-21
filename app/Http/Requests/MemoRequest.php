@@ -18,7 +18,30 @@ abstract class MemoRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if (SdmType::tryFrom($this->string('service_type')->toString()) !== SdmType::Ticketing) {
+        $incidentDate = $this->input('incident_date');
+        if (is_string($incidentDate) && preg_match('/^(\d{2})-(\d{2})-(\d{4})$/D', $incidentDate, $parts) === 1) {
+            $this->merge(['incident_date' => "{$parts[3]}-{$parts[2]}-{$parts[1]}"]);
+        }
+
+        $lateReporting = $this->input('late_reporting');
+        if (is_array($lateReporting)) {
+            foreach (['booked_shift_from', 'booked_shift_to', 'actual_reporting_time'] as $field) {
+                $time = $lateReporting[$field] ?? null;
+                if (is_string($time) && preg_match('/^\d{2}:\d{2}:00$/D', $time) === 1) {
+                    $lateReporting[$field] = substr($time, 0, 5);
+                }
+            }
+
+            $this->merge(['late_reporting' => $lateReporting]);
+        }
+
+        $cashCheckSelected = in_array(
+            DeficiencyType::CashCheck->value,
+            (array) $this->input('deficiencies', []),
+            true,
+        );
+
+        if (SdmType::tryFrom($this->string('service_type')->toString()) !== SdmType::Ticketing || ! $cashCheckSelected) {
             $this->request->remove('cash_check');
         }
     }
@@ -37,7 +60,7 @@ abstract class MemoRequest extends FormRequest
             'service_type' => ['required', Rule::enum(SdmType::class)],
             'serial_number' => ['required', 'string', 'max:50', $uniqueSerial],
             'contractor_id' => [$strict ? 'required' : 'nullable', Rule::exists(Contractor::class, 'id')->where(fn (Builder $query) => $query->where('is_active', true))],
-            'incident_date' => [$strict ? 'required' : 'nullable', 'date_format:d-m-Y'],
+            'incident_date' => [$strict ? 'required' : 'nullable', 'date_format:Y-m-d'],
             'staff_name' => [$strict ? 'required' : 'nullable', 'string', 'max:255'],
             'employee_number' => [$strict ? 'required' : 'nullable', 'string', 'max:100'],
             'deficiencies' => [$strict ? 'required' : 'nullable', 'array', $strict ? 'min:1' : 'max:5'],
@@ -56,7 +79,7 @@ abstract class MemoRequest extends FormRequest
             'cash_check' => ['nullable', 'array'],
             'cash_check.tom_ccc_number' => ['nullable', 'string', 'max:100'],
             'cash_check.end_of_shift_receipt_number' => ['nullable', 'string', 'max:100'],
-            'cash_check.check_date' => ['nullable', 'required_with:cash_check.check_time', 'date_format:d-m-Y'],
+            'cash_check.check_date' => ['nullable', 'required_with:cash_check.check_time', 'date_format:Y-m-d', 'before_or_equal:today'],
             'cash_check.check_time' => ['nullable', 'required_with:cash_check.check_date', 'date_format:H:i'],
             'cash_check.difference_amount' => ['nullable', 'numeric', 'between:-9999999999.99,9999999999.99'],
             'cash_check.hidden_cash_amount' => ['nullable', 'numeric', 'between:0,9999999999.99'],

@@ -10,12 +10,13 @@ use Illuminate\Database\Eloquent\Builder;
 
 final class UserRepository implements UserRepositoryInterface
 {
-    public function paginateByRole(UserRole $role, ?string $search, ?bool $enabled): LengthAwarePaginator
+    public function paginateByRole(string $role, ?string $search, ?bool $enabled): LengthAwarePaginator
     {
         return User::query()
             ->select(['id', 'name', 'email', 'employee_number', 'phone', 'designation', 'station_id', 'is_enabled', 'created_at'])
             ->with('station:id,code,name')
-            ->role($role->value)
+            ->when($role === UserRole::StationManager->value, fn (Builder $query) => $query->with('managedStationHierarchies.station:id,code,name'))
+            ->role($role)
             ->when($search, function (Builder $query, string $search): void {
                 $query->where(function (Builder $query) use ($search): void {
                     $query->where('name', 'like', "%{$search}%")
@@ -30,16 +31,16 @@ final class UserRepository implements UserRepositoryInterface
             ->withQueryString();
     }
 
-    public function managedRoleCounts(): array
+    public function managedRoleCounts(array $roles): array
     {
         $counts = [];
 
-        foreach (UserRole::managed() as $role) {
-            $query = User::query()->role($role->value);
+        foreach ($roles as $role) {
+            $query = User::query()->role($role);
             $total = (clone $query)->count();
             $enabled = (clone $query)->where('is_enabled', true)->count();
 
-            $counts[$role->value] = [
+            $counts[$role] = [
                 'total' => $total,
                 'enabled' => $enabled,
                 'disabled' => $total - $enabled,

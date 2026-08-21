@@ -3,32 +3,36 @@
 namespace App\Http\Controllers;
 
 use App\Contracts\Repositories\StationRepositoryInterface;
-use App\Enums\UserRole;
 use App\Http\Requests\ListUsersRequest;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Http\Requests\UpdateUserStatusRequest;
+use App\Models\StationHierarchy;
 use App\Models\User;
+use App\Services\RoleService;
 use App\Services\UserService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
+use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
     public function __construct(
         private UserService $users,
+        private RoleService $roles,
         private StationRepositoryInterface $stations,
     ) {}
 
     public function index(ListUsersRequest $request, string $role): View
     {
-        $userRole = UserRole::managedFrom($role);
+        $userRole = $this->roles->findManagedByNameOrFail($role);
 
         return view('users.index', [
             'role' => $userRole,
             'users' => $this->users->paginate(
-                $userRole,
+                $userRole->name,
                 $request->string('search')->trim()->toString() ?: null,
                 $request->validated('status'),
             ),
@@ -38,22 +42,46 @@ class UserController extends Controller
     public function create(string $role): View
     {
         Gate::authorize('create', User::class);
+        $roles = $this->roles->managedRoles();
+
+        return $this->createView(
+            $this->roles->findManagedByNameOrFail($role),
+            $roles,
+            false,
+        );
+    }
+
+    public function createAny(): View
+    {
+        Gate::authorize('create', User::class);
+        $roles = $this->roles->managedRoles();
+        $selectedRole = $roles->first();
+
+        abort_if($selectedRole === null, 404, 'Create a role before creating a user.');
+
+        return $this->createView($selectedRole, $roles, true);
+    }
+
+    /** @param Collection<int, Role> $roles */
+    private function createView(Role $selectedRole, Collection $roles, bool $generalCreate): View
+    {
         $stations = $this->stations->activeWithLines();
 
         return view('users.create', [
-            'selectedRole' => UserRole::managedFrom($role),
-            'roles' => UserRole::managed(),
+            'selectedRole' => $selectedRole,
+            'roles' => $roles,
             'stations' => $stations,
             'lines' => $stations->pluck('metroLine')->filter()->unique('id')->sortBy('name')->values(),
+            'generalCreate' => $generalCreate,
         ]);
     }
 
     public function store(StoreUserRequest $request): RedirectResponse
     {
         $user = $this->users->create($request->validated());
-        $role = UserRole::from($request->validated('role'));
+        $role = $request->validated('role');
 
-        return redirect()->route('users.index', $role->value)
+        return redirect()->route('users.index', $role)
             ->with('status', "{$user->name} was created successfully.");
     }
 
@@ -65,19 +93,20 @@ class UserController extends Controller
 
         return view('users.edit', [
             'managedUser' => $user,
-            'selectedRole' => UserRole::from($user->roles->sole()->name),
-            'roles' => UserRole::managed(),
+            'selectedRole' => $this->roles->findManagedByNameOrFail($user->roles->sole()->name),
+            'roles' => $this->roles->managedRoles(),
             'stations' => $stations,
             'lines' => $stations->pluck('metroLine')->filter()->unique('id')->sortBy('name')->values(),
+            'managedStationIds' => StationHierarchy::query()->where('station_manager_id', $user->id)->pluck('station_id')->all(),
         ]);
     }
 
     public function update(UpdateUserRequest $request, User $user): RedirectResponse
     {
         $updatedUser = $this->users->update($user, $request->validated());
-        $role = UserRole::from($request->validated('role'));
+        $role = $request->validated('role');
 
-        return redirect()->route('users.index', $role->value)
+        return redirect()->route('users.index', $role)
             ->with('status', "{$updatedUser->name} was updated successfully.");
     }
 

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
+use App\Enums\WorkflowStage;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['service_type', 'serial_number', 'station_id', 'station_name', 'line_name', 'contractor_id', 'contractor_name', 'staff_name', 'employee_number', 'incident_date', 'status', 'created_by', 'updated_by', 'submitted_at'])]
+#[Fillable(['service_type', 'serial_number', 'station_id', 'station_name', 'line_name', 'line_code', 'contractor_id', 'contractor_name', 'staff_name', 'employee_number', 'incident_date', 'status', 'current_stage', 'created_by', 'updated_by', 'submitted_at'])]
 class ServiceDeficiencyMemo extends Model
 {
     use HasFactory, SoftDeletes;
@@ -54,11 +55,19 @@ class ServiceDeficiencyMemo extends Model
         return $this->hasMany(MemoAttachment::class, 'memo_id');
     }
 
+    public function approvals(): HasMany
+    {
+        return $this->hasMany(MemoApproval::class, 'memo_id')
+            ->whereIn('role', array_column(WorkflowStage::cases(), 'value'))
+            ->orderBy('sequence');
+    }
+
     protected function casts(): array
     {
         return [
             'service_type' => SdmType::class,
             'status' => MemoStatus::class,
+            'current_stage' => WorkflowStage::class,
             'incident_date' => 'date',
             'submitted_at' => 'datetime',
         ];

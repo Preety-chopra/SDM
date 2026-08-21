@@ -18,7 +18,7 @@ class SaveLineRequest extends FormRequest
     {
         return [
             'code' => ['required', 'string', 'max:30', Rule::unique(Line::class)->ignore($this->route('line'))],
-            'name' => ['required', 'string', 'max:255', Rule::unique(Line::class)->ignore($this->route('line'))],
+            'name' => ['required', 'string', 'max:255'],
             'is_active' => ['required', 'boolean'],
         ];
     }

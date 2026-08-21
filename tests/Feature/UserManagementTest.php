@@ -2,9 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Enums\MemoStatus;
+use App\Enums\SdmType;
+use App\Enums\UserPermission;
 use App\Enums\UserRole;
+use App\Enums\WorkflowStage;
 use App\Models\Line;
+use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
+use App\Models\StationHierarchy;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -58,21 +64,96 @@ class UserManagementTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('Station Users')
-            ->assertSee('Assistant Managers')
-            ->assertSee('Deputy General Managers')
+            ->assertSee('Managers/Assistant Managers (O)-Line')
+            ->assertSee('DGM/O Users')
             ->assertSee('Enabled')
             ->assertSee('Disabled');
     }
 
+    public function test_administrator_dashboard_exposes_primary_tools_as_direct_links_without_laravel_branding(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+
+        $this->actingAs($administrator)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('SDM Workspace')
+            ->assertSee('Quick actions')
+            ->assertSee(route('sdm-memos.index'), false)
+            ->assertSee(route('users.create_any'), false)
+            ->assertSee(route('lines.index'), false)
+            ->assertSee(route('stations.index'), false)
+            ->assertSee(route('contractors.index'), false)
+            ->assertDontSee('viewBox="0 0 316 316"', false);
+    }
+
+    public function test_administrator_dashboard_lists_pending_memos_at_each_approval_level(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $station = Station::query()->create([
+            'code' => 'PENDING-01',
+            'name' => 'Pending Station',
+            'is_active' => true,
+        ]);
+
+        foreach (WorkflowStage::cases() as $stage) {
+            $memo = ServiceDeficiencyMemo::query()->create([
+                'service_type' => SdmType::Cfs->value,
+                'serial_number' => 'PENDING-'.$stage->sequence(),
+                'station_id' => $station->id,
+                'station_name' => $station->name,
+                'status' => MemoStatus::UnderReview->value,
+                'current_stage' => $stage->value,
+                'created_by' => $administrator->id,
+            ]);
+            $memo->approvals()->create([
+                'role' => $stage->value,
+                'sequence' => $stage->sequence(),
+                'assigned_name' => $stage->label().' Reviewer',
+                'decision' => 'pending',
+            ]);
+        }
+
+        $response = $this->actingAs($administrator)->get(route('dashboard'));
+
+        $response->assertOk()
+            ->assertSee('Pending memos by approval level')
+            ->assertSee('SM level')
+            ->assertSee('AM level')
+            ->assertSee('Manager level')
+            ->assertSee('DGM level');
+
+        foreach (WorkflowStage::cases() as $stage) {
+            $response->assertSee('PENDING-'.$stage->sequence())
+                ->assertSee(route('sdm-memos.index', ['pending_stage' => $stage->value]), false);
+        }
+
+        $this->actingAs($administrator)
+            ->get(route('sdm-memos.index', ['pending_stage' => WorkflowStage::LineManager->value]))
+            ->assertOk()
+            ->assertSee('Pending at AM level')
+            ->assertSee('PENDING-2')
+            ->assertDontSee('PENDING-1')
+            ->assertDontSee('PENDING-3')
+            ->assertDontSee('PENDING-4');
+    }
+
     public function test_non_administrator_receives_the_basic_dashboard_without_user_management(): void
     {
-        $user = $this->userWithRole(UserRole::Station);
+        $station = Station::query()->create([
+            'code' => 'DASH-01',
+            'name' => 'Dashboard Station',
+            'is_active' => true,
+        ]);
+        $user = $this->userWithRole(UserRole::Station, ['station_id' => $station->id]);
 
         $this->actingAs($user)
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('You are logged in')
+            ->assertSee('Create SDM memo')
+            ->assertSee('View all memos')
             ->assertDontSee('User management')
+            ->assertDontSee('Pending memos by approval level')
             ->assertDontSee('Users menu');
     }
 
@@ -88,15 +169,77 @@ class UserManagementTest extends TestCase
         $response = $this->actingAs($administrator)->post(route('users.store'), [
             ...$this->validUserData(UserRole::StationManager),
             'employee_number' => 'EMP-1001',
-            'station_id' => $station->id,
+            'station_ids' => [$station->id],
         ]);
 
         $createdUser = User::query()->where('email', 'managed@example.com')->sole();
 
         $response->assertRedirect(route('users.index', UserRole::StationManager->value));
         $this->assertTrue($createdUser->hasExactRoles(UserRole::StationManager->value));
-        $this->assertSame($station->id, $createdUser->station_id);
+        $this->assertTrue($createdUser->can(UserPermission::ViewRoutedMemos->value));
+        $this->assertTrue($createdUser->can(UserPermission::ActOnRoutedMemos->value));
+        $this->assertCount(0, $createdUser->getDirectPermissions());
+        $this->assertNotNull($createdUser->email_verified_at);
+        $this->assertNull($createdUser->station_id);
+        $this->assertSame($createdUser->id, StationHierarchy::query()->where('station_id', $station->id)->value('station_manager_id'));
         $this->assertTrue(Hash::check('Secure Password 123!', $createdUser->password));
+    }
+
+    public function test_station_manager_directory_displays_all_mapped_stations_after_creation(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $line = Line::query()->create([
+            'code' => 'MAP',
+            'name' => 'Mapping Line',
+            'is_active' => true,
+        ]);
+        $stations = collect([
+            ['code' => 'MAP-01', 'name' => 'Mapping Station One'],
+            ['code' => 'MAP-02', 'name' => 'Mapping Station Two'],
+        ])->map(fn (array $attributes): Station => Station::query()->create([
+            ...$attributes,
+            'line_id' => $line->id,
+            'is_active' => true,
+        ]));
+
+        $this->actingAs($administrator)->post(route('users.store'), [
+            ...$this->validUserData(UserRole::StationManager),
+            'name' => 'sm02',
+            'email' => 'sm02@example.com',
+            'employee_number' => 'EMP-SM02',
+            'station_ids' => $stations->pluck('id')->all(),
+        ])->assertRedirect(route('users.index', UserRole::StationManager->value));
+
+        $this->actingAs($administrator)
+            ->get(route('users.index', UserRole::StationManager->value))
+            ->assertOk()
+            ->assertSee('sm02')
+            ->assertSee('MAP-01 · Mapping Station One')
+            ->assertSee('MAP-02 · Mapping Station Two');
+    }
+
+    public function test_administrator_has_a_clear_general_create_user_entry_point(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+
+        $this->actingAs($administrator)
+            ->get(route('users.create_any'))
+            ->assertOk()
+            ->assertSee('Create user')
+            ->assertSee('Station Manager')
+            ->assertSee('Assistant Manager');
+
+        $this->actingAs($administrator)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee(route('users.create_any'), false)
+            ->assertSee('Create user');
+
+        $managedUser = $this->userWithRole(UserRole::Station);
+
+        $this->actingAs($managedUser)
+            ->get(route('users.create_any'))
+            ->assertForbidden();
     }
 
     public function test_role_specific_personnel_and_station_rules_are_enforced(): void
@@ -105,7 +248,7 @@ class UserManagementTest extends TestCase
 
         $this->actingAs($administrator)
             ->post(route('users.store'), $this->validUserData(UserRole::StationManager))
-            ->assertSessionHasErrors(['employee_number', 'station_id']);
+            ->assertSessionHasErrors(['employee_number', 'station_ids']);
 
         $this->actingAs($administrator)
             ->post(route('users.store'), [

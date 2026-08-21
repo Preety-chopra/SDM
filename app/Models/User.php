@@ -13,7 +13,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['name', 'email', 'employee_number', 'phone', 'designation', 'station_id', 'password', 'is_enabled'])]
+#[Fillable(['name', 'email', 'employee_number', 'phone', 'designation', 'station_id', 'password', 'is_enabled', 'email_verified_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -32,6 +32,16 @@ class User extends Authenticatable
     public function createdMemos(): HasMany
     {
         return $this->hasMany(ServiceDeficiencyMemo::class, 'created_by');
+    }
+
+    public function assignedMemoApprovals(): HasMany
+    {
+        return $this->hasMany(MemoApproval::class, 'assigned_to');
+    }
+
+    public function managedStationHierarchies(): HasMany
+    {
+        return $this->hasMany(StationHierarchy::class, 'station_manager_id');
     }
 
     /**

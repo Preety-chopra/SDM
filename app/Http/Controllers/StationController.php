@@ -18,7 +18,17 @@ class StationController extends Controller
     {
         Gate::authorize(UserPermission::ManageStations->value);
 
-        return view('master-data.stations', ['stations' => $this->masterData->stations(), 'lines' => $this->masterData->lines(true)]);
+        $stationGroups = $this->masterData->stations()
+            ->sortBy(fn (Station $station): string => implode('|', [
+                mb_strtolower($station->metroLine->code),
+                mb_strtolower($station->name),
+            ]))
+            ->groupBy('line_id');
+
+        return view('master-data.stations', [
+            'stationGroups' => $stationGroups,
+            'lines' => $this->masterData->lines(true),
+        ]);
     }
 
     public function store(SaveStationRequest $request): RedirectResponse

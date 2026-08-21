@@ -2,16 +2,16 @@
 
 namespace App\Contracts\Repositories;
 
-use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 interface UserRepositoryInterface
 {
-    public function paginateByRole(UserRole $role, ?string $search, ?bool $enabled): LengthAwarePaginator;
+    public function paginateByRole(string $role, ?string $search, ?bool $enabled): LengthAwarePaginator;
 
+    /** @param list<string> $roles */
     /** @return array<string, array{total: int, enabled: int, disabled: int}> */
-    public function managedRoleCounts(): array;
+    public function managedRoleCounts(array $roles): array;
 
     /** @param array<string, mixed> $attributes */
     public function create(array $attributes): User;

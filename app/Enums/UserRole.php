@@ -8,6 +8,7 @@ enum UserRole: string
     case Station = 'station';
     case StationManager = 'station_manager';
     case AssistantManager = 'assistant_manager';
+    case ManagerOperations = 'manager_operations';
     case DeputyGeneralManager = 'deputy_general_manager';
 
     public function label(): string
@@ -16,8 +17,9 @@ enum UserRole: string
             self::Administrator => 'Administrator',
             self::Station => 'Station',
             self::StationManager => 'Station Manager',
-            self::AssistantManager => 'Assistant Manager',
-            self::DeputyGeneralManager => 'Deputy General Manager',
+            self::AssistantManager => 'Manager/Assistant Manager (O)-Line',
+            self::ManagerOperations => 'Manager (Operations)',
+            self::DeputyGeneralManager => 'DGM/O',
         };
     }
 
@@ -27,19 +29,20 @@ enum UserRole: string
             self::Administrator => 'Administrators',
             self::Station => 'Station Users',
             self::StationManager => 'Station Managers',
-            self::AssistantManager => 'Assistant Managers',
-            self::DeputyGeneralManager => 'Deputy General Managers',
+            self::AssistantManager => 'Managers/Assistant Managers (O)-Line',
+            self::ManagerOperations => 'Managers (Operations)',
+            self::DeputyGeneralManager => 'DGM/O Users',
         };
     }
 
     public function requiresStation(): bool
     {
-        return in_array($this, [self::Station, self::StationManager], true);
+        return $this === self::Station;
     }
 
     public function requiresEmployeeNumber(): bool
     {
-        return in_array($this, [self::StationManager, self::AssistantManager, self::DeputyGeneralManager], true);
+        return in_array($this, [self::StationManager, self::AssistantManager, self::ManagerOperations, self::DeputyGeneralManager], true);
     }
 
     public function isManaged(): bool
