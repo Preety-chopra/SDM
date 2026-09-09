@@ -2,12 +2,14 @@
 
 namespace App\View\Components;
 
-use App\Models\User;
+use Illuminate\Support\Str;
 use Illuminate\View\Component;
 use Illuminate\View\View;
 
 class AppLayout extends Component
 {
+    public function __construct(public ?string $title = null) {}
+
     /**
      * Get the view / contents that represents the component.
      */
@@ -18,22 +20,11 @@ class AppLayout extends Component
 
     private function backUrl(): string
     {
-        return match (request()->route()?->getName()) {
-            'sdm-memos.create', 'sdm-memos.show', 'sdm-memos.edit' => route('sdm-memos.index'),
-            'roles.create', 'roles.edit' => route('roles.index'),
-            'users.create' => route('users.index', request()->route('role')),
-            'users.edit' => $this->userDirectoryUrl(),
-            default => route('dashboard'),
-        };
-    }
+        $fallback = route('dashboard');
+        $previous = url()->previous($fallback);
+        $applicationOrigin = request()->getSchemeAndHttpHost();
+        $isInternal = $previous === $applicationOrigin || Str::startsWith($previous, $applicationOrigin.'/');
 
-    private function userDirectoryUrl(): string
-    {
-        $user = request()->route('user');
-        $role = $user instanceof User && $user->relationLoaded('roles')
-            ? $user->roles->first()?->name
-            : null;
-
-        return $role ? route('users.index', $role) : route('dashboard');
+        return $isInternal && $previous !== request()->fullUrl() ? $previous : $fallback;
     }
 }

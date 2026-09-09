@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout :title="'Edit '.\App\Support\RoleLabel::singular($managedRole->name)">
     <x-slot name="header">
         <div>
             <h2 class="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-100">Edit {{ \App\Support\RoleLabel::singular($managedRole->name) }}</h2>

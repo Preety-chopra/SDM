@@ -2,13 +2,23 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Enums\UserRole;
+use App\Models\Line;
+use App\Models\Station;
 use App\Models\User;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class AuthenticationTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(RolesAndPermissionsSeeder::class);
+    }
 
     public function test_login_screen_can_be_rendered(): void
     {
@@ -23,6 +33,10 @@ class AuthenticationTest extends TestCase
 
         $response
             ->assertOk()
+            ->assertSee('Service Deficiency Management')
+            ->assertSee('A secure workspace for creating, reviewing, and tracking service deficiency memos across DMRC operations.')
+            ->assertSee('src="'.asset('images/dmrc-logo.svg').'"', false)
+            ->assertSee('alt="Delhi Metro Rail Corporation"', false)
             ->assertSee('Welcome back')
             ->assertSee('Sign in to your account')
             ->assertDontSee('Every decision starts with a clearer view')
@@ -43,6 +57,35 @@ class AuthenticationTest extends TestCase
 
         $this->assertAuthenticated();
         $response->assertRedirect(route('dashboard', absolute: false));
+    }
+
+    public function test_login_lists_active_stations_alphabetically_and_station_controller_must_select_their_station(): void
+    {
+        $line = Line::query()->create(['code' => 'BLUE', 'name' => 'Blue Line', 'is_active' => true]);
+        $zulu = Station::query()->create(['code' => 'ZULU', 'name' => 'Zulu Station', 'line_id' => $line->id, 'is_active' => true]);
+        $alpha = Station::query()->create(['code' => 'ALPHA', 'name' => 'Alpha Station', 'line_id' => $line->id, 'is_active' => true]);
+        Station::query()->create(['code' => 'DISABLED', 'name' => 'Disabled Station', 'line_id' => $line->id, 'is_active' => false]);
+        $controller = User::factory()->create(['name' => 'Station Controller', 'station_id' => $alpha->id]);
+        $controller->assignRole(UserRole::Station->value);
+
+        $this->get(route('login'))
+            ->assertOk()
+            ->assertSeeInOrder(['Alpha Station', 'Zulu Station'])
+            ->assertDontSee('Disabled Station');
+
+        $this->post(route('login'), [
+            'username' => $controller->name,
+            'password' => 'password',
+            'station_id' => $zulu->id,
+        ])->assertSessionHasErrors('station_id');
+        $this->assertGuest();
+
+        $this->post(route('login'), [
+            'username' => $controller->name,
+            'password' => 'password',
+            'station_id' => $alpha->id,
+        ])->assertRedirect(route('dashboard', absolute: false));
+        $this->assertAuthenticatedAs($controller);
     }
 
     public function test_users_can_not_authenticate_with_invalid_password(): void

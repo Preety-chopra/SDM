@@ -33,9 +33,30 @@ class RolesAndPermissionsSeeder extends Seeder
                         UserPermission::UpdateOwnDraftMemos->value,
                         UserPermission::SubmitOwnDraftMemos->value,
                     ],
-                    UserRole::StationManager, UserRole::AssistantManager, UserRole::ManagerOperations, UserRole::DeputyGeneralManager => [
+                    UserRole::StationManager => [
+                        UserPermission::CreateMemos->value,
+                        UserPermission::ViewOwnMemos->value,
+                        UserPermission::UpdateOwnDraftMemos->value,
+                        UserPermission::SubmitOwnDraftMemos->value,
                         UserPermission::ViewRoutedMemos->value,
                         UserPermission::ActOnRoutedMemos->value,
+                    ],
+                    UserRole::AssistantManager, UserRole::ManagerOperations, UserRole::DeputyGeneralManager => [
+                        UserPermission::ViewRoutedMemos->value,
+                        UserPermission::ActOnRoutedMemos->value,
+                    ],
+                    UserRole::CmcTeamLead => [
+                        UserPermission::ViewRoutedMemos->value,
+                        UserPermission::ActOnRoutedMemos->value,
+                        UserPermission::AssignCmcStaff->value,
+                    ],
+                    UserRole::CmcStaff => [
+                        UserPermission::ViewRoutedMemos->value,
+                        UserPermission::ActOnRoutedMemos->value,
+                        UserPermission::AssessMemos->value,
+                        UserPermission::ManagePenaltyLetters->value,
+                        UserPermission::ManageObjections->value,
+                        UserPermission::RecordDeductions->value,
                     ],
                     default => [],
                 },

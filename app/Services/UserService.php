@@ -7,6 +7,7 @@ use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 final class UserService
@@ -14,6 +15,7 @@ final class UserService
     public function __construct(
         private UserRepositoryInterface $users,
         private StationHierarchyService $hierarchies,
+        private RoleService $roles,
     ) {}
 
     public function paginate(string $role, ?string $search, ?string $status): LengthAwarePaginator
@@ -33,13 +35,18 @@ final class UserService
         return $this->users->managedRoleCounts($roles);
     }
 
+    public function enabledForRole(UserRole $role): Collection
+    {
+        return $this->users->enabledForRole($role->value);
+    }
+
     /** @param array<string, mixed> $data */
     public function create(array $data): User
     {
         return DB::transaction(function () use ($data): User {
             $roleName = $data['role'];
             $role = UserRole::tryFrom($roleName);
-            $attributes = $this->attributesForRole($data, $role);
+            $attributes = $this->attributesForRole($data, $role, $roleName);
             $attributes['email_verified_at'] = now();
 
             $user = $this->users->create($attributes);
@@ -61,7 +68,7 @@ final class UserService
             }
             $roleName = $data['role'];
             $role = UserRole::tryFrom($roleName);
-            $attributes = $this->attributesForRole($data, $role);
+            $attributes = $this->attributesForRole($data, $role, $roleName);
 
             if (blank($attributes['password'] ?? null)) {
                 unset($attributes['password']);
@@ -88,11 +95,11 @@ final class UserService
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
-    private function attributesForRole(array $data, ?UserRole $role): array
+    private function attributesForRole(array $data, ?UserRole $role, string $roleName): array
     {
         $attributes = Arr::except($data, ['role', 'line_id', 'station_ids', 'password_confirmation']);
 
-        if (! $role?->requiresStation()) {
+        if (! $this->roles->requiresDirectStationAssignment($roleName)) {
             $attributes['station_id'] = null;
         }
 

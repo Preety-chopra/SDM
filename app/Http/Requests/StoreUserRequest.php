@@ -7,6 +7,7 @@ use App\Models\Line;
 use App\Models\Station;
 use App\Models\User;
 use App\Rules\Username;
+use App\Services\RoleService;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -20,9 +21,10 @@ class StoreUserRequest extends FormRequest
         return $this->user()->can('create', User::class);
     }
 
-    public function rules(): array
+    public function rules(RoleService $roles): array
     {
         $role = UserRole::tryFrom($this->string('role')->toString());
+        $requiresDirectStation = $roles->requiresDirectStationAssignment($this->string('role')->toString());
 
         return [
             'name' => ['required', 'string', 'max:255', new Username, Rule::unique(User::class)],
@@ -37,12 +39,12 @@ class StoreUserRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:30'],
             'designation' => ['nullable', 'string', 'max:100'],
             'station_id' => [
-                Rule::requiredIf($role?->requiresStation() === true),
-                Rule::prohibitedIf($role !== null && ! $role->requiresStation()),
+                Rule::requiredIf($requiresDirectStation),
+                Rule::prohibitedIf(! $requiresDirectStation),
                 'nullable',
                 Rule::exists(Station::class, 'id')->where(fn (Builder $query) => $query
                     ->where('is_active', true)
-                    ->when($role === UserRole::Station, fn (Builder $query) => $query->where('line_id', $this->input('line_id')))),
+                    ->when($requiresDirectStation, fn (Builder $query) => $query->where('line_id', $this->input('line_id')))),
             ],
             'station_ids' => [
                 Rule::requiredIf($role === UserRole::StationManager),
@@ -52,8 +54,8 @@ class StoreUserRequest extends FormRequest
             ],
             'station_ids.*' => ['integer', 'distinct', Rule::exists(Station::class, 'id')->where('is_active', true)],
             'line_id' => [
-                Rule::requiredIf($role === UserRole::Station),
-                Rule::prohibitedIf($role !== null && $role !== UserRole::Station),
+                Rule::requiredIf($requiresDirectStation),
+                Rule::prohibitedIf(! $requiresDirectStation),
                 'nullable',
                 Rule::exists(Line::class, 'id')->where(fn (Builder $query) => $query->where('is_active', true)),
             ],

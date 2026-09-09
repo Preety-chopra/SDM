@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Enums\DeficiencyType;
 use App\Enums\SdmType;
+use App\Enums\UserRole;
+use App\Enums\WorkflowStepType;
 use App\Http\Requests\ListMemosRequest;
 use App\Http\Requests\StoreAndSubmitMemoRequest;
 use App\Http\Requests\StoreMemoRequest;
@@ -12,6 +14,7 @@ use App\Http\Requests\UpdateMemoRequest;
 use App\Models\ServiceDeficiencyMemo;
 use App\Services\MasterDataService;
 use App\Services\ServiceDeficiencyMemoService;
+use App\Services\UserService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -22,6 +25,7 @@ class ServiceDeficiencyMemoController extends Controller
     public function __construct(
         private ServiceDeficiencyMemoService $memos,
         private MasterDataService $masterData,
+        private UserService $users,
     ) {}
 
     public function index(ListMemosRequest $request): View
@@ -57,12 +61,30 @@ class ServiceDeficiencyMemoController extends Controller
         return redirect()->route('sdm-memos.show', $memo)->with('status', 'SDM memo submitted successfully.');
     }
 
-    public function show(ServiceDeficiencyMemo $sdmMemo): View
+    public function show(Request $request, ServiceDeficiencyMemo $sdmMemo): View
     {
         Gate::authorize('view', $sdmMemo);
-        $sdmMemo->load(['creator:id,name', 'deficiencies.lateReporting', 'publicComplaint.station', 'cashCheck', 'attachments', 'approvals.assignee', 'approvals.actor', 'approvals.attachments']);
+        $sdmMemo->load([
+            'creator:id,name', 'deficiencies.lateReporting', 'publicComplaint.station', 'cashCheck', 'attachments',
+            'approvals.assignee', 'approvals.actor', 'approvals.attachments', 'serviceContract.penaltyClauses',
+            'staffAcknowledgement', 'workflowSteps.assignee', 'currentWorkflowStep', 'cmcStaff', 'assessments.items',
+            'penaltyLetters', 'currentPenaltyLetter', 'objections', 'deduction',
+            'cancellationApproval', 'cancellationWorkflowStep',
+        ]);
 
-        return view('sdm-memos.show', ['memo' => $sdmMemo]);
+        return view('sdm-memos.show', [
+            'memo' => $sdmMemo,
+            'cmcStaffUsers' => ($sdmMemo->currentWorkflowStep?->stage === WorkflowStepType::CmcAssignment
+                && $request->user()->can('act', $sdmMemo)) || $request->user()->can('assignCmcStaff', $sdmMemo)
+                ? $this->users->enabledForRole(UserRole::CmcStaff)
+                : collect(),
+            'priorApprovedCases' => filled($sdmMemo->employee_number) ? ServiceDeficiencyMemo::query()
+                ->whereKeyNot($sdmMemo->id)
+                ->where('employee_number', $sdmMemo->employee_number)
+                ->whereHas('assessments', fn ($query) => $query->where('status', 'approved'))
+                ->with(['assessments' => fn ($query) => $query->where('status', 'approved')])
+                ->latest('incident_date')->limit(10)->get() : collect(),
+        ]);
     }
 
     public function edit(Request $request, ServiceDeficiencyMemo $sdmMemo): View
@@ -75,9 +97,10 @@ class ServiceDeficiencyMemoController extends Controller
 
     public function update(UpdateMemoRequest $request, ServiceDeficiencyMemo $sdmMemo): RedirectResponse
     {
+        $wasSubmitted = $sdmMemo->submitted_at !== null;
         $this->memos->updateDraft($sdmMemo, $request->user(), $request->validated());
 
-        return back()->with('status', 'Draft saved.');
+        return back()->with('status', $wasSubmitted ? 'SDM updated.' : 'Draft saved.');
     }
 
     public function submit(SubmitMemoRequest $request, ServiceDeficiencyMemo $sdmMemo): RedirectResponse
@@ -97,13 +120,18 @@ class ServiceDeficiencyMemoController extends Controller
 
     private function formView(Request $request, ?ServiceDeficiencyMemo $memo = null): View
     {
-        $station = $request->user()->station()->with('metroLine')->firstOrFail();
+        $managedStations = $request->user()->hasRole(UserRole::StationManager->value)
+            ? $request->user()->managedStationHierarchies()->with('station.metroLine')->get()->pluck('station')->filter()
+            : collect();
+        $station = $request->user()->station()->with('metroLine')->first() ?? $managedStations->first();
+        abort_unless($station, 422, 'This account must be assigned to at least one station.');
 
         return view('sdm-memos.form', [
             'memo' => $memo,
             'station' => $station,
             'contractors' => $this->masterData->contractors(true),
             'stations' => $this->masterData->stations(true),
+            'issuanceStations' => $managedStations->sortBy('name')->values(),
             'sdmTypes' => SdmType::cases(),
             'deficiencyTypes' => DeficiencyType::cases(),
         ]);

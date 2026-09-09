@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\UserPermission;
 use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
+use App\Enums\WorkflowStepType;
 use App\Services\RoleService;
 use App\Services\ServiceDeficiencyMemoService;
 use App\Services\UserService;
@@ -37,6 +38,8 @@ class DashboardController extends Controller
             'canUseMemos' => $canUseMemos,
             'pendingMemoStages' => $isAdministrator ? $this->memos->pendingByStage() : [],
             'workflowStages' => $isAdministrator ? WorkflowStage::cases() : [],
+            'pendingWorkflowSteps' => $isAdministrator ? $this->memos->pendingByWorkflowStep() : [],
+            'workflowStepTypes' => $isAdministrator ? WorkflowStepType::cases() : [],
         ]);
     }
 }

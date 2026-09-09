@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="SDM hierarchy">
     <x-slot name="header">
         <div>
             <h2 class="text-xl font-semibold text-gray-900 dark:text-white">SDM hierarchy</h2>
@@ -79,7 +79,7 @@
                                     </div>
                                     <div class="flex items-end gap-2">
                                         <div class="min-w-0 flex-1">
-                                            <x-input-label :for="'supervisor-'.$subordinate->id" value="Reports to" />
+                                            <x-input-label :for="'supervisor-'.$subordinate->id" value="Reports to" required />
                                             <select id="supervisor-{{ $subordinate->id }}" name="supervisor_id" required class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
                                                 <option value="">Select supervisor</option>
                                                 @foreach($level['supervisors'] as $supervisor)

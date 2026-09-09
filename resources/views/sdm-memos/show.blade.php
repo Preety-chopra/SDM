@@ -1,8 +1,8 @@
-<x-app-layout>
+<x-app-layout :title="'SDM '.$memo->serial_number">
     <x-slot name="header">
         <div>
             <h2 class="text-xl font-semibold text-gray-900 dark:text-white">SDM {{ $memo->serial_number }}</h2>
-            <p class="text-sm text-gray-500">{{ $memo->service_type->code() }} · {{ str($memo->status->value)->headline() }}</p>
+            <p class="text-sm text-gray-500">{{ $memo->service_type->code() }} · {{ $memo->cancellationLabel() ?? str($memo->status->value)->headline() }}</p>
         </div>
     </x-slot>
     <div class="py-10">
@@ -10,6 +10,12 @@
             @if(session('status'))
                 <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">{{ session('status') }}</div>
             @endif
+            @if($memo->cancellationLabel())
+                <div class="rounded-lg border border-rose-200 bg-rose-50 p-4 font-semibold text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{ $memo->cancellationLabel() }}</div>
+            @endif
+            @can('update', $memo)
+                <div class="flex justify-end"><a href="{{ route('sdm-memos.edit', $memo) }}" class="rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">Edit SDM</a></div>
+            @endcan
             <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                 <dl class="grid gap-5 md:grid-cols-3">
                     @foreach([
@@ -17,9 +23,12 @@
                         'Station'=>$memo->station_name,
                         'Line'=>collect([$memo->line_code, $memo->line_name])->filter()->join(', '),
                         'Contractor'=>$memo->contractor_name,
+                        'Contract'=>$memo->serviceContract?->contract_number,
                         'Incident date'=>$memo->incident_date?->format('d-m-Y'),
+                        'Incident time (IST)'=>filled($memo->incident_time) ? substr($memo->incident_time, 0, 5) : null,
                         'Staff'=>$memo->staff_name,
                         'Employee number'=>$memo->employee_number,
+                        'Staff mobile'=>$memo->staffAcknowledgement?->mobile_number,
                         'Created by'=>$memo->creator->name,
                         'Submitted'=>$memo->submitted_at?->format('d-m-Y H:i')
                         ] as $label=>$value)
@@ -28,6 +37,9 @@
                             <dd class="mt-1 text-gray-900 dark:text-white">{{ $value ?: '—' }}</dd>
                         </div>@endforeach</dl>
             </section>
+            @if($memo->staffAcknowledgement?->proof_path)
+                <a href="{{ route('sdm-memos.staff-signature.download', $memo) }}" class="text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-400">View private staff signature proof</a>
+            @endif
             <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                 <h3 class="font-semibold text-gray-900 dark:text-white">Deficiencies</h3>
                 <div class="mt-4 flex flex-col gap-4">
@@ -39,7 +51,7 @@
                             @endif
                             @if($deficiency->lateReporting)
                                 <p class="mt-2 text-sm text-gray-600">Booked {{ $deficiency->lateReporting->booked_shift_from }}–{{ $deficiency->lateReporting->booked_shift_to }}, actual {{ $deficiency->lateReporting->actual_reporting_time }}</p>
-                                <p class="mt-1 text-sm font-semibold text-amber-700 dark:text-amber-300">Delay: {{ $deficiency->lateReporting->delayInMinutes() }} minutes</p>
+                                <p class="mt-1 text-sm font-semibold text-amber-700 dark:text-amber-300">Delay: {{ $deficiency->lateReporting->delayLabel() }}</p>
                             @endif
                         </div>
                     @endforeach
@@ -84,7 +96,9 @@
                     </div>
                 </section>
             @endif
-            @if($memo->submitted_at)
+            @if($memo->workflow_version >= 2)
+                @include('sdm-memos.partials.penalty-workflow')
+            @elseif($memo->submitted_at)
                 <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                     <h3 class="font-semibold text-gray-900 dark:text-white">Approval history</h3>
                     <ol class="mt-4 flex flex-col gap-4">
@@ -120,17 +134,25 @@
                 </section>
             @endif
             @can('act', $memo)
+                @if($memo->workflow_version < 2)
                 <section class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 dark:border-emerald-900 dark:bg-emerald-950">
                     <h3 class="font-semibold text-emerald-950 dark:text-emerald-100">Action required: {{ $memo->current_stage->label() }}</h3>
                     <form method="POST" enctype="multipart/form-data" action="{{ route('sdm-memos.workflow.store', $memo) }}" class="mt-4 flex flex-col gap-4">
                         @csrf
                         <div>
-                            <x-input-label for="remarks" value="Remarks (required for cancellation)"/>
+                            <x-input-label for="remarks" value="Remarks (mandatory for cancellation)" required/>
                             <textarea id="remarks" name="remarks" rows="4" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white">{{ old('remarks') }}</textarea>
                             <x-input-error :messages="$errors->get('remarks')" class="mt-2"/>
                         </div>
+                        @if($memo->current_stage === \App\Enums\WorkflowStage::StationManager)
+                            <div>
+                                <x-input-label for="forward_to_employee_number" value="Forward to AM/Line (employee number)" required/>
+                                <x-text-input id="forward_to_employee_number" name="forward_to_employee_number" class="mt-1 block w-full" :value="old('forward_to_employee_number')"/>
+                                <x-input-error :messages="$errors->get('forward_to_employee_number')" class="mt-2"/>
+                            </div>
+                        @endif
                         <div>
-                            <x-input-label for="evidence" :value="$memo->current_stage === \App\Enums\WorkflowStage::StationManager ? 'Evidence (required for cancellation by SM)' : 'Supporting evidence (optional)'"/>
+                            <x-input-label for="evidence" :value="$memo->current_stage === \App\Enums\WorkflowStage::StationManager ? 'Evidence (mandatory for cancellation by SM)' : 'Supporting evidence (optional)'" :required="$memo->current_stage === \App\Enums\WorkflowStage::StationManager"/>
                             <input id="evidence" name="evidence[]" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp" class="mt-1 block w-full text-sm">
                             <x-input-error :messages="$errors->get('evidence')" class="mt-2"/>
                         </div>
@@ -143,6 +165,7 @@
                         </div>
                     </form>
                 </section>
+                @endif
             @endcan
         </div>
     </div>

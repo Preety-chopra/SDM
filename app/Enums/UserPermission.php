@@ -16,8 +16,14 @@ enum UserPermission: string
     case ViewAllMemos = 'sdm_memos.view_all';
     case ViewRoutedMemos = 'sdm_memos.view_routed';
     case ActOnRoutedMemos = 'sdm_memos.act_routed';
+    case AssignCmcStaff = 'sdm_memos.assign_cmc_staff';
     case ManageSdmHierarchy = 'sdm_hierarchy.manage';
     case ManageLines = 'master_data.lines.manage';
     case ManageStations = 'master_data.stations.manage';
     case ManageContractors = 'master_data.contractors.manage';
+    case ManageContracts = 'contracts.manage';
+    case AssessMemos = 'sdm_memos.assess';
+    case ManagePenaltyLetters = 'sdm_memos.penalty_letters.manage';
+    case ManageObjections = 'sdm_memos.objections.manage';
+    case RecordDeductions = 'sdm_memos.deductions.record';
 }

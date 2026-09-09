@@ -4,9 +4,12 @@ namespace App\Http\Requests;
 
 use App\Enums\DeficiencyType;
 use App\Enums\SdmType;
+use App\Enums\UserRole;
 use App\Models\Contractor;
+use App\Models\ServiceContract;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
+use App\Models\User;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -52,6 +55,8 @@ abstract class MemoRequest extends FormRequest
         $types = $this->input('deficiencies', []);
         $serviceType = SdmType::tryFrom($this->string('service_type')->toString());
         $memo = $this->route('sdm_memo');
+        $isStationManager = $this->user()?->hasRole(UserRole::StationManager->value) === true;
+        $isStationController = $this->user()?->hasRole(UserRole::Station->value) === true;
         $uniqueSerial = Rule::unique(ServiceDeficiencyMemo::class, 'serial_number')
             ->where(fn (Builder $query) => $query->where('service_type', $this->string('service_type')->toString()))
             ->ignore($memo instanceof ServiceDeficiencyMemo ? $memo->id : null);
@@ -60,9 +65,12 @@ abstract class MemoRequest extends FormRequest
             'service_type' => ['required', Rule::enum(SdmType::class)],
             'serial_number' => ['required', 'string', 'max:50', $uniqueSerial],
             'contractor_id' => [$strict ? 'required' : 'nullable', Rule::exists(Contractor::class, 'id')->where(fn (Builder $query) => $query->where('is_active', true))],
+            'station_id' => [Rule::requiredIf($isStationManager), Rule::prohibitedIf(! $isStationManager), 'nullable', Rule::exists(Station::class, 'id')->where('is_active', true)],
             'incident_date' => [$strict ? 'required' : 'nullable', 'date_format:Y-m-d'],
+            'incident_time' => [$strict ? 'required' : 'nullable', 'date_format:H:i'],
             'staff_name' => [$strict ? 'required' : 'nullable', 'string', 'max:255'],
             'employee_number' => [$strict ? 'required' : 'nullable', 'string', 'max:100'],
+            'station_manager_employee_number' => [Rule::requiredIf($strict && $isStationController), 'nullable', 'string', 'max:100'],
             'deficiencies' => [$strict ? 'required' : 'nullable', 'array', $strict ? 'min:1' : 'max:5'],
             'deficiencies.*' => [Rule::enum(DeficiencyType::class), 'distinct'],
             'deficiency_remarks' => ['nullable', 'array'],
@@ -112,11 +120,59 @@ abstract class MemoRequest extends FormRequest
                 $validator->errors()->add('cash_check', 'Enter at least one TOM / CCC cash-check detail or remark.');
             }
 
+            if ($this->requiresContractWorkflow()
+                && ! $validator->errors()->hasAny(['contractor_id', 'service_type', 'incident_date'])) {
+                $incidentDate = $this->date('incident_date');
+                $stationId = $this->integer('station_id') ?: (int) $this->user()?->station_id;
+                $matchingContracts = ServiceContract::query()
+                    ->where('status', 'published')
+                    ->where('contractor_id', $this->integer('contractor_id'))
+                    ->where('service_type', $this->string('service_type')->toString())
+                    ->where(fn ($query) => $query->where('station_id', $stationId)->orWhereNull('station_id'))
+                    ->whereDate('effective_from', '<=', $incidentDate)
+                    ->whereDate('effective_to', '>=', $incidentDate)
+                    ->count();
+
+                if ($matchingContracts === 0) {
+                    $validator->errors()->add('contractor_id', 'No active published contract matches this contractor, service type, and incident date.');
+                } elseif ($matchingContracts > 1) {
+                    $validator->errors()->add('contractor_id', 'More than one active contract matches these details. Ask an administrator to correct the contract dates.');
+                }
+            }
+
+            if ($this->user()?->hasRole(UserRole::StationManager->value) && $this->filled('station_id')) {
+                $mapped = $this->user()->managedStationHierarchies()->where('station_id', $this->integer('station_id'))->exists();
+                if (! $mapped) {
+                    $validator->errors()->add('station_id', 'Select a station assigned to this Station Manager account.');
+                }
+            }
+
+            if ($this->isSubmission()
+                && $this->user()?->hasRole(UserRole::Station->value)
+                && $this->filled('station_manager_employee_number')
+                && ! $validator->errors()->has('station_manager_employee_number')) {
+                $stationManager = User::query()
+                    ->role(UserRole::StationManager->value)
+                    ->where('employee_number', $this->string('station_manager_employee_number')->toString())
+                    ->where('is_enabled', true)
+                    ->whereHas('managedStationHierarchies', fn ($query) => $query->where('station_id', $this->user()->station_id))
+                    ->exists();
+
+                if (! $stationManager) {
+                    $validator->errors()->add('station_manager_employee_number', 'Enter the employee number of the enabled Station Manager assigned to this station.');
+                }
+            }
+
             $memo = $this->route('sdm_memo');
             $existing = $memo instanceof ServiceDeficiencyMemo ? $memo->attachments()->count() : 0;
             if ($existing + count($this->file('attachments', [])) > 5) {
                 $validator->errors()->add('attachments', 'A memo can contain no more than five attachments.');
             }
         }];
+    }
+
+    private function requiresContractWorkflow(): bool
+    {
+        return $this->isSubmission() && (bool) config('sdm.require_contract_workflow');
     }
 }

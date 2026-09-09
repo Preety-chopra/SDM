@@ -28,6 +28,7 @@ class ServiceDeficiencyMemoTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config()->set('sdm.require_contract_workflow', false);
         $this->seed(RolesAndPermissionsSeeder::class);
     }
 
@@ -41,7 +42,7 @@ class ServiceDeficiencyMemoTest extends TestCase
 
         $this->assertTrue($stationUser->can(UserPermission::CreateMemos->value));
         $this->assertFalse($stationUser->can(UserPermission::ViewAllMemos->value));
-        $this->assertFalse($stationManager->can(UserPermission::CreateMemos->value));
+        $this->assertTrue($stationManager->can(UserPermission::CreateMemos->value));
         $this->assertTrue($administrator->can(UserPermission::ViewAllMemos->value));
         $this->assertTrue($administrator->can(UserPermission::ManageLines->value));
 
@@ -60,6 +61,9 @@ class ServiceDeficiencyMemoTest extends TestCase
         [$user] = $this->stationUserWithLine();
 
         $this->post(route('login'), ['username' => $user->name, 'password' => 'password'])
+            ->assertSessionHasErrors('station_id');
+
+        $this->post(route('login'), ['username' => $user->name, 'password' => 'password', 'station_id' => $user->station_id])
             ->assertRedirect(route('dashboard', absolute: false));
         $this->assertAuthenticatedAs($user);
     }
@@ -79,7 +83,7 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->actingAs($user)->post(route('sdm-memos.submit', $memo), [
             'service_type' => SdmType::Cfs->value,
             'serial_number' => 'CFS-100',
-        ])->assertSessionHasErrors(['contractor_id', 'incident_date', 'staff_name', 'employee_number', 'deficiencies']);
+        ])->assertSessionHasErrors(['contractor_id', 'incident_date', 'incident_time', 'staff_name', 'employee_number', 'deficiencies']);
     }
 
     public function test_creator_can_delete_a_draft_and_its_stored_attachments(): void
@@ -135,8 +139,10 @@ class ServiceDeficiencyMemoTest extends TestCase
             'serial_number' => 'CFS-101',
             'contractor_id' => $contractor->id,
             'incident_date' => '18-08-2026',
+            'incident_time' => '14:25',
             'staff_name' => 'Test Staff',
             'employee_number' => 'EMP-10',
+            'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
             'deficiencies' => [DeficiencyType::Other->value],
             'deficiency_remarks' => [DeficiencyType::Other->value => 'Other service deficiency.'],
         ]);
@@ -146,6 +152,12 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->assertSame(MemoStatus::Submitted, $memo->status);
         $this->assertNotNull($memo->submitted_at);
         $this->assertSame($user->id, $memo->created_by);
+        $this->assertSame('14:25', $memo->incident_time);
+
+        $this->actingAs($user)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('Incident time (IST)')
+            ->assertSee('14:25');
     }
 
     public function test_memo_details_display_the_line_code_and_name_separated_by_a_comma(): void
@@ -173,6 +185,11 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->actingAs($user)->get(route('sdm-memos.show', $memo))
             ->assertOk()
             ->assertSee('Delay: 25 minutes');
+
+        $deficiency->lateReporting->update(['actual_reporting_time' => '10:25']);
+        $this->actingAs($user)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('Delay: 1 hour 25 minutes');
     }
 
     public function test_complete_ticketing_memo_persists_conditional_sections_and_private_attachment(): void
@@ -188,8 +205,10 @@ class ServiceDeficiencyMemoTest extends TestCase
             'serial_number' => 'TV-100',
             'contractor_id' => $contractor->id,
             'incident_date' => '17-08-2026',
+            'incident_time' => '21:35',
             'staff_name' => 'Test Staff',
             'employee_number' => 'EMP-9',
+            'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
             'deficiencies' => [DeficiencyType::LateReporting->value, DeficiencyType::DressCode->value, DeficiencyType::CashCheck->value],
             'deficiency_remarks' => [DeficiencyType::DressCode->value => 'Uniform was incomplete.'],
             'late_reporting' => ['booked_shift_from' => '09:00', 'booked_shift_to' => '17:00', 'actual_reporting_time' => '09:25'],
@@ -244,8 +263,10 @@ class ServiceDeficiencyMemoTest extends TestCase
             'serial_number' => 'CFS-LATE-REPORTING',
             'contractor_id' => $contractor->id,
             'incident_date' => '18-08-2026',
+            'incident_time' => '09:25',
             'staff_name' => 'Test Staff',
             'employee_number' => 'EMP-LATE',
+            'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
             'deficiencies' => [DeficiencyType::LateReporting->value],
             'late_reporting' => [
                 'booked_shift_from' => '09:00:00',
@@ -269,8 +290,10 @@ class ServiceDeficiencyMemoTest extends TestCase
             'serial_number' => 'TV-LATE-REPORTING',
             'contractor_id' => $contractor->id,
             'incident_date' => '18-08-2026',
+            'incident_time' => '09:25',
             'staff_name' => 'Test Staff',
             'employee_number' => 'EMP-LATE-TV',
+            'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
             'deficiencies' => [DeficiencyType::LateReporting->value],
             'late_reporting' => [
                 'booked_shift_from' => '09:00',
@@ -295,11 +318,16 @@ class ServiceDeficiencyMemoTest extends TestCase
 
         $this->actingAs($user)->get(route('sdm-memos.create'))
             ->assertOk()
+            ->assertSee('<title>Create Service Deficiency Memo</title>', false)
             ->assertSee('RED, RED Line')
             ->assertSee('data-selected-deficiencies', false)
             ->assertSee(route('sdm-memos.store-and-submit'), false)
             ->assertSee('Submit memo')
             ->assertSee('id="incident_date" type="date" name="incident_date"', false)
+            ->assertSee('Time of incident (HH:MM, IST)')
+            ->assertSee('id="incident_time" type="time" name="incident_time"', false)
+            ->assertSee('value="15:30"', false)
+            ->assertSee('required', false)
             ->assertSee('cash_check[check_date]', false)
             ->assertSee('type="date"', false)
             ->assertSee('max="2026-08-18"', false)
@@ -310,25 +338,30 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertDontSee('cash_check[checked_at]', false);
     }
 
-    public function test_late_reporting_offers_shift_presets_and_editable_booked_times(): void
+    public function test_late_reporting_uses_custom_times_and_displays_the_calculated_delay(): void
     {
         [$user] = $this->stationUserWithLine();
 
         $this->actingAs($user)->get(route('sdm-memos.create'))
             ->assertOk()
-            ->assertSeeInOrder([
-                'Morning shift',
-                '05:15–14:15',
-                'Evening shift',
-                '14:15–23:15',
-                'Custom shift',
-            ])
-            ->assertSee('name="late_reporting_shift_preset"', false)
-            ->assertSee('class="mt-2 flex flex-nowrap items-center gap-6 overflow-x-auto whitespace-nowrap pb-1"', false)
+            ->assertDontSee('Morning shift')
+            ->assertDontSee('Evening shift')
+            ->assertDontSee('name="late_reporting_shift_preset"', false)
             ->assertSee('x-model="bookedShiftFrom"', false)
-            ->assertSee('x-model="bookedShiftTo"', false)
+            ->assertSee('x-model="actualReportingTime"', false)
+            ->assertSee('x-text="delayLabel"', false)
             ->assertSee('late_reporting[booked_shift_from]', false)
             ->assertSee('late_reporting[booked_shift_to]', false);
+    }
+
+    public function test_operator_phone_and_signature_upload_are_not_shown_or_required(): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertDontSee('name="staff_mobile"', false)
+            ->assertDontSee('name="staff_signature"', false);
     }
 
     public function test_cash_check_date_cannot_be_after_the_current_date(): void
@@ -439,9 +472,9 @@ class ServiceDeficiencyMemoTest extends TestCase
         $station = Station::query()->create(['code' => $code.'-01', 'name' => $code.' Station', 'line_id' => $line->id, 'is_active' => true]);
         $user = User::factory()->create(['station_id' => $station->id]);
         $user->assignRole(UserRole::Station->value);
-        $stationManager = User::factory()->create();
+        $stationManager = User::factory()->create(['employee_number' => $code.'-SM-1']);
         $stationManager->assignRole(UserRole::StationManager->value);
-        $lineManager = User::factory()->create();
+        $lineManager = User::factory()->create(['employee_number' => $code.'-AM-1']);
         $lineManager->assignRole(UserRole::AssistantManager->value);
         $operationsManager = User::factory()->create();
         $operationsManager->assignRole(UserRole::ManagerOperations->value);

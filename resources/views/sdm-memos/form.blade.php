@@ -4,13 +4,16 @@
     $labels = collect($deficiencyTypes)->mapWithKeys(fn ($type) => [$type->value => $type->label()]);
     $late = $memo?->deficiencies->first(fn ($item) => $item->type === \App\Enums\DeficiencyType::LateReporting)?->lateReporting;
     $lateTime = fn (string $field) => substr((string) old('late_reporting.'.$field, $late?->$field), 0, 5);
+    $incidentTime = substr((string) old('incident_time', $memo?->incident_time ?? now('Asia/Kolkata')->format('H:i')), 0, 5);
     $inputClass = 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100';
+    $isDraft = ! $memo || $memo->status === \App\Enums\MemoStatus::Draft;
+    $pageTitle = $memo ? ($isDraft ? 'Edit SDM draft' : 'Edit submitted SDM') : 'Create Service Deficiency Memo';
 @endphp
-<x-app-layout>
+<x-app-layout :title="$pageTitle">
     <x-slot name="header">
         <div>
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ $memo ? 'Edit SDM draft' : 'Create SDM memo' }}</h2>
-            <p class="text-sm text-gray-500 dark:text-gray-400">Fields marked required are enforced when the memo is submitted.</p>
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ $pageTitle }}</h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400"><span aria-hidden="true" class="font-bold !text-red-600 dark:!text-red-400">*</span> Mandatory when the memo is submitted.</p>
         </div>
     </x-slot>
     <div class="py-10">
@@ -28,18 +31,18 @@
                     </ul>
                 </div>
             @endif
-            <form method="POST" enctype="multipart/form-data" action="{{ $memo ? route('sdm-memos.update', $memo) : route('sdm-memos.store') }}" class="flex flex-col gap-6" x-data="memoForm" data-selected-deficiencies='@json($selected)' data-service-type="{{ $serviceType }}" data-deficiency-labels='@json($labels)' data-booked-shift-from="{{ $lateTime('booked_shift_from') }}" data-booked-shift-to="{{ $lateTime('booked_shift_to') }}">
+            <form method="POST" enctype="multipart/form-data" action="{{ $memo ? route('sdm-memos.update', $memo) : route('sdm-memos.store') }}" class="flex flex-col gap-6" x-data="memoForm" data-selected-deficiencies='@json($selected)' data-service-type="{{ $serviceType }}" data-deficiency-labels='@json($labels)' data-booked-shift-from="{{ $lateTime('booked_shift_from') }}" data-booked-shift-to="{{ $lateTime('booked_shift_to') }}" data-actual-reporting-time="{{ $lateTime('actual_reporting_time') }}">
                 @csrf
                 <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Memo details</h3>
                     <div class="mt-5 grid gap-5 md:grid-cols-2">
                         <div>
-                            <x-input-label for="serial_number" value="Serial number"/>
+                            <x-input-label for="serial_number" value="Serial number" required/>
                             <x-text-input id="serial_number" name="serial_number" class="mt-1 block w-full" :value="old('serial_number', $memo?->serial_number)" required/>
                             <x-input-error :messages="$errors->get('serial_number')" class="mt-2"/>
                         </div>
                         <div>
-                            <x-input-label for="service_type" value="SDM type"/>
+                            <x-input-label for="service_type" value="SDM type" required/>
                             <select id="service_type" name="service_type" x-model="serviceType" class="{{ $inputClass }}" required>
                                 <option value="">Select type</option>
                                 @foreach($sdmTypes as $type)
@@ -48,14 +51,28 @@
                             </select>
                             <x-input-error :messages="$errors->get('service_type')" class="mt-2"/>
                         </div>
+                        @if($issuanceStations->isNotEmpty())
+                            <div class="md:col-span-2">
+                                <x-input-label for="station_id" value="Issuing station" required/>
+                                <select id="station_id" name="station_id" class="{{ $inputClass }}" required>
+                                    <option value="">Select assigned station</option>
+                                    @foreach($issuanceStations as $issuanceStation)
+                                        <option value="{{ $issuanceStation->id }}" @selected((string) old('station_id', $memo?->station_id) === (string) $issuanceStation->id)>{{ $issuanceStation->code }} · {{ $issuanceStation->name }} ({{ $issuanceStation->metroLine?->name }})</option>
+                                    @endforeach
+                                </select>
+                                <x-input-error :messages="$errors->get('station_id')" class="mt-2"/>
+                            </div>
+                        @else
+                            <div>
+                                <x-input-label value="Line"/>
+                                <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ collect([$station->metroLine?->code, $station->metroLine?->name])->filter()->join(', ') ?: 'Not assigned' }}</p>
+                            </div>
+                            <div>
+                                <x-input-label value="Station"/><p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ $station->code }} · {{ $station->name }}</p>
+                            </div>
+                        @endif
                         <div>
-                            <x-input-label value="Line"/>
-                            <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ collect([$station->metroLine?->code, $station->metroLine?->name])->filter()->join(', ') ?: 'Not assigned' }}</p>
-                        </div>
-                        <div>
-                            <x-input-label value="Station"/><p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ $station->code }} · {{ $station->name }}</p></div>
-                        <div>
-                            <x-input-label for="contractor_id" value="Contractor"/>
+                            <x-input-label for="contractor_id" value="Contractor" required/>
                             <select id="contractor_id" name="contractor_id" class="{{ $inputClass }}">
                                 <option value="">Select contractor</option>
                                 @foreach($contractors as $contractor)
@@ -65,58 +82,54 @@
                             <x-input-error :messages="$errors->get('contractor_id')" class="mt-2"/>
                         </div>
                         <div>
-                            <x-input-label for="incident_date" value="Date of incident"/>
-                            <x-text-input id="incident_date" type="date" name="incident_date" max="{{ now()->toDateString() }}" class="mt-1 block w-full" :value="old('incident_date', $memo?->incident_date?->toDateString() ?? now()->toDateString())"/>
+                            <x-input-label for="incident_date" value="Date of incident" required/>
+                            <x-text-input id="incident_date" type="date" name="incident_date" max="{{ now('Asia/Kolkata')->toDateString() }}" class="mt-1 block w-full" :value="old('incident_date', $memo?->incident_date?->toDateString() ?? now('Asia/Kolkata')->toDateString())"/>
                             <x-input-error :messages="$errors->get('incident_date')" class="mt-2"/>
                         </div>
                         <div>
-                            <x-input-label for="staff_name" value="Staff name"/>
-                            <x-text-input id="staff_name" name="staff_name" class="mt-1 block w-full" :value="old('staff_name',$memo?->staff_name)"/>
-                            <x-input-error :messages="$errors->get('staff_name')" class="mt-2"/>
+                            <x-input-label for="incident_time" value="Time of incident (HH:MM, IST)" required/>
+                            <x-text-input id="incident_time" type="time" name="incident_time" step="60" class="mt-1 block w-full" :value="$incidentTime" required/>
+                            <x-input-error :messages="$errors->get('incident_time')" class="mt-2"/>
                         </div>
                         <div>
-                            <x-input-label for="employee_number" value="Employee number"/>
+                            <x-input-label for="employee_number" value="Employee number" required/>
                             <x-text-input id="employee_number" name="employee_number" class="mt-1 block w-full" :value="old('employee_number',$memo?->employee_number)"/>
                             <x-input-error :messages="$errors->get('employee_number')" class="mt-2"/>
                         </div>
+                        <div>
+                            <x-input-label for="staff_name" value="Staff name" required/>
+                            <x-text-input id="staff_name" name="staff_name" class="mt-1 block w-full" :value="old('staff_name',$memo?->staff_name)"/>
+                            <x-input-error :messages="$errors->get('staff_name')" class="mt-2"/>
+                        </div>
+                        @if(auth()->user()->hasRole(\App\Enums\UserRole::Station->value) && $isDraft)
+                            <div>
+                                <x-input-label for="station_manager_employee_number" value="Forward to Station Manager (employee number)" required/>
+                                <x-text-input id="station_manager_employee_number" name="station_manager_employee_number" class="mt-1 block w-full" :value="old('station_manager_employee_number')"/>
+                                <x-input-error :messages="$errors->get('station_manager_employee_number')" class="mt-2"/>
+                            </div>
+                        @endif
                     </div>
                 </section>
 
-                <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"><h3 class="text-lg font-semibold text-gray-900 dark:text-white">Deficiencies</h3><div class="relative mt-5"><button type="button" @click="deficiencyOpen=!deficiencyOpen" class="flex min-h-[42px] w-full items-center justify-between gap-3 rounded-md border border-gray-300 bg-white px-3 py-2 text-left text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"><span class="flex min-w-0 flex-1 flex-wrap gap-1.5"><span x-show="selected.length === 0" class="text-gray-500 dark:text-gray-400">Select deficiencies</span><template x-for="type in selected" :key="type"><span class="max-w-full rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200" x-text="labelFor(type)"></span></template></span><span class="shrink-0" aria-hidden="true">▾</span></button><div x-cloak x-show="deficiencyOpen" @click.outside="deficiencyOpen=false" class="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-900">@foreach($deficiencyTypes as $type)<label class="flex cursor-pointer items-start gap-3 rounded px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800" x-show="'{{ $type->value }}' !== 'cash_check' || serviceType === '{{ \App\Enums\SdmType::Ticketing->value }}'"><input type="checkbox" name="deficiencies[]" value="{{ $type->value }}" x-model="selected" class="mt-0.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500"><span class="text-sm text-gray-700 dark:text-gray-200">{{ $type->label() }}</span></label>@endforeach</div></div><x-input-error :messages="$errors->get('deficiencies')" class="mt-2"/>
+                <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"><h3 class="text-lg font-semibold text-gray-900 dark:text-white">Deficiencies</h3><div class="relative mt-5"><x-input-label for="deficiencies-control" value="Select deficiencies" required/><button id="deficiencies-control" type="button" @click="deficiencyOpen=!deficiencyOpen" class="mt-1 flex min-h-[42px] w-full items-center justify-between gap-3 rounded-md border border-gray-300 bg-white px-3 py-2 text-left text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"><span class="flex min-w-0 flex-1 flex-wrap gap-1.5"><span x-show="selected.length === 0" class="text-gray-500 dark:text-gray-400">Select deficiencies</span><template x-for="type in selected" :key="type"><span class="max-w-full rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200" x-text="labelFor(type)"></span></template></span><span class="shrink-0" aria-hidden="true">▾</span></button><div x-cloak x-show="deficiencyOpen" @click.outside="deficiencyOpen=false" class="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-900">@foreach($deficiencyTypes as $type)<label class="flex cursor-pointer items-start gap-3 rounded px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800" x-show="'{{ $type->value }}' !== 'cash_check' || serviceType === '{{ \App\Enums\SdmType::Ticketing->value }}'"><input type="checkbox" name="deficiencies[]" value="{{ $type->value }}" x-model="selected" class="mt-0.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500"><span class="text-sm text-gray-700 dark:text-gray-200">{{ $type->label() }}</span></label>@endforeach</div></div><x-input-error :messages="$errors->get('deficiencies')" class="mt-2"/>
                     <div x-cloak x-show="has('late_reporting')" class="mt-6 rounded-xl bg-gray-50 p-4 dark:bg-gray-900">
-                        <fieldset>
-                            <legend class="text-sm font-medium text-gray-700 dark:text-gray-300">Booked shift</legend>
-                            <div class="mt-2 flex flex-nowrap items-center gap-6 overflow-x-auto whitespace-nowrap pb-1">
-                                <label class="flex shrink-0 cursor-pointer items-start gap-3 text-sm text-gray-700 dark:text-gray-200">
-                                    <input type="radio" name="late_reporting_shift_preset" value="morning" x-model="selectedShift" @change="applyBookedShiftPreset('morning')" class="mt-0.5 border-gray-300 text-emerald-700 focus:ring-emerald-500">
-                                    <span><span class="font-medium">Morning shift</span> <span class="text-gray-500 dark:text-gray-400">(05:15–14:15)</span></span>
-                                </label>
-                                <label class="flex shrink-0 cursor-pointer items-start gap-3 text-sm text-gray-700 dark:text-gray-200">
-                                    <input type="radio" name="late_reporting_shift_preset" value="evening" x-model="selectedShift" @change="applyBookedShiftPreset('evening')" class="mt-0.5 border-gray-300 text-emerald-700 focus:ring-emerald-500">
-                                    <span><span class="font-medium">Evening shift</span> <span class="text-gray-500 dark:text-gray-400">(14:15–23:15)</span></span>
-                                </label>
-                                {{-- <label class="flex shrink-0 cursor-pointer items-start gap-3 text-sm text-gray-700 dark:text-gray-200">
-                                    <input type="radio" name="late_reporting_shift_preset" value="custom" x-model="selectedShift" @change="applyBookedShiftPreset('custom')" class="mt-0.5 border-gray-300 text-emerald-700 focus:ring-emerald-500">
-                                    <span class="font-medium">Custom shift</span>
-                                </label> --}}
-                            </div>
-                        </fieldset>
-                        <div class="mt-4 grid gap-4 md:grid-cols-3">
-                            <div><x-input-label for="booked_shift_from" value="Booked shift from"/>
-                                <input id="booked_shift_from" type="time" name="late_reporting[booked_shift_from]" value="{{ $lateTime('booked_shift_from') }}" x-model="bookedShiftFrom" @change="$nextTick(() => syncBookedShiftPreset())" class="{{ $inputClass }}">
+                        <div class="grid gap-4 md:grid-cols-3">
+                            <div><x-input-label for="booked_shift_from" value="Booked shift from" required/>
+                                <input id="booked_shift_from" type="time" name="late_reporting[booked_shift_from]" value="{{ $lateTime('booked_shift_from') }}" x-model="bookedShiftFrom" class="{{ $inputClass }}">
                                 <x-input-error :messages="$errors->get('late_reporting.booked_shift_from')" class="mt-2"/>
                             </div>
-                            <div><x-input-label for="booked_shift_to" value="Booked shift to"/>
-                                <input id="booked_shift_to" type="time" name="late_reporting[booked_shift_to]" value="{{ $lateTime('booked_shift_to') }}" x-model="bookedShiftTo" @change="$nextTick(() => syncBookedShiftPreset())" class="{{ $inputClass }}">
+                            <div><x-input-label for="booked_shift_to" value="Booked shift to" required/>
+                                <input id="booked_shift_to" type="time" name="late_reporting[booked_shift_to]" value="{{ $lateTime('booked_shift_to') }}" x-model="bookedShiftTo" class="{{ $inputClass }}">
                                 <x-input-error :messages="$errors->get('late_reporting.booked_shift_to')" class="mt-2"/>
                             </div>
-                            <div><x-input-label for="actual_reporting_time" value="Actual reporting time"/>
-                                <input id="actual_reporting_time" type="time" name="late_reporting[actual_reporting_time]" value="{{ $lateTime('actual_reporting_time') }}" class="{{ $inputClass }}">
+                            <div><x-input-label for="actual_reporting_time" value="Actual reporting time" required/>
+                                <input id="actual_reporting_time" type="time" name="late_reporting[actual_reporting_time]" value="{{ $lateTime('actual_reporting_time') }}" x-model="actualReportingTime" class="{{ $inputClass }}">
                                 <x-input-error :messages="$errors->get('late_reporting.actual_reporting_time')" class="mt-2"/>
+                                <p x-cloak x-show="delayLabel" class="mt-2 text-sm font-semibold text-amber-700 dark:text-amber-300">Delay: <span x-text="delayLabel"></span></p>
                             </div>
                         </div>
                     </div>
-                    @foreach([\App\Enums\DeficiencyType::DressCode,\App\Enums\DeficiencyType::Misbehavior,\App\Enums\DeficiencyType::Other] as $type)<div x-cloak x-show="has('{{ $type->value }}')" class="mt-5"><x-input-label :value="$type->label().' remarks'"/><textarea name="deficiency_remarks[{{ $type->value }}]" rows="3" class="{{ $inputClass }}">{{ old('deficiency_remarks.'.$type->value,$memo?->deficiencies->first(fn($item)=>$item->type===$type)?->remarks) }}</textarea><x-input-error :messages="$errors->get('deficiency_remarks.'.$type->value)" class="mt-2"/></div>@endforeach
+                    @foreach([\App\Enums\DeficiencyType::DressCode,\App\Enums\DeficiencyType::Misbehavior,\App\Enums\DeficiencyType::Other] as $type)<div x-cloak x-show="has('{{ $type->value }}')" class="mt-5"><x-input-label :value="$type->label().' remarks'" required/><textarea name="deficiency_remarks[{{ $type->value }}]" rows="3" class="{{ $inputClass }}">{{ old('deficiency_remarks.'.$type->value,$memo?->deficiencies->first(fn($item)=>$item->type===$type)?->remarks) }}</textarea><x-input-error :messages="$errors->get('deficiency_remarks.'.$type->value)" class="mt-2"/></div>@endforeach
                 </section>
 
                 <section x-cloak x-show="serviceType === '{{ \App\Enums\SdmType::Ticketing->value }}' && has('cash_check')" class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -202,8 +215,10 @@
 
                 <div class="flex flex-wrap justify-end gap-3">
                     <a href="{{ route('sdm-memos.index') }}" class="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200">Cancel</a>
-                    <button type="submit" class="rounded-lg border border-emerald-700 px-5 py-2.5 text-sm font-semibold text-emerald-700">Save draft</button>
-                    <button type="submit" formaction="{{ $memo ? route('sdm-memos.submit', $memo) : route('sdm-memos.store-and-submit') }}" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Submit memo</button>
+                    <button type="submit" class="rounded-lg border border-emerald-700 px-5 py-2.5 text-sm font-semibold text-emerald-700">{{ $isDraft ? 'Save draft' : 'Save changes' }}</button>
+                    @if($isDraft)
+                        <button type="submit" formaction="{{ $memo ? route('sdm-memos.submit', $memo) : route('sdm-memos.store-and-submit') }}" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Submit memo</button>
+                    @endif
                 </div>
             
             </form>

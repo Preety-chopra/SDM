@@ -7,6 +7,7 @@ use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 final class UserRepository implements UserRepositoryInterface
 {
@@ -48,6 +49,25 @@ final class UserRepository implements UserRepositoryInterface
         }
 
         return $counts;
+    }
+
+    public function enabledForRole(string $role): Collection
+    {
+        return User::query()
+            ->select(['id', 'name', 'employee_number'])
+            ->role($role)
+            ->where('is_enabled', true)
+            ->orderBy('name')
+            ->get();
+    }
+
+    public function findEnabledForRoleByEmployeeNumber(string $role, string $employeeNumber): ?User
+    {
+        return User::query()
+            ->role($role)
+            ->where('employee_number', $employeeNumber)
+            ->where('is_enabled', true)
+            ->first();
     }
 
     public function create(array $attributes): User

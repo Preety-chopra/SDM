@@ -17,6 +17,20 @@ class MemoLateReportingDetail extends Model
         return max(0, $actualMinutes - $bookedMinutes);
     }
 
+    public function delayLabel(): string
+    {
+        $delay = $this->delayInMinutes();
+        if ($delay < 60) {
+            return $delay.' '.($delay === 1 ? 'minute' : 'minutes');
+        }
+
+        $hours = intdiv($delay, 60);
+        $minutes = $delay % 60;
+        $label = $hours.' '.($hours === 1 ? 'hour' : 'hours');
+
+        return $minutes > 0 ? $label.' '.$minutes.' '.($minutes === 1 ? 'minute' : 'minutes') : $label;
+    }
+
     public function deficiency(): BelongsTo
     {
         return $this->belongsTo(MemoDeficiency::class, 'memo_deficiency_id');

@@ -17,6 +17,11 @@ class Contractor extends Model
         return $this->hasMany(ServiceDeficiencyMemo::class);
     }
 
+    public function serviceContracts(): HasMany
+    {
+        return $this->hasMany(ServiceContract::class);
+    }
+
     protected function casts(): array
     {
         return ['is_active' => 'boolean'];

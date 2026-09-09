@@ -16,6 +16,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class UserManagementTest extends TestCase
@@ -85,6 +86,20 @@ class UserManagementTest extends TestCase
             ->assertSee(route('stations.index'), false)
             ->assertSee(route('contractors.index'), false)
             ->assertDontSee('viewBox="0 0 316 316"', false);
+    }
+
+    public function test_administrator_dashboard_presents_contract_workflow_as_a_scannable_stage_board(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+
+        $this->actingAs($administrator)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertViewHas('workflowStepTypes', fn (array $stepTypes): bool => count($stepTypes) === 7)
+            ->assertSee('data-workflow-board', false)
+            ->assertSee('data-workflow-stage="station_manager_signoff"', false)
+            ->assertSee('aria-label="Stage 1 of 7"', false)
+            ->assertSee('Queue clear');
     }
 
     public function test_administrator_dashboard_lists_pending_memos_at_each_approval_level(): void
@@ -240,6 +255,33 @@ class UserManagementTest extends TestCase
         $this->actingAs($managedUser)
             ->get(route('users.create_any'))
             ->assertForbidden();
+    }
+
+    public function test_cmc_team_lead_create_form_keeps_the_required_name_control_visible_and_can_submit(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+
+        $response = $this->actingAs($administrator)
+            ->get(route('users.create', UserRole::CmcTeamLead->value))
+            ->assertOk()
+            ->assertSee('Create CMC Team Lead');
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $nameInput = (new \DOMXPath($document))->query('//input[@name="name"]')->item(0);
+
+        $this->assertNotNull($nameInput);
+        for ($ancestor = $nameInput->parentNode; $ancestor?->nodeName !== 'form'; $ancestor = $ancestor->parentNode) {
+            $this->assertFalse($ancestor instanceof \DOMElement && $ancestor->hasAttribute('x-show'));
+        }
+
+        $this->actingAs($administrator)->post(route('users.store'), [
+            ...$this->validUserData(UserRole::CmcTeamLead),
+            'employee_number' => 'EMP-CMC-TL-01',
+        ])->assertRedirect(route('users.index', UserRole::CmcTeamLead->value));
+
+        $cmcTeamLead = User::query()->where('email', 'managed@example.com')->sole();
+        $this->assertTrue($cmcTeamLead->hasExactRoles(UserRole::CmcTeamLead->value));
     }
 
     public function test_role_specific_personnel_and_station_rules_are_enforced(): void
@@ -407,6 +449,82 @@ class UserManagementTest extends TestCase
         $createdUser = User::query()->where('email', 'managed@example.com')->sole();
         $this->assertSame($station->id, $createdUser->station_id);
         $this->assertSame($redLine->id, $createdUser->station->line_id);
+    }
+
+    public function test_custom_memo_creator_role_requires_and_retains_a_station_assignment(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $line = Line::query()->create(['code' => 'YELLOW', 'name' => 'Yellow Line', 'is_active' => true]);
+        $station = Station::query()->create([
+            'code' => 'YELLOW-01',
+            'name' => 'Yellow Station',
+            'line_id' => $line->id,
+            'is_active' => true,
+        ]);
+        $role = Role::findOrCreate('station_controller');
+        $role->givePermissionTo([
+            UserPermission::CreateMemos->value,
+            UserPermission::ViewOwnMemos->value,
+            UserPermission::UpdateOwnDraftMemos->value,
+            UserPermission::SubmitOwnDraftMemos->value,
+        ]);
+
+        $response = $this->actingAs($administrator)
+            ->get(route('users.create', $role->name))
+            ->assertOk();
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $form = (new \DOMXPath($document))->query('//form[@data-direct-station-roles]')->item(0);
+
+        $this->assertInstanceOf(\DOMElement::class, $form);
+        $this->assertContains($role->name, json_decode($form->getAttribute('data-direct-station-roles'), true, flags: JSON_THROW_ON_ERROR));
+
+        $this->actingAs($administrator)->post(route('users.store'), [
+            'name' => 'Station Controller',
+            'email' => 'station-controller@example.com',
+            'role' => $role->name,
+            'employee_number' => 'EMP-SC-01',
+            'phone' => null,
+            'designation' => 'Station Controller',
+            'is_enabled' => '1',
+            'password' => 'Secure Password 123!',
+            'password_confirmation' => 'Secure Password 123!',
+        ])->assertSessionHasErrors(['line_id', 'station_id']);
+
+        $this->actingAs($administrator)->post(route('users.store'), [
+            'name' => 'Station Controller',
+            'email' => 'station-controller@example.com',
+            'role' => $role->name,
+            'employee_number' => 'EMP-SC-01',
+            'phone' => null,
+            'designation' => 'Station Controller',
+            'line_id' => $line->id,
+            'station_id' => $station->id,
+            'is_enabled' => '1',
+            'password' => 'Secure Password 123!',
+            'password_confirmation' => 'Secure Password 123!',
+        ])->assertRedirect(route('users.index', $role->name));
+
+        $stationController = User::query()->where('email', 'station-controller@example.com')->sole();
+
+        $this->assertSame($station->id, $stationController->station_id);
+        $this->assertTrue($stationController->can('create', ServiceDeficiencyMemo::class));
+
+        $editResponse = $this->actingAs($administrator)
+            ->get(route('users.edit', $stationController))
+            ->assertOk();
+        $editDocument = new \DOMDocument;
+        @$editDocument->loadHTML($editResponse->getContent());
+        $editForm = (new \DOMXPath($editDocument))->query('//form[@data-direct-station-roles]')->item(0);
+
+        $this->assertInstanceOf(\DOMElement::class, $editForm);
+        $this->assertContains($role->name, json_decode($editForm->getAttribute('data-direct-station-roles'), true, flags: JSON_THROW_ON_ERROR));
+
+        $this->actingAs($stationController)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('Create SDM memo');
     }
 
     public function test_invalid_and_administrator_role_directories_are_not_available(): void

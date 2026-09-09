@@ -3,12 +3,16 @@
 namespace App\Services;
 
 use App\Contracts\Repositories\ServiceDeficiencyMemoRepositoryInterface;
+use App\Contracts\Repositories\UserRepositoryInterface;
 use App\Enums\DeficiencyType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
+use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
+use App\Enums\WorkflowStepType;
 use App\Models\Contractor;
 use App\Models\MemoAttachment;
+use App\Models\ServiceContract;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
 use App\Models\User;
@@ -26,7 +30,9 @@ final class ServiceDeficiencyMemoService
 {
     public function __construct(
         private ServiceDeficiencyMemoRepositoryInterface $memos,
+        private UserRepositoryInterface $users,
         private StationHierarchyService $hierarchies,
+        private AuditService $audit,
     ) {}
 
     public function paginateFor(User $user, ?WorkflowStage $pendingStage = null): LengthAwarePaginator
@@ -38,6 +44,12 @@ final class ServiceDeficiencyMemoService
     public function pendingByStage(int $limit = 5): array
     {
         return $this->memos->pendingByStage($limit);
+    }
+
+    /** @return array<string, array{memos: Collection, total: int}> */
+    public function pendingByWorkflowStep(int $limit = 5): array
+    {
+        return $this->memos->pendingByWorkflowStep($limit);
     }
 
     public function pendingActionCount(User $user): int
@@ -53,7 +65,10 @@ final class ServiceDeficiencyMemoService
     public function createSubmitted(User $user, array $data): ServiceDeficiencyMemo
     {
         try {
-            $this->hierarchies->resolveForSubmission($user);
+            $this->hierarchies->resolveForStation(
+                $this->submissionStationId($user, $data),
+                $data['station_manager_employee_number'] ?? null,
+            );
         } catch (ValidationException $exception) {
             $this->createDraft($user, $data);
             throw $exception;
@@ -69,7 +84,10 @@ final class ServiceDeficiencyMemoService
 
     public function submit(ServiceDeficiencyMemo $memo, User $user, array $data): ServiceDeficiencyMemo
     {
-        $this->hierarchies->resolveForSubmission($user);
+        $this->hierarchies->resolveForStation(
+            $this->submissionStationId($user, $data, $memo),
+            $data['station_manager_employee_number'] ?? null,
+        );
 
         return $this->persist($memo, $user, $data, true);
     }
@@ -92,9 +110,11 @@ final class ServiceDeficiencyMemoService
 
         try {
             return DB::transaction(function () use ($memo, $user, $data, $submit, &$storedPaths): ServiceDeficiencyMemo {
-                $station = Station::query()->with('metroLine')->whereKey($user->station_id)->where('is_active', true)->firstOrFail();
+                $stationId = $this->submissionStationId($user, $data, $memo);
+                $station = Station::query()->with('metroLine')->whereKey($stationId)->where('is_active', true)->firstOrFail();
                 abort_unless($station->metroLine?->is_active, 422, 'Your station must be assigned to an active line.');
                 $contractor = filled($data['contractor_id'] ?? null) ? Contractor::query()->whereKey($data['contractor_id'])->firstOrFail() : null;
+                $contract = $this->resolveContract($data, $submit, $station->id);
 
                 $attributes = [
                     'service_type' => $data['service_type'],
@@ -104,16 +124,19 @@ final class ServiceDeficiencyMemoService
                     'line_name' => $station->metroLine->name,
                     'line_code' => $station->metroLine->code,
                     'contractor_id' => $contractor?->id,
+                    'service_contract_id' => $contract?->id,
                     'contractor_name' => $contractor?->name,
                     'staff_name' => $data['staff_name'] ?? null,
                     'employee_number' => $data['employee_number'] ?? null,
                     'incident_date' => filled($data['incident_date'] ?? null) ? CarbonImmutable::createFromFormat('Y-m-d', $data['incident_date'])->toDateString() : null,
+                    'incident_time' => $data['incident_time'] ?? null,
                     'updated_by' => $user->id,
                 ];
 
                 if ($submit) {
-                    $attributes['status'] = MemoStatus::Submitted->value;
-                    $attributes['current_stage'] = WorkflowStage::StationManager->value;
+                    $attributes['status'] = $contract ? MemoStatus::AwaitingStationManager->value : MemoStatus::Submitted->value;
+                    $attributes['workflow_version'] = $contract ? 2 : 1;
+                    $attributes['current_stage'] = $contract ? null : WorkflowStage::StationManager->value;
                     $attributes['submitted_at'] = now();
                 }
 
@@ -125,8 +148,11 @@ final class ServiceDeficiencyMemoService
                 }
 
                 $this->syncSections($memo, $data);
-                if ($submit && $memo->approvals()->doesntExist()) {
-                    $this->createApprovalRoute($memo, $user);
+                $this->syncStaffAcknowledgement($memo, $data, $storedPaths);
+                if ($submit && $contract && $memo->workflowSteps()->doesntExist()) {
+                    $this->createWorkflowRoute($memo, $user, $contract, $data['station_manager_employee_number'] ?? null);
+                } elseif ($submit && ! $contract && $memo->approvals()->doesntExist()) {
+                    $this->createApprovalRoute($memo, $user, $data['station_manager_employee_number'] ?? null);
                 }
                 foreach (Arr::wrap($data['attachments'] ?? []) as $file) {
                     if ($file instanceof UploadedFile) {
@@ -142,7 +168,16 @@ final class ServiceDeficiencyMemoService
                     }
                 }
 
-                return $memo->load(['deficiencies.lateReporting', 'publicComplaint.station', 'cashCheck', 'attachments']);
+                $this->audit->record($memo, $user, $submit ? 'memo.submitted' : ($memo->wasRecentlyCreated ? 'memo.created' : 'memo.updated'), after: [
+                    'status' => $memo->status->value,
+                    'service_type' => $memo->service_type->value,
+                    'contractor_id' => $memo->contractor_id,
+                    'service_contract_id' => $memo->service_contract_id,
+                    'station_id' => $memo->station_id,
+                    'incident_time' => $memo->incident_time,
+                ]);
+
+                return $memo->load(['deficiencies.lateReporting', 'publicComplaint.station', 'cashCheck', 'attachments', 'staffAcknowledgement', 'currentWorkflowStep']);
             });
         } catch (Throwable $exception) {
             Storage::disk('local')->delete($storedPaths);
@@ -150,9 +185,9 @@ final class ServiceDeficiencyMemoService
         }
     }
 
-    private function createApprovalRoute(ServiceDeficiencyMemo $memo, User $creator): void
+    private function createApprovalRoute(ServiceDeficiencyMemo $memo, User $creator, ?string $stationManagerEmployeeNumber): void
     {
-        $assignees = $this->hierarchies->resolveForSubmission($creator);
+        $assignees = $this->hierarchies->resolveForStation($memo->station_id, $stationManagerEmployeeNumber);
 
         foreach (WorkflowStage::cases() as $stage) {
             $assignee = $assignees[$stage->value];
@@ -165,6 +200,124 @@ final class ServiceDeficiencyMemoService
                 'decision' => 'pending',
             ]);
         }
+    }
+
+    private function resolveContract(array $data, bool $submit, int $stationId): ?ServiceContract
+    {
+        if (! $submit || ! config('sdm.require_contract_workflow')) {
+            return null;
+        }
+
+        $incidentDate = CarbonImmutable::createFromFormat('Y-m-d', $data['incident_date'])->toDateString();
+        $contracts = ServiceContract::query()
+            ->where('status', 'published')
+            ->where('contractor_id', $data['contractor_id'])
+            ->where('service_type', $data['service_type'])
+            ->where(fn ($query) => $query->where('station_id', $stationId)->orWhereNull('station_id'))
+            ->whereDate('effective_from', '<=', $incidentDate)
+            ->whereDate('effective_to', '>=', $incidentDate)
+            ->lockForUpdate()
+            ->get();
+
+        if ($contracts->count() !== 1) {
+            throw ValidationException::withMessages([
+                'contractor_id' => $contracts->isEmpty()
+                    ? 'No active published contract matches this contractor, service type, and incident date.'
+                    : 'More than one active contract matches these details. Ask an administrator to correct the contract dates.',
+            ]);
+        }
+
+        return $contracts->first();
+    }
+
+    private function createWorkflowRoute(ServiceDeficiencyMemo $memo, User $creator, ServiceContract $contract, ?string $stationManagerEmployeeNumber): void
+    {
+        $legacyAssignments = $this->hierarchies->resolveForStation($memo->station_id, $stationManagerEmployeeNumber);
+        $cmcTeamLeads = $this->users->enabledForRole(UserRole::CmcTeamLead->value);
+        if ($cmcTeamLeads->count() !== 1) {
+            throw ValidationException::withMessages([
+                'contractor_id' => 'Exactly one enabled CMC Team Lead must be configured before an SDM can be submitted.',
+            ]);
+        }
+        $cmcTeamLead = $cmcTeamLeads->sole();
+
+        $assignments = [
+            WorkflowStepType::StationManager->value => $legacyAssignments[WorkflowStage::StationManager->value],
+            WorkflowStepType::LineReview->value => $legacyAssignments[WorkflowStage::LineManager->value],
+            WorkflowStepType::AmCmcToScrutiny->value => $legacyAssignments[WorkflowStage::OperationsManager->value],
+            WorkflowStepType::CmcAssignment->value => $cmcTeamLead,
+            WorkflowStepType::CmcAssessment->value => null,
+            WorkflowStepType::AmCmcToDgm->value => $legacyAssignments[WorkflowStage::OperationsManager->value],
+            WorkflowStepType::DgmApproval->value => $legacyAssignments[WorkflowStage::DeputyGeneralManager->value],
+        ];
+
+        $steps = collect(WorkflowStepType::cases())->map(function (WorkflowStepType $stage, int $index) use ($memo, $assignments) {
+            $assignee = $assignments[$stage->value];
+
+            return $memo->workflowSteps()->create([
+                'round' => 1,
+                'sequence' => $index + 1,
+                'stage' => $stage->value,
+                'role' => $stage->role()->value,
+                'assigned_to' => $assignee?->id,
+                'assigned_name' => $assignee?->name ?? 'Awaiting CMC Team Lead assignment',
+                'assigned_employee_number' => $assignee?->employee_number,
+                'decision' => 'pending',
+            ]);
+        });
+
+        $current = $steps->first();
+        if ($creator->hasRole(UserRole::StationManager->value) && $current->assigned_to === $creator->id) {
+            $current->update([
+                'decision' => 'forwarded',
+                'acted_by' => $creator->id,
+                'actor_name' => $creator->name,
+                'actor_employee_number' => $creator->employee_number,
+                'acted_at' => now(),
+                'remarks' => 'Station Manager issued and signed the SDM.',
+            ]);
+            $current = $steps->get(1);
+            $memo->status = MemoStatus::LineReview;
+        }
+
+        $memo->current_workflow_step_id = $current->id;
+        $memo->save();
+    }
+
+    private function syncStaffAcknowledgement(ServiceDeficiencyMemo $memo, array $data, array &$storedPaths): void
+    {
+        $file = $data['staff_signature'] ?? null;
+        $mobile = $data['staff_mobile'] ?? null;
+        if (! $file instanceof UploadedFile && blank($mobile)) {
+            return;
+        }
+
+        $acknowledgement = $memo->staffAcknowledgement;
+        if ($file instanceof UploadedFile) {
+            $path = $file->store("sdm-memos/{$memo->id}/staff-acknowledgement", 'local');
+            $storedPaths[] = $path;
+            if ($acknowledgement?->proof_path) {
+                Storage::disk('local')->delete($acknowledgement->proof_path);
+            }
+            $attributes = [
+                'mobile_number' => $mobile,
+                'method' => 'signature_upload',
+                'status' => 'signed',
+                'original_name' => $file->getClientOriginalName(),
+                'proof_path' => $path,
+                'mime_type' => $file->getMimeType(),
+                'size_bytes' => $file->getSize(),
+                'acknowledged_at' => now(),
+            ];
+            $memo->staffAcknowledgement()->updateOrCreate([], $attributes);
+        } elseif ($acknowledgement && filled($mobile)) {
+            $acknowledgement->update(['mobile_number' => $mobile]);
+        }
+    }
+
+    private function submissionStationId(User $user, array $data, ?ServiceDeficiencyMemo $memo = null): int
+    {
+        return (int) ($data['station_id'] ?? $memo?->station_id ?? $user->station_id);
     }
 
     private function syncSections(ServiceDeficiencyMemo $memo, array $data): void

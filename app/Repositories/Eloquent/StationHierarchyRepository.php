@@ -3,9 +3,12 @@
 namespace App\Repositories\Eloquent;
 
 use App\Contracts\Repositories\StationHierarchyRepositoryInterface;
+use App\Enums\MemoStatus;
 use App\Enums\UserRole;
 use App\Models\MemoApproval;
+use App\Models\MemoWorkflowStep;
 use App\Models\ReportingRelationship;
+use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
 use App\Models\StationHierarchy;
 use App\Models\User;
@@ -91,6 +94,13 @@ final class StationHierarchyRepository implements StationHierarchyRepositoryInte
     {
         return MemoApproval::query()->whereBelongsTo($user, 'assignee')->where('decision', 'pending')
             ->whereHas('memo', fn ($query) => $query->whereIn('status', ['submitted', 'under_review']))
-            ->exists();
+            ->exists()
+            || MemoWorkflowStep::query()->whereBelongsTo($user, 'assignee')->where('decision', 'pending')
+                ->whereHas('memo', fn ($query) => $query->whereColumn('memo_workflow_steps.id', 'service_deficiency_memos.current_workflow_step_id'))
+                ->exists()
+            || ServiceDeficiencyMemo::query()
+                ->whereBelongsTo($user, 'cmcStaff')
+                ->whereNotIn('status', [MemoStatus::Closed->value, MemoStatus::Cancelled->value])
+                ->exists();
     }
 }

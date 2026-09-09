@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Contracts\Repositories\StationRepositoryInterface;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use Illuminate\Http\RedirectResponse;
@@ -11,12 +12,14 @@ use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
 {
+    public function __construct(private StationRepositoryInterface $stations) {}
+
     /**
      * Display the login view.
      */
     public function create(): View
     {
-        return view('auth.login');
+        return view('auth.login', ['stations' => $this->stations->active()]);
     }
 
     /**

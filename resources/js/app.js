@@ -18,12 +18,26 @@ Alpine.data('appShell', () => ({
 
 Alpine.data('userForm', () => ({
     role: '',
+    directStationRoles: [],
     stationRole: '',
     stationManagerRole: '',
+    get requiresDirectStation() {
+        return this.directStationRoles.includes(this.role);
+    },
     init() {
         this.role = this.$el.dataset.role || '';
+        this.directStationRoles = JSON.parse(this.$el.dataset.directStationRoles || '[]');
         this.stationRole = this.$el.dataset.stationRole || '';
         this.stationManagerRole = this.$el.dataset.stationManagerRole || '';
+    },
+}));
+
+Alpine.data('contractForm', () => ({
+    lineId: '',
+    stationId: '',
+    init() {
+        this.lineId = this.$el.dataset.lineId || '';
+        this.stationId = this.$el.dataset.stationId || '';
     },
 }));
 
@@ -34,14 +48,14 @@ Alpine.data('memoForm', () => ({
     deficiencyOpen: false,
     bookedShiftFrom: '',
     bookedShiftTo: '',
-    selectedShift: 'custom',
+    actualReportingTime: '',
     init() {
         this.selected = JSON.parse(this.$el.dataset.selectedDeficiencies || '[]');
         this.labels = JSON.parse(this.$el.dataset.deficiencyLabels || '{}');
         this.serviceType = this.$el.dataset.serviceType || '';
         this.bookedShiftFrom = this.$el.dataset.bookedShiftFrom || '';
         this.bookedShiftTo = this.$el.dataset.bookedShiftTo || '';
-        this.syncBookedShiftPreset();
+        this.actualReportingTime = this.$el.dataset.actualReportingTime || '';
     },
     has(type) {
         return this.selected.includes(type);
@@ -49,26 +63,24 @@ Alpine.data('memoForm', () => ({
     labelFor(type) {
         return this.labels[type] || type;
     },
-    applyBookedShiftPreset(shift) {
-        const presets = {
-            morning: ['05:15', '14:15'],
-            evening: ['14:15', '23:15'],
+    get delayLabel() {
+        if (!this.bookedShiftFrom || !this.actualReportingTime) {
+            return '';
+        }
+
+        const minutes = (time) => {
+            const [hours, mins] = time.split(':').map(Number);
+            return (hours * 60) + mins;
         };
+        const delay = Math.max(0, minutes(this.actualReportingTime) - minutes(this.bookedShiftFrom));
 
-        this.selectedShift = shift;
+        if (delay < 60) {
+            return `${delay} ${delay === 1 ? 'minute' : 'minutes'}`;
+        }
 
-        if (presets[shift]) {
-            [this.bookedShiftFrom, this.bookedShiftTo] = presets[shift];
-        }
-    },
-    syncBookedShiftPreset() {
-        if (this.bookedShiftFrom === '05:15' && this.bookedShiftTo === '14:15') {
-            this.selectedShift = 'morning';
-        } else if (this.bookedShiftFrom === '14:15' && this.bookedShiftTo === '23:15') {
-            this.selectedShift = 'evening';
-        } else {
-            this.selectedShift = 'custom';
-        }
+        const hours = Math.floor(delay / 60);
+        const remainingMinutes = delay % 60;
+        return `${hours} ${hours === 1 ? 'hour' : 'hours'}${remainingMinutes ? ` ${remainingMinutes} ${remainingMinutes === 1 ? 'minute' : 'minutes'}` : ''}`;
     },
 }));
 

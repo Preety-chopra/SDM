@@ -56,11 +56,23 @@ final class StationHierarchyService
     }
 
     /** @return array<string, User> */
-    public function resolveForSubmission(User $creator): array
+    public function resolveForSubmission(User $creator, ?string $stationManagerEmployeeNumber = null): array
     {
-        $hierarchy = $creator->station_id ? $this->hierarchies->findForStation($creator->station_id) : null;
+        return $this->resolveForStation((int) $creator->station_id, $stationManagerEmployeeNumber);
+    }
+
+    /** @return array<string, User> */
+    public function resolveForStation(int $stationId, ?string $stationManagerEmployeeNumber = null): array
+    {
+        $hierarchy = $stationId > 0 ? $this->hierarchies->findForStation($stationId) : null;
         $assignee = $hierarchy?->stationManager;
         $assignments = [];
+
+        if (filled($stationManagerEmployeeNumber) && $assignee?->employee_number !== $stationManagerEmployeeNumber) {
+            throw ValidationException::withMessages([
+                'station_manager_employee_number' => 'Enter the employee number of the enabled Station Manager assigned to this station.',
+            ]);
+        }
 
         foreach (WorkflowStage::cases() as $stage) {
             if (! $assignee?->is_enabled || ! $assignee->hasRole($stage->role()->value)) {

@@ -9,6 +9,8 @@ enum UserRole: string
     case StationManager = 'station_manager';
     case AssistantManager = 'assistant_manager';
     case ManagerOperations = 'manager_operations';
+    case CmcTeamLead = 'cmc_team_lead';
+    case CmcStaff = 'cmc_staff';
     case DeputyGeneralManager = 'deputy_general_manager';
 
     public function label(): string
@@ -19,6 +21,8 @@ enum UserRole: string
             self::StationManager => 'Station Manager',
             self::AssistantManager => 'Manager/Assistant Manager (O)-Line',
             self::ManagerOperations => 'Manager (Operations)',
+            self::CmcTeamLead => 'CMC Team Lead',
+            self::CmcStaff => 'CMC Staff',
             self::DeputyGeneralManager => 'DGM/O',
         };
     }
@@ -31,6 +35,8 @@ enum UserRole: string
             self::StationManager => 'Station Managers',
             self::AssistantManager => 'Managers/Assistant Managers (O)-Line',
             self::ManagerOperations => 'Managers (Operations)',
+            self::CmcTeamLead => 'CMC Team Leads',
+            self::CmcStaff => 'CMC Staff Users',
             self::DeputyGeneralManager => 'DGM/O Users',
         };
     }
@@ -42,7 +48,7 @@ enum UserRole: string
 
     public function requiresEmployeeNumber(): bool
     {
-        return in_array($this, [self::StationManager, self::AssistantManager, self::ManagerOperations, self::DeputyGeneralManager], true);
+        return in_array($this, [self::StationManager, self::AssistantManager, self::ManagerOperations, self::CmcTeamLead, self::CmcStaff, self::DeputyGeneralManager], true);
     }
 
     public function isManaged(): bool

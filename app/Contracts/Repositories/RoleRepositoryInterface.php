@@ -14,6 +14,8 @@ interface RoleRepositoryInterface
     /** @return Collection<int, Permission> */
     public function permissions(): Collection;
 
+    public function findManagedByName(string $name): ?Role;
+
     public function findManagedByNameOrFail(string $name): Role;
 
     public function create(string $name): Role;

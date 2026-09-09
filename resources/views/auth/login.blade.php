@@ -12,21 +12,52 @@
 
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
-    <body class="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
-        <main class="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-8 sm:px-6">
-            <section class="flex w-full max-w-xl flex-col rounded-3xl border border-slate-200/80 bg-white px-6 py-8 shadow-xl shadow-slate-200/60 sm:px-12 sm:py-10">
-                <div class="flex items-center justify-between gap-6">
-                    <a href="/" class="inline-flex items-center gap-2" aria-label="SDM home">
-                        {{-- <span class="grid h-10 w-10 place-items-center rounded-xl bg-[#0f766e] font-bold text-white">S</span> --}}
-                        {{-- <span class="text-lg font-bold tracking-tight">SDM</span> --}}
-                    </a>
-                    {{-- <p class="text-sm text-slate-500">
-                        Need help?
-                        <a href="mailto:support@example.com" class="font-semibold text-[#0f766e] transition hover:text-[#115e59] focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">Contact support</a>
-                    </p> --}}
-                </div>
+    <body class="min-h-screen bg-slate-100 font-sans text-slate-900 antialiased">
+        <main class="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-100 px-4 py-6 sm:px-6 lg:py-10">
+            <div class="pointer-events-none absolute -left-20 top-10 h-72 w-72 rounded-full bg-emerald-200/40 blur-3xl" aria-hidden="true"></div>
+            <div class="pointer-events-none absolute -bottom-24 right-0 h-80 w-80 rounded-full bg-sky-200/40 blur-3xl" aria-hidden="true"></div>
 
-                <div class="mt-10 w-full max-w-md self-center py-4 sm:py-6">
+            <section class="relative grid w-full max-w-6xl overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-2xl shadow-slate-300/60 lg:grid-cols-2">
+                <aside class="relative overflow-hidden bg-gradient-to-br from-[#d5ebe8] via-[#a4d1cb] to-[#68afa6] px-6 py-8 text-slate-900 sm:px-10 sm:py-10 lg:flex lg:min-h-[720px] lg:flex-col lg:justify-between lg:px-12 lg:py-12">
+                    <div class="pointer-events-none absolute -right-32 -top-28 h-80 w-80 rounded-full border-[48px] border-white/25" aria-hidden="true"></div>
+                    <div class="pointer-events-none absolute -bottom-24 -left-20 h-64 w-64 rounded-full bg-[#0f766e]/20 blur-3xl" aria-hidden="true"></div>
+
+                    <div class="relative z-10">
+                        <a href="/" class="inline-flex rounded-2xl bg-white px-4 py-3 shadow-lg shadow-emerald-900/10 transition hover:bg-emerald-50 focus:outline-none focus:ring-4 focus:ring-[#0f766e]/20" aria-label="SDM home">
+                            <img src="{{ asset('images/dmrc-logo.svg') }}" alt="Delhi Metro Rail Corporation" class="h-auto w-36 sm:w-40">
+                        </a>
+
+                        <div class="mt-10 max-w-md lg:mt-20">
+                            <p class="text-xs font-bold uppercase tracking-[0.24em] text-[#0b5f59]">Digitized Service Deficiency Memo</p>
+                            <h1 class="mt-4 text-3xl font-bold leading-tight tracking-[-0.03em] text-slate-950 sm:text-4xl lg:text-5xl">SDM Tracker</h1>
+                            <p class="mt-5 text-[15px] leading-7 text-slate-700 sm:text-base">A secure workspace for creating, reviewing, and tracking service deficiency memos across DMRC operations.</p>
+                        </div>
+                    </div>
+
+                    <div class="relative z-10 mt-10 hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-1">
+                        <div class="flex items-start gap-3 rounded-2xl border border-white/50 bg-white/65 p-4 shadow-sm shadow-emerald-900/10 backdrop-blur-sm">
+                            <span class="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#0f766e]/10 text-[#0f766e]" aria-hidden="true">
+                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6h8M8 10h8M8 14h5" stroke-linecap="round"/><path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/></svg>
+                            </span>
+                            <div>
+                                <p class="text-sm font-semibold text-slate-900">One connected workflow</p>
+                                <p class="mt-1 text-sm leading-6 text-slate-700">From memo creation and approvals through penalty tracking and closure.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-3 rounded-2xl border border-white/50 bg-white/65 p-4 shadow-sm shadow-emerald-900/10 backdrop-blur-sm">
+                            <span class="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#0f766e]/10 text-[#0f766e]" aria-hidden="true">
+                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 5 6v5c0 4.6 2.9 8.3 7 10 4.1-1.7 7-5.4 7-10V6l-7-3Z" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </span>
+                            <div>
+                                <p class="text-sm font-semibold text-slate-900">Clear accountability</p>
+                                <p class="mt-1 text-sm leading-6 text-slate-700">Role-based actions and auditable records keep every decision traceable.</p>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+
+                <div class="flex flex-col px-6 py-8 sm:px-10 sm:py-10 lg:px-14 lg:py-12">
+                    <div class="w-full max-w-md self-center lg:my-auto">
                     <div class="mb-9">
                         <p class="mb-3 text-sm font-semibold text-[#0f766e]">Welcome back</p>
                         <h2 class="text-3xl font-bold tracking-[-0.025em] text-slate-950 sm:text-4xl">Sign in to your account</h2>
@@ -39,7 +70,7 @@
                         @csrf
 
                         <div>
-                            <label for="username" class="mb-2 block text-sm font-semibold text-slate-700">Username</label>
+                            <label for="username" class="mb-2 block text-sm font-semibold text-slate-700">Username <span data-required-marker aria-hidden="true" class="font-bold !text-red-600">*</span><span class="sr-only"> (required)</span></label>
                             <div class="relative">
                                 <svg class="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" stroke-linecap="round" /></svg>
                                 <input id="username" class="block h-[52px] w-full rounded-xl border border-slate-200 bg-white py-3.5 pl-12 pr-4 text-[15px] text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" type="text" name="username" value="{{ old('username') }}" placeholder="Enter your username" required autofocus autocomplete="username" />
@@ -49,7 +80,7 @@
 
                         <div>
                             <div class="mb-2 flex items-center justify-between">
-                                <label for="password" class="block text-sm font-semibold text-slate-700">Password</label>
+                                <label for="password" class="block text-sm font-semibold text-slate-700">Password <span data-required-marker aria-hidden="true" class="font-bold !text-red-600">*</span><span class="sr-only"> (required)</span></label>
                                 @if (Route::has('password.request'))
                                     <a href="{{ route('password.request') }}" class="rounded text-sm font-semibold text-[#0f766e] transition hover:text-[#115e59] focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">Forgot password?</a>
                                 @endif
@@ -65,6 +96,17 @@
                             <x-input-error :messages="$errors->get('password')" class="mt-2 text-sm" />
                         </div>
 
+                        <div>
+                            <label for="station_id" class="mb-2 block text-sm font-semibold text-slate-700">Station <span class="font-normal text-slate-500">(Station Controllers)</span></label>
+                            <select id="station_id" name="station_id" class="block h-[52px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-[15px] text-slate-900 shadow-sm outline-none transition hover:border-slate-300 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100">
+                                <option value="">Select station</option>
+                                @foreach($stations as $station)
+                                    <option value="{{ $station->id }}" @selected((string) old('station_id') === (string) $station->id)>{{ $station->name }}</option>
+                                @endforeach
+                            </select>
+                            <x-input-error :messages="$errors->get('station_id')" class="mt-2 text-sm" />
+                        </div>
+
                         <label for="remember_me" class="flex w-fit cursor-pointer items-center gap-3 text-sm text-slate-600">
                             <input id="remember_me" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-[#0f766e] focus:ring-emerald-500" name="remember">
                             <span>Keep me signed in</span>
@@ -76,17 +118,10 @@
                         </button>
                     </form>
 
-                    <div class="mt-8 flex items-center gap-3 text-xs text-slate-400">
-                        <span class="h-px flex-1 bg-slate-200"></span>
-                        {{-- <span class="inline-flex items-center gap-1.5">
-                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" stroke-linecap="round" stroke-linejoin="round" /></svg>
-                            Protected workspace
-                        </span> --}}
-                        <span class="h-px flex-1 bg-slate-200"></span>
                     </div>
-                </div>
 
-                <p class="mt-8 text-center text-xs text-slate-400">Authorized users only · Activity may be monitored for security.</p>
+                    <p class="mt-10 text-center text-xs text-slate-400">Authorized users only · Activity may be monitored for security.</p>
+                </div>
             </section>
         </main>
     </body>

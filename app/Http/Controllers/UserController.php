@@ -72,6 +72,7 @@ class UserController extends Controller
             'roles' => $roles,
             'stations' => $stations,
             'lines' => $stations->pluck('metroLine')->filter()->unique('id')->sortBy('name')->values(),
+            'directStationRoleNames' => $this->roles->directStationRoleNames($roles),
             'generalCreate' => $generalCreate,
         ]);
     }
@@ -90,13 +91,15 @@ class UserController extends Controller
         Gate::authorize('update', $user);
         $user->loadMissing(['roles', 'station.metroLine']);
         $stations = $this->stations->activeWithLines();
+        $roles = $this->roles->managedRoles();
 
         return view('users.edit', [
             'managedUser' => $user,
             'selectedRole' => $this->roles->findManagedByNameOrFail($user->roles->sole()->name),
-            'roles' => $this->roles->managedRoles(),
+            'roles' => $roles,
             'stations' => $stations,
             'lines' => $stations->pluck('metroLine')->filter()->unique('id')->sortBy('name')->values(),
+            'directStationRoleNames' => $this->roles->directStationRoleNames($roles),
             'managedStationIds' => StationHierarchy::query()->where('station_manager_id', $user->id)->pluck('station_id')->all(),
         ]);
     }

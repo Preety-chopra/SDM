@@ -77,7 +77,7 @@
             @endforeach
         @endcan
 
-        @canany([\App\Enums\UserPermission::ManageRoles->value, \App\Enums\UserPermission::ManageSdmHierarchy->value, \App\Enums\UserPermission::ManageLines->value, \App\Enums\UserPermission::ManageStations->value, \App\Enums\UserPermission::ManageContractors->value])
+        @canany([\App\Enums\UserPermission::ManageRoles->value, \App\Enums\UserPermission::ManageSdmHierarchy->value, \App\Enums\UserPermission::ManageLines->value, \App\Enums\UserPermission::ManageStations->value, \App\Enums\UserPermission::ManageContractors->value, \App\Enums\UserPermission::ManageContracts->value])
             <p x-show="! collapsed || mobileOpen" class="px-3 pb-1 pt-5 text-xs font-bold uppercase tracking-wider text-gray-400">Administration</p>
         @endcanany
         @foreach ([
@@ -86,6 +86,7 @@
             [\App\Enums\UserPermission::ManageLines->value, 'lines.index', 'lines.*', 'Lines'],
             [\App\Enums\UserPermission::ManageStations->value, 'stations.index', 'stations.*', 'Stations'],
             [\App\Enums\UserPermission::ManageContractors->value, 'contractors.index', 'contractors.*', 'Contractors'],
+            [\App\Enums\UserPermission::ManageContracts->value, 'contracts.index', 'contracts.*', 'Service contracts'],
         ] as [$permission, $route, $pattern, $label])
             @can($permission)
                 <a href="{{ route($route) }}" title="{{ $label }}" class="{{ $baseClasses }} {{ request()->routeIs($pattern) ? $activeClasses : $idleClasses }}">

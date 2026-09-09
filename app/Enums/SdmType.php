@@ -10,16 +10,16 @@ enum SdmType: string
     public function code(): string
     {
         return match ($this) {
-            self::Cfs => 'CFS',
-            self::Ticketing => 'TICKETING',
+            self::Cfs => 'CFA',
+            self::Ticketing => 'TVS',
         };
     }
 
     public function label(): string
     {
         return match ($this) {
-            self::Cfs => 'Customer Facilitation Services',
-            self::Ticketing => 'Ticketing / Token Vending Services',
+            self::Cfs => 'Customer Facilitation Services (CFA)',
+            self::Ticketing => 'Ticket Vending Services (TVS)',
         };
     }
 }

@@ -7,7 +7,7 @@
     @endif
 
     <div>
-        <x-input-label for="name" value="Role name" />
+        <x-input-label for="name" value="Role name" required />
         <x-text-input id="name" name="name" type="text" class="mt-1 block w-full" :value="old('name', $managedRole?->name)" required autofocus />
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Use lowercase letters, numbers, and underscores, for example quality_auditor.</p>
         <x-input-error :messages="$errors->get('name')" class="mt-2" />

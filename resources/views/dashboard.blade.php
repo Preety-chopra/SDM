@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Dashboard">
     <x-slot name="header">
         {{-- <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -65,60 +65,98 @@
                 </div>
             </section>
 
-            @if ($workflowStages !== [])
-                <section aria-labelledby="pending-memos-heading">
-                    <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                        <div>
-                            <h2 id="pending-memos-heading" class="text-lg font-bold text-gray-950 dark:text-white">Pending memos by approval level</h2>
-                            <p class="text-sm text-gray-500 dark:text-gray-400">Track SDMs currently awaiting action at each workflow level.</p>
+            @if (!empty($workflowStepTypes))
+                @php
+                    $totalPendingWorkflowSteps = collect($pendingWorkflowSteps)->sum('total');
+                @endphp
+
+                <section data-workflow-board aria-labelledby="contract-workflow-heading" class="overflow-hidden rounded-3xl border border-gray-200 bg-gray-100/80 shadow-sm dark:border-gray-700 dark:bg-gray-950/40">
+                    <div class="flex flex-col gap-5 bg-gradient-to-r from-emerald-700 via-teal-700 to-cyan-700 px-5 py-6 text-white sm:flex-row sm:items-end sm:justify-between sm:px-7">
+                        <div class="flex items-start gap-4">
+                            <div class="flex flex-col gap-1">
+                                <h2 id="contract-workflow-heading" class="text-xl font-black tracking-tight sm:text-2xl">CFA / TVS workflow queues</h2>
+                            </div>
                         </div>
-                        <a href="{{ route('sdm-memos.index') }}" class="text-sm font-bold text-emerald-700 hover:text-emerald-800 hover:underline dark:text-emerald-400">View all memos →</a>
+
+                        <div class="flex shrink-0 items-center gap-3 rounded-2xl bg-white/10 px-4 py-3 ring-1 ring-inset ring-white/15">
+                            <span class="inline-flex h-9 min-w-9 items-center justify-center rounded-xl bg-amber-300 px-2 text-lg font-black text-amber-950">{{ $totalPendingWorkflowSteps }}</span>
+                            <span class="text-sm font-semibold leading-tight text-gray-100">
+                                {{ $totalPendingWorkflowSteps === 1 ? 'memo waiting' : 'memos waiting' }}
+                                <span class="block text-xs font-normal text-gray-300">across all stages</span>
+                            </span>
+                        </div>
                     </div>
 
-                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                        @foreach ($workflowStages as $stage)
-                            @php($pending = $pendingMemoStages[$stage->value])
-                            <article class="flex min-h-64 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                                <div class="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-gray-700">
-                                    <div>
-                                        <h3 class="font-bold text-gray-950 dark:text-white">{{ $stage->levelLabel() }}</h3>
-                                        <p class="text-xs text-gray-500 dark:text-gray-400">{{ $stage->label() }}</p>
+                    <div class="grid grid-cols-1 gap-4 p-4 sm:p-5 md:grid-cols-2 xl:grid-cols-3">
+                        @foreach($workflowStepTypes as $stepType)
+                            @php
+                                $queue = $pendingWorkflowSteps[$stepType->value];
+                                $hasPendingMemos = $queue['total'] > 0;
+                                $stageNumber = $loop->iteration;
+                            @endphp
+
+                            <article
+                                data-workflow-stage="{{ $stepType->value }}"
+                                aria-label="Stage {{ $stageNumber }} of {{ $loop->count }}"
+                                @class([
+                                    'group flex min-h-56 flex-col overflow-hidden rounded-2xl border bg-white transition duration-200 dark:bg-gray-900',
+                                    'border-emerald-300 shadow-md ring-1 ring-emerald-100 hover:-translate-y-0.5 hover:shadow-lg dark:border-emerald-700 dark:ring-emerald-950' => $hasPendingMemos,
+                                    'border-gray-200 shadow-sm dark:border-gray-800' => ! $hasPendingMemos,
+                                ])
+                            >
+                                <div class="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+                                    <div class="flex min-w-0 items-start gap-3">
+                                        <span @class([
+                                            'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-black',
+                                            'bg-emerald-600 text-white shadow-sm shadow-emerald-200 dark:shadow-none' => $hasPendingMemos,
+                                            'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' => ! $hasPendingMemos,
+                                        ])>{{ str_pad((string) $stageNumber, 2, '0', STR_PAD_LEFT) }}</span>
+                                        <div class="min-w-0">
+                                            <p class="text-[0.65rem] font-bold uppercase tracking-[0.16em] text-gray-400">Workflow stage</p>
+                                            <h3 class="mt-1 text-sm font-bold leading-5 text-gray-950 dark:text-white">{{ $stepType->label() }}</h3>
+                                        </div>
                                     </div>
-                                    <span class="inline-flex min-w-8 items-center justify-center rounded-full bg-amber-100 px-2.5 py-1 text-sm font-black text-amber-800 dark:bg-amber-950 dark:text-amber-300">{{ $pending['total'] }}</span>
+
+                                    <span @class([
+                                        'inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-bold',
+                                        'bg-amber-100 text-amber-900 ring-1 ring-inset ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800' => $hasPendingMemos,
+                                        'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300 dark:ring-emerald-900' => ! $hasPendingMemos,
+                                    ])>
+                                        {{ $hasPendingMemos ? $queue['total'].' pending' : 'Clear' }}
+                                    </span>
                                 </div>
 
-                                <div class="flex flex-1 flex-col divide-y divide-gray-100 dark:divide-gray-700">
-                                    @forelse ($pending['memos'] as $memo)
-                                        <a href="{{ route('sdm-memos.show', $memo) }}" class="group flex items-start justify-between gap-3 px-5 py-3 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500 dark:hover:bg-gray-900/50">
+                                <div class="flex flex-1 flex-col gap-2 p-3">
+                                    @forelse($queue['memos'] as $queuedMemo)
+                                        <a href="{{ route('sdm-memos.show', $queuedMemo) }}" class="group/memo flex items-center justify-between gap-3 rounded-xl border border-transparent bg-gray-50 px-4 py-3 transition hover:border-emerald-200 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 dark:bg-gray-800/70 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/50 dark:focus:ring-offset-gray-900">
                                             <span class="min-w-0">
-                                                <span class="block truncate text-sm font-bold text-gray-900 group-hover:text-emerald-700 dark:text-white dark:group-hover:text-emerald-400">{{ $memo->serial_number }}</span>
-                                                <span class="block truncate text-xs text-gray-500 dark:text-gray-400">{{ $memo->station_name ?? 'Station not recorded' }}</span>
-                                                @if ($memo->approvals->first()?->assigned_name)
-                                                    <span class="block truncate text-xs text-gray-400">{{ $memo->approvals->first()->assigned_name }}</span>
-                                                @endif
+                                                <span class="block truncate text-sm font-black text-gray-950 group-hover/memo:text-emerald-800 dark:text-white dark:group-hover/memo:text-emerald-300">{{ $queuedMemo->serial_number }}</span>
+                                                <span class="mt-1 block truncate text-xs font-medium text-gray-600 dark:text-gray-300">{{ $queuedMemo->station_name ?: 'Station not recorded' }}</span>
+                                                <span class="mt-0.5 block truncate text-xs text-gray-400">Assigned to {{ $queuedMemo->currentWorkflowStep?->assigned_name ?: 'Unassigned' }}</span>
                                             </span>
-                                            <span aria-hidden="true" class="text-emerald-600 transition-transform group-hover:translate-x-1 dark:text-emerald-400">→</span>
+                                            <span aria-hidden="true" class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-lg font-bold text-emerald-700 shadow-sm ring-1 ring-gray-200 transition group-hover/memo:translate-x-0.5 group-hover/memo:ring-emerald-300 dark:bg-gray-900 dark:text-emerald-300 dark:ring-gray-700">→</span>
                                         </a>
                                     @empty
-                                        <p class="flex flex-1 items-center justify-center px-5 py-8 text-center text-sm text-gray-500 dark:text-gray-400">No pending memos.</p>
+                                        <div class="flex flex-1 items-center gap-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-5 dark:border-gray-700 dark:bg-gray-800/40">
+                                            <span aria-hidden="true" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-base font-black text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">✓</span>
+                                            <span>
+                                                <strong class="block text-sm text-gray-700 dark:text-gray-200">Queue clear</strong>
+                                                <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">No memos are waiting at this stage.</span>
+                                            </span>
+                                        </div>
                                     @endforelse
                                 </div>
-
-                                <a href="{{ route('sdm-memos.index', ['pending_stage' => $stage->value]) }}" class="border-t border-gray-100 px-5 py-3 text-center text-sm font-bold text-emerald-700 hover:bg-emerald-50 hover:underline focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500 dark:border-gray-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30">
-                                    View all {{ $stage->levelLabel() }} memos
-                                </a>
                             </article>
                         @endforeach
                     </div>
                 </section>
             @endif
-
-            {{-- @if ($canManageUsers)
+{{--
+            @if ($canManageUsers)
                 <section aria-labelledby="user-management-heading">
                     <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                         <div>
                             <h2 id="user-management-heading" class="text-lg font-bold text-gray-950 dark:text-white">User management</h2>
-                            <p class="text-sm text-gray-500 dark:text-gray-400">Open any team directory directly.</p>
                         </div>
                         @can(\App\Enums\UserPermission::ManageRoles->value)
                             <a href="{{ route('roles.index') }}" class="text-sm font-bold text-emerald-700 hover:text-emerald-800 hover:underline dark:text-emerald-400">Roles &amp; permissions →</a>

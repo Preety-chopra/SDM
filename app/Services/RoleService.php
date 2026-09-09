@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Contracts\Repositories\RoleRepositoryInterface;
+use App\Enums\UserPermission;
+use App\Enums\UserRole;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
@@ -27,6 +29,26 @@ final class RoleService
     public function findManagedByNameOrFail(string $name): Role
     {
         return $this->roles->findManagedByNameOrFail($name);
+    }
+
+    public function requiresDirectStationAssignment(string $name): bool
+    {
+        $role = $this->roles->findManagedByName($name);
+
+        return $role !== null && $this->roleRequiresDirectStationAssignment($role);
+    }
+
+    /**
+     * @param  Collection<int, Role>  $roles
+     * @return list<string>
+     */
+    public function directStationRoleNames(Collection $roles): array
+    {
+        return $roles
+            ->filter(fn (Role $role): bool => $this->roleRequiresDirectStationAssignment($role))
+            ->pluck('name')
+            ->values()
+            ->all();
     }
 
     /** @param array{name: string, permissions?: list<string>, new_permissions?: list<string>} $data */
@@ -62,5 +84,11 @@ final class RoleService
             ->all();
 
         return $this->roles->syncPermissions($role, $permissions);
+    }
+
+    private function roleRequiresDirectStationAssignment(Role $role): bool
+    {
+        return $role->name !== UserRole::StationManager->value
+            && $role->permissions->contains('name', UserPermission::CreateMemos->value);
     }
 }

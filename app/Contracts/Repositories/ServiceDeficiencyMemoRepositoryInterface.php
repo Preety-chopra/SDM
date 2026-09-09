@@ -15,6 +15,9 @@ interface ServiceDeficiencyMemoRepositoryInterface
     /** @return array<string, array{memos: Collection, total: int}> */
     public function pendingByStage(int $limit = 5): array;
 
+    /** @return array<string, array{memos: Collection, total: int}> */
+    public function pendingByWorkflowStep(int $limit = 5): array;
+
     public function pendingActionCount(User $user): int;
 
     public function create(array $attributes): ServiceDeficiencyMemo;

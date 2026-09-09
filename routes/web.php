@@ -6,9 +6,12 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\LineController;
 use App\Http\Controllers\MemoApprovalAttachmentController;
 use App\Http\Controllers\MemoAttachmentController;
+use App\Http\Controllers\MemoPenaltyLifecycleController;
+use App\Http\Controllers\MemoPrivateDocumentController;
 use App\Http\Controllers\MemoWorkflowController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\ServiceContractController;
 use App\Http\Controllers\ServiceDeficiencyMemoController;
 use App\Http\Controllers\StationController;
 use App\Http\Controllers\StationHierarchyController;
@@ -26,6 +29,7 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
 
     Route::resource('roles', RoleController::class)->except(['show', 'destroy']);
+
     Route::get('/sdm-hierarchy', [StationHierarchyController::class, 'index'])->name('hierarchies.index');
     Route::put('/sdm-hierarchy', [StationHierarchyController::class, 'update'])->name('hierarchies.update');
 
@@ -42,6 +46,14 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::post('/sdm-memos/{sdm_memo}', [ServiceDeficiencyMemoController::class, 'update'])->name('sdm-memos.update');
     Route::post('/sdm-memos/{sdm_memo}/submit', [ServiceDeficiencyMemoController::class, 'submit'])->name('sdm-memos.submit');
     Route::post('/sdm-memos/{sdm_memo}/workflow', [MemoWorkflowController::class, 'store'])->name('sdm-memos.workflow.store');
+    Route::patch('/sdm-memos/{sdm_memo}/cmc-assignment', [MemoWorkflowController::class, 'reassign'])->name('sdm-memos.cmc-assignment.update');
+    Route::post('/sdm-memos/{sdm_memo}/penalty-letter', [MemoPenaltyLifecycleController::class, 'letter'])->name('sdm-memos.penalty-letter.store');
+    Route::post('/sdm-memos/{sdm_memo}/objection', [MemoPenaltyLifecycleController::class, 'objection'])->name('sdm-memos.objection.store');
+    Route::post('/sdm-memos/{sdm_memo}/no-objection', [MemoPenaltyLifecycleController::class, 'noObjection'])->name('sdm-memos.no-objection.store');
+    Route::post('/sdm-memos/{sdm_memo}/deduction', [MemoPenaltyLifecycleController::class, 'deduction'])->name('sdm-memos.deduction.store');
+    Route::get('/sdm-memos/{sdm_memo}/staff-signature', [MemoPrivateDocumentController::class, 'acknowledgement'])->name('sdm-memos.staff-signature.download');
+    Route::get('/sdm-memos/{sdm_memo}/penalty-letters/{letter}', [MemoPrivateDocumentController::class, 'letter'])->name('sdm-memos.penalty-letter.download');
+    Route::get('/sdm-memos/{sdm_memo}/objections/{objection}', [MemoPrivateDocumentController::class, 'objection'])->name('sdm-memos.objection.download');
     Route::get('/sdm-memos/{sdm_memo}/workflow-evidence/{attachment}', [MemoApprovalAttachmentController::class, 'download'])->name('sdm-memos.workflow-evidence.download');
     Route::get('/sdm-memos/{sdm_memo}/attachments/{attachment}', [MemoAttachmentController::class, 'download'])->name('sdm-memos.attachments.download');
     Route::delete('/sdm-memos/{sdm_memo}/attachments/{attachment}', [MemoAttachmentController::class, 'destroy'])->name('sdm-memos.attachments.destroy');
@@ -49,6 +61,11 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::resource('lines', LineController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::resource('stations', StationController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::resource('contractors', ContractorController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::post('/contracts/{contract}/publish', [ServiceContractController::class, 'publish'])->name('contracts.publish');
+    Route::post('/contracts/{contract}/revise', [ServiceContractController::class, 'revise'])->name('contracts.revise');
+    Route::post('/contracts/{contract}/retire', [ServiceContractController::class, 'retire'])->name('contracts.retire');
+    Route::get('/contracts/{contract}/source', [ServiceContractController::class, 'source'])->name('contracts.source');
+    Route::resource('contracts', ServiceContractController::class);
 });
 
 require __DIR__.'/auth.php';

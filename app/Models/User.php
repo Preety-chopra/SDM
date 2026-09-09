@@ -39,6 +39,21 @@ class User extends Authenticatable
         return $this->hasMany(MemoApproval::class, 'assigned_to');
     }
 
+    public function assignedWorkflowSteps(): HasMany
+    {
+        return $this->hasMany(MemoWorkflowStep::class, 'assigned_to');
+    }
+
+    public function assignedServiceContracts(): HasMany
+    {
+        return $this->hasMany(ServiceContract::class, 'cmc_staff_id');
+    }
+
+    public function assignedMemosAsCmcStaff(): HasMany
+    {
+        return $this->hasMany(ServiceDeficiencyMemo::class, 'cmc_staff_id');
+    }
+
     public function managedStationHierarchies(): HasMany
     {
         return $this->hasMany(StationHierarchy::class, 'station_manager_id');

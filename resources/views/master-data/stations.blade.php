@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-app-layout title="Stations">
     <x-slot name="header">
         <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Stations</h2>
     </x-slot>

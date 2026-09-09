@@ -4,6 +4,9 @@ namespace App\Policies;
 
 use App\Enums\MemoStatus;
 use App\Enums\UserPermission;
+use App\Enums\UserRole;
+use App\Enums\WorkflowStage;
+use App\Enums\WorkflowStepType;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
 
@@ -16,13 +19,24 @@ class ServiceDeficiencyMemoPolicy
 
     public function create(User $user): bool
     {
-        return $user->can(UserPermission::CreateMemos->value) && $user->station_id !== null;
+        return $user->can(UserPermission::CreateMemos->value)
+            && ($user->station_id !== null || ($user->hasRole(UserRole::StationManager->value) && $user->managedStationHierarchies()->exists()));
     }
 
     public function view(User $user, ServiceDeficiencyMemo $memo): bool
     {
+        if ($memo->workflow_version === 2) {
+            return $user->can(UserPermission::ViewAllMemos->value)
+                || ($user->can(UserPermission::ViewOwnMemos->value) && $memo->created_by === $user->id)
+                || ($user->can(UserPermission::ViewRoutedMemos->value) && $memo->cmc_staff_id === $user->id)
+                || ($user->can(UserPermission::ViewRoutedMemos->value) && $memo->workflowSteps()->where('assigned_to', $user->id)->exists());
+        }
+
         return $user->can(UserPermission::ViewAllMemos->value)
             || ($user->can(UserPermission::ViewOwnMemos->value) && $memo->created_by === $user->id)
+            || ($memo->status === MemoStatus::Cancelled
+                && $user->can(UserPermission::ViewRoutedMemos->value)
+                && $memo->approvals()->where('assigned_to', $user->id)->exists())
             || ($user->can(UserPermission::ViewRoutedMemos->value) && $memo->approvals()->where('assigned_to', $user->id)->where(function ($query) use ($memo): void {
                 $query->where('decision', '!=', 'pending')->orWhere('role', $memo->current_stage?->value);
             })->exists());
@@ -30,6 +44,12 @@ class ServiceDeficiencyMemoPolicy
 
     public function act(User $user, ServiceDeficiencyMemo $memo): bool
     {
+        if ($memo->workflow_version === 2) {
+            return $user->is_enabled
+                && $user->can(UserPermission::ActOnRoutedMemos->value)
+                && $memo->currentWorkflowStep()->where('assigned_to', $user->id)->where('decision', 'pending')->exists();
+        }
+
         return $user->is_enabled
             && $user->can(UserPermission::ActOnRoutedMemos->value)
             && in_array($memo->status, [MemoStatus::Submitted, MemoStatus::UnderReview], true)
@@ -40,7 +60,8 @@ class ServiceDeficiencyMemoPolicy
     {
         return $user->can(UserPermission::UpdateOwnDraftMemos->value)
             && $memo->created_by === $user->id
-            && $memo->status === MemoStatus::Draft;
+            && ($memo->status === MemoStatus::Draft
+                || ($user->hasRole(UserRole::Station->value) && $this->isEditableSubmittedMemo($memo)));
     }
 
     public function submit(User $user, ServiceDeficiencyMemo $memo): bool
@@ -55,5 +76,37 @@ class ServiceDeficiencyMemoPolicy
         return $user->can(UserPermission::UpdateOwnDraftMemos->value)
             && $memo->created_by === $user->id
             && $memo->status === MemoStatus::Draft;
+    }
+
+    public function assignCmcStaff(User $user, ServiceDeficiencyMemo $memo): bool
+    {
+        return $user->is_enabled
+            && $user->can(UserPermission::AssignCmcStaff->value)
+            && $memo->workflow_version >= 2
+            && $memo->cmc_staff_id !== null
+            && ! in_array($memo->status, [MemoStatus::Closed, MemoStatus::Cancelled], true);
+    }
+
+    public function manageCmcLifecycle(User $user, ServiceDeficiencyMemo $memo): bool
+    {
+        return $user->is_enabled
+            && ($memo->cmc_staff_id === $user->id || $user->can(UserPermission::ViewAllMemos->value));
+    }
+
+    private function isEditableSubmittedMemo(ServiceDeficiencyMemo $memo): bool
+    {
+        if (! $memo->submitted_at || $memo->submitted_at->lt(now()->subDays(2))) {
+            return false;
+        }
+
+        if ($memo->workflow_version >= 2) {
+            return $memo->status === MemoStatus::AwaitingStationManager
+                && $memo->currentWorkflowStep?->stage === WorkflowStepType::StationManager
+                && $memo->currentWorkflowStep?->decision === 'pending';
+        }
+
+        return $memo->status === MemoStatus::Submitted
+            && $memo->current_stage === WorkflowStage::StationManager
+            && $memo->approvals()->where('role', WorkflowStage::StationManager->value)->where('decision', 'pending')->exists();
     }
 }

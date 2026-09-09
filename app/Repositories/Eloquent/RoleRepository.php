@@ -35,7 +35,18 @@ final class RoleRepository implements RoleRepositoryInterface
             ->where('guard_name', 'web')
             ->where('name', '!=', UserRole::Administrator->value)
             ->where('name', $name)
+            ->with('permissions')
             ->firstOrFail();
+    }
+
+    public function findManagedByName(string $name): ?Role
+    {
+        return Role::query()
+            ->where('guard_name', 'web')
+            ->where('name', '!=', UserRole::Administrator->value)
+            ->where('name', $name)
+            ->with('permissions')
+            ->first();
     }
 
     public function create(string $name): Role

@@ -6,6 +6,7 @@ use App\Contracts\Repositories\ServiceDeficiencyMemoRepositoryInterface;
 use App\Enums\MemoStatus;
 use App\Enums\UserPermission;
 use App\Enums\WorkflowStage;
+use App\Enums\WorkflowStepType;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -15,13 +16,23 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
     public function paginateFor(User $user, ?WorkflowStage $pendingStage = null): LengthAwarePaginator
     {
         return ServiceDeficiencyMemo::query()
-            ->select(['id', 'service_type', 'serial_number', 'station_name', 'line_name', 'incident_date', 'status', 'current_stage', 'created_by', 'created_at'])
+            ->select(['id', 'service_type', 'serial_number', 'station_name', 'line_name', 'incident_date', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'cmc_staff_id', 'created_by', 'submitted_at', 'created_at'])
+            ->with([
+                'currentWorkflowStep:id,stage,assigned_name',
+                'cmcStaff:id,name',
+                'cancellationApproval' => fn ($query) => $query->select(['memo_approvals.id', 'memo_approvals.memo_id', 'memo_approvals.role', 'memo_approvals.decision', 'memo_approvals.acted_at']),
+                'cancellationWorkflowStep' => fn ($query) => $query->select(['memo_workflow_steps.id', 'memo_workflow_steps.memo_id', 'memo_workflow_steps.stage', 'memo_workflow_steps.decision', 'memo_workflow_steps.acted_at']),
+            ])
             ->when(! $user->can(UserPermission::ViewAllMemos->value), fn ($query) => $query->where(function ($query) use ($user): void {
                 $query->whereBelongsTo($user, 'creator')->orWhereHas('approvals', function ($query) use ($user): void {
                     $query->where('assigned_to', $user->id)->where(function ($query): void {
                         $query->where('decision', '!=', 'pending')->orWhereColumn('memo_approvals.role', 'service_deficiency_memos.current_stage');
                     });
-                });
+                })->orWhere(function ($query) use ($user): void {
+                    $query->where('status', MemoStatus::Cancelled->value)
+                        ->whereHas('approvals', fn ($query) => $query->where('assigned_to', $user->id));
+                })->orWhereHas('workflowSteps', fn ($query) => $query->where('assigned_to', $user->id))
+                    ->when($user->can(UserPermission::ViewRoutedMemos->value), fn ($query) => $query->orWhere('cmc_staff_id', $user->id));
             }))
             ->when($pendingStage, fn ($query) => $query
                 ->whereIn('status', [MemoStatus::Submitted->value, MemoStatus::UnderReview->value])
@@ -67,12 +78,32 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
     public function pendingActionCount(User $user): int
     {
         return ServiceDeficiencyMemo::query()
-            ->whereIn('status', [MemoStatus::Submitted->value, MemoStatus::UnderReview->value])
-            ->whereHas('approvals', fn ($query) => $query
-                ->where('assigned_to', $user->id)
-                ->where('decision', 'pending')
-                ->whereColumn('memo_approvals.role', 'service_deficiency_memos.current_stage'))
+            ->where(function ($query) use ($user): void {
+                $query->where(function ($query) use ($user): void {
+                    $query->whereIn('status', [MemoStatus::Submitted->value, MemoStatus::UnderReview->value])
+                        ->whereHas('approvals', fn ($query) => $query
+                            ->where('assigned_to', $user->id)
+                            ->where('decision', 'pending')
+                            ->whereColumn('memo_approvals.role', 'service_deficiency_memos.current_stage'));
+                })->orWhereHas('currentWorkflowStep', fn ($query) => $query
+                    ->where('assigned_to', $user->id)
+                    ->where('decision', 'pending'));
+            })
             ->count();
+    }
+
+    public function pendingByWorkflowStep(int $limit = 5): array
+    {
+        $pending = [];
+        foreach (WorkflowStepType::cases() as $stage) {
+            $query = ServiceDeficiencyMemo::query()->whereHas('currentWorkflowStep', fn ($query) => $query->where('stage', $stage->value)->where('decision', 'pending'));
+            $pending[$stage->value] = [
+                'memos' => (clone $query)->with('currentWorkflowStep:id,stage,assigned_name')->latest('submitted_at')->limit($limit)->get(),
+                'total' => (clone $query)->count(),
+            ];
+        }
+
+        return $pending;
     }
 
     public function create(array $attributes): ServiceDeficiencyMemo
