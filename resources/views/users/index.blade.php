@@ -38,7 +38,7 @@
                             <tr>
                                 <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">User</th>
                                 <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Personnel</th>
-                                <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ $role->name === \App\Enums\UserRole::StationManager->value ? 'Station mapping' : 'Station' }}</th>
+                                <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Station</th>
                                 <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Status</th>
                                 <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Actions</th>
                             </tr>
@@ -49,19 +49,7 @@
                                     <td class="px-5 py-4"><p class="font-semibold text-gray-900 dark:text-gray-100">{{ $managedUser->name }}</p><p class="text-sm text-gray-500 dark:text-gray-400">{{ $managedUser->email }}</p></td>
                                     <td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300"><p>{{ $managedUser->employee_number ?: '—' }}</p><p class="text-gray-400">{{ $managedUser->phone ?: 'No phone' }}</p></td>
                                     <td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
-                                        @if ($role->name === \App\Enums\UserRole::StationManager->value)
-                                            <div class="flex min-w-56 flex-wrap gap-2">
-                                                @forelse ($managedUser->managedStationHierarchies->sortBy('station.name') as $mapping)
-                                                    @if ($mapping->station)
-                                                        <span class="inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800 dark:bg-sky-950 dark:text-sky-300">{{ $mapping->station->code }} · {{ $mapping->station->name }}</span>
-                                                    @endif
-                                                @empty
-                                                    <span>—</span>
-                                                @endforelse
-                                            </div>
-                                        @else
-                                            {{ $managedUser->station ? $managedUser->station->code.' · '.$managedUser->station->name : '—' }}
-                                        @endif
+                                        {{ $managedUser->station ? $managedUser->station->code.' · '.$managedUser->station->name : '—' }}
                                     </td>
                                     <td class="px-5 py-4"><span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $managedUser->is_enabled ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' }}">{{ $managedUser->is_enabled ? 'Enabled' : 'Disabled' }}</span></td>
                                     <td class="px-5 py-4">

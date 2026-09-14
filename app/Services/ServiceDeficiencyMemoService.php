@@ -65,9 +65,10 @@ final class ServiceDeficiencyMemoService
     public function createSubmitted(User $user, array $data): ServiceDeficiencyMemo
     {
         try {
-            $this->hierarchies->resolveForStation(
+            $this->resolveSubmissionAssignments(
+                $user,
+                $data,
                 $this->submissionStationId($user, $data),
-                $data['station_manager_employee_number'] ?? null,
             );
         } catch (ValidationException $exception) {
             $this->createDraft($user, $data);
@@ -84,9 +85,10 @@ final class ServiceDeficiencyMemoService
 
     public function submit(ServiceDeficiencyMemo $memo, User $user, array $data): ServiceDeficiencyMemo
     {
-        $this->hierarchies->resolveForStation(
+        $this->resolveSubmissionAssignments(
+            $user,
+            $data,
             $this->submissionStationId($user, $data, $memo),
-            $data['station_manager_employee_number'] ?? null,
         );
 
         return $this->persist($memo, $user, $data, true);
@@ -150,9 +152,9 @@ final class ServiceDeficiencyMemoService
                 $this->syncSections($memo, $data);
                 $this->syncStaffAcknowledgement($memo, $data, $storedPaths);
                 if ($submit && $contract && $memo->workflowSteps()->doesntExist()) {
-                    $this->createWorkflowRoute($memo, $user, $contract, $data['station_manager_employee_number'] ?? null);
+                    $this->createWorkflowRoute($memo, $user, $contract, $data);
                 } elseif ($submit && ! $contract && $memo->approvals()->doesntExist()) {
-                    $this->createApprovalRoute($memo, $user, $data['station_manager_employee_number'] ?? null);
+                    $this->createApprovalRoute($memo, $user, $data);
                 }
                 foreach (Arr::wrap($data['attachments'] ?? []) as $file) {
                     if ($file instanceof UploadedFile) {
@@ -185,19 +187,39 @@ final class ServiceDeficiencyMemoService
         }
     }
 
-    private function createApprovalRoute(ServiceDeficiencyMemo $memo, User $creator, ?string $stationManagerEmployeeNumber): void
+    private function createApprovalRoute(ServiceDeficiencyMemo $memo, User $creator, array $data): void
     {
-        $assignees = $this->hierarchies->resolveForStation($memo->station_id, $stationManagerEmployeeNumber);
+        $assignees = $this->resolveSubmissionAssignments($creator, $data, $memo->station_id);
 
         foreach (WorkflowStage::cases() as $stage) {
             $assignee = $assignees[$stage->value];
-            $memo->approvals()->create([
+            $attributes = [
                 'role' => $stage->value,
                 'sequence' => $stage->sequence(),
                 'assigned_to' => $assignee->id,
                 'assigned_name' => $assignee->name,
                 'assigned_employee_number' => $assignee->employee_number,
                 'decision' => 'pending',
+            ];
+
+            if ($stage === WorkflowStage::StationManager && $creator->hasRole(UserRole::StationManager->value)) {
+                $attributes = [...$attributes,
+                    'decision' => 'approved',
+                    'acted_by' => $creator->id,
+                    'signer_name' => $creator->name,
+                    'signer_employee_number' => $creator->employee_number,
+                    'acted_at' => now(),
+                    'remarks' => 'Station Manager issued and signed the SDM.',
+                ];
+            }
+
+            $memo->approvals()->create($attributes);
+        }
+
+        if ($creator->hasRole(UserRole::StationManager->value)) {
+            $memo->update([
+                'status' => MemoStatus::UnderReview->value,
+                'current_stage' => WorkflowStage::LineManager->value,
             ]);
         }
     }
@@ -230,9 +252,9 @@ final class ServiceDeficiencyMemoService
         return $contracts->first();
     }
 
-    private function createWorkflowRoute(ServiceDeficiencyMemo $memo, User $creator, ServiceContract $contract, ?string $stationManagerEmployeeNumber): void
+    private function createWorkflowRoute(ServiceDeficiencyMemo $memo, User $creator, ServiceContract $contract, array $data): void
     {
-        $legacyAssignments = $this->hierarchies->resolveForStation($memo->station_id, $stationManagerEmployeeNumber);
+        $legacyAssignments = $this->resolveSubmissionAssignments($creator, $data, $memo->station_id);
         $cmcTeamLeads = $this->users->enabledForRole(UserRole::CmcTeamLead->value);
         if ($cmcTeamLeads->count() !== 1) {
             throw ValidationException::withMessages([
@@ -318,6 +340,22 @@ final class ServiceDeficiencyMemoService
     private function submissionStationId(User $user, array $data, ?ServiceDeficiencyMemo $memo = null): int
     {
         return (int) ($data['station_id'] ?? $memo?->station_id ?? $user->station_id);
+    }
+
+    /** @return array<string, User> */
+    private function resolveSubmissionAssignments(User $user, array $data, int $stationId): array
+    {
+        if ($user->hasRole(UserRole::StationManager->value)) {
+            return $this->hierarchies->resolveForStationManagerSubmission(
+                $user,
+                $data['line_manager_employee_number'] ?? null,
+            );
+        }
+
+        return $this->hierarchies->resolveForStation(
+            $stationId,
+            $data['station_manager_employee_number'] ?? null,
+        );
     }
 
     private function syncSections(ServiceDeficiencyMemo $memo, array $data): void

@@ -7,7 +7,6 @@ use App\Http\Requests\ListUsersRequest;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Http\Requests\UpdateUserStatusRequest;
-use App\Models\StationHierarchy;
 use App\Models\User;
 use App\Services\RoleService;
 use App\Services\UserService;
@@ -100,7 +99,6 @@ class UserController extends Controller
             'stations' => $stations,
             'lines' => $stations->pluck('metroLine')->filter()->unique('id')->sortBy('name')->values(),
             'directStationRoleNames' => $this->roles->directStationRoleNames($roles),
-            'managedStationIds' => StationHierarchy::query()->where('station_manager_id', $user->id)->pluck('station_id')->all(),
         ]);
     }
 

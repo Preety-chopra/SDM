@@ -10,7 +10,6 @@ use App\Enums\WorkflowStage;
 use App\Models\Line;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
-use App\Models\StationHierarchy;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -175,16 +174,9 @@ class UserManagementTest extends TestCase
     public function test_administrator_can_create_a_station_manager(): void
     {
         $administrator = $this->userWithRole(UserRole::Administrator);
-        $station = Station::query()->create([
-            'code' => 'ST-01',
-            'name' => 'Central Station',
-            'is_active' => true,
-        ]);
-
         $response = $this->actingAs($administrator)->post(route('users.store'), [
             ...$this->validUserData(UserRole::StationManager),
             'employee_number' => 'EMP-1001',
-            'station_ids' => [$station->id],
         ]);
 
         $createdUser = User::query()->where('email', 'managed@example.com')->sole();
@@ -196,41 +188,38 @@ class UserManagementTest extends TestCase
         $this->assertCount(0, $createdUser->getDirectPermissions());
         $this->assertNotNull($createdUser->email_verified_at);
         $this->assertNull($createdUser->station_id);
-        $this->assertSame($createdUser->id, StationHierarchy::query()->where('station_id', $station->id)->value('station_manager_id'));
         $this->assertTrue(Hash::check('Secure Password 123!', $createdUser->password));
     }
 
-    public function test_station_manager_directory_displays_all_mapped_stations_after_creation(): void
+    public function test_station_manager_forms_do_not_show_station_mapping_controls(): void
     {
         $administrator = $this->userWithRole(UserRole::Administrator);
-        $line = Line::query()->create([
-            'code' => 'MAP',
-            'name' => 'Mapping Line',
-            'is_active' => true,
-        ]);
-        $stations = collect([
-            ['code' => 'MAP-01', 'name' => 'Mapping Station One'],
-            ['code' => 'MAP-02', 'name' => 'Mapping Station Two'],
-        ])->map(fn (array $attributes): Station => Station::query()->create([
-            ...$attributes,
-            'line_id' => $line->id,
-            'is_active' => true,
-        ]));
 
         $this->actingAs($administrator)->post(route('users.store'), [
             ...$this->validUserData(UserRole::StationManager),
             'name' => 'sm02',
             'email' => 'sm02@example.com',
             'employee_number' => 'EMP-SM02',
-            'station_ids' => $stations->pluck('id')->all(),
         ])->assertRedirect(route('users.index', UserRole::StationManager->value));
+
+        $this->actingAs($administrator)
+            ->get(route('users.create', UserRole::StationManager->value))
+            ->assertOk()
+            ->assertDontSee('name="station_ids[]"', false)
+            ->assertDontSee('Stations managed by this Station Manager');
+
+        $stationManager = User::query()->where('email', 'sm02@example.com')->sole();
+        $this->actingAs($administrator)
+            ->get(route('users.edit', $stationManager))
+            ->assertOk()
+            ->assertDontSee('name="station_ids[]"', false)
+            ->assertDontSee('Stations managed by this Station Manager');
 
         $this->actingAs($administrator)
             ->get(route('users.index', UserRole::StationManager->value))
             ->assertOk()
             ->assertSee('sm02')
-            ->assertSee('MAP-01 · Mapping Station One')
-            ->assertSee('MAP-02 · Mapping Station Two');
+            ->assertDontSee('Station mapping');
     }
 
     public function test_administrator_has_a_clear_general_create_user_entry_point(): void
@@ -290,7 +279,8 @@ class UserManagementTest extends TestCase
 
         $this->actingAs($administrator)
             ->post(route('users.store'), $this->validUserData(UserRole::StationManager))
-            ->assertSessionHasErrors(['employee_number', 'station_ids']);
+            ->assertSessionHasErrors(['employee_number'])
+            ->assertSessionDoesntHaveErrors(['station_ids']);
 
         $this->actingAs($administrator)
             ->post(route('users.store'), [
@@ -417,7 +407,7 @@ class UserManagementTest extends TestCase
         }
     }
 
-    public function test_station_user_requires_a_matching_active_line_and_station_pair(): void
+    public function test_line_and_station_are_optional_when_creating_any_user_role(): void
     {
         $administrator = $this->userWithRole(UserRole::Administrator);
         $redLine = Line::query()->create(['code' => 'RED', 'name' => 'Red Line', 'is_active' => true]);
@@ -429,29 +419,46 @@ class UserManagementTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($administrator)->post(route('users.store'), [
-            ...$this->validUserData(UserRole::Station),
-            'station_id' => $station->id,
-        ])->assertSessionHasErrors('line_id');
+        $response = $this->actingAs($administrator)
+            ->get(route('users.create', UserRole::Station->value))
+            ->assertOk();
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+
+        $this->assertFalse($xpath->query('//select[@name="line_id"]')->item(0)->hasAttribute('required'));
+        $this->assertFalse($xpath->query('//select[@name="station_id"]')->item(0)->hasAttribute('required'));
 
         $this->actingAs($administrator)->post(route('users.store'), [
             ...$this->validUserData(UserRole::Station),
-            'line_id' => $blueLine->id,
-            'station_id' => $station->id,
-        ])->assertSessionHasErrors('station_id');
+        ])->assertRedirect(route('users.index', UserRole::Station->value));
+
+        $createdUser = User::query()->where('email', 'managed@example.com')->sole();
+        $this->assertNull($createdUser->station_id);
 
         $this->actingAs($administrator)->post(route('users.store'), [
             ...$this->validUserData(UserRole::Station),
+            'name' => 'Mapped Station Controller',
+            'email' => 'mapped@example.com',
             'line_id' => $redLine->id,
             'station_id' => $station->id,
         ])->assertRedirect(route('users.index', UserRole::Station->value));
 
-        $createdUser = User::query()->where('email', 'managed@example.com')->sole();
-        $this->assertSame($station->id, $createdUser->station_id);
-        $this->assertSame($redLine->id, $createdUser->station->line_id);
+        $mappedUser = User::query()->where('email', 'mapped@example.com')->sole();
+        $this->assertSame($station->id, $mappedUser->station_id);
+
+        $this->actingAs($administrator)->post(route('users.store'), [
+            ...$this->validUserData(UserRole::AssistantManager),
+            'name' => 'Invalid Mapping',
+            'email' => 'invalid-mapping@example.com',
+            'employee_number' => 'EMP-INVALID-MAPPING',
+            'line_id' => $blueLine->id,
+            'station_id' => $station->id,
+        ])->assertSessionHasErrors('station_id');
     }
 
-    public function test_custom_memo_creator_role_requires_and_retains_a_station_assignment(): void
+    public function test_custom_memo_creator_role_may_be_created_without_a_station_assignment(): void
     {
         $administrator = $this->userWithRole(UserRole::Administrator);
         $line = Line::query()->create(['code' => 'YELLOW', 'name' => 'Yellow Line', 'is_active' => true]);
@@ -490,25 +497,11 @@ class UserManagementTest extends TestCase
             'is_enabled' => '1',
             'password' => 'Secure Password 123!',
             'password_confirmation' => 'Secure Password 123!',
-        ])->assertSessionHasErrors(['line_id', 'station_id']);
-
-        $this->actingAs($administrator)->post(route('users.store'), [
-            'name' => 'Station Controller',
-            'email' => 'station-controller@example.com',
-            'role' => $role->name,
-            'employee_number' => 'EMP-SC-01',
-            'phone' => null,
-            'designation' => 'Station Controller',
-            'line_id' => $line->id,
-            'station_id' => $station->id,
-            'is_enabled' => '1',
-            'password' => 'Secure Password 123!',
-            'password_confirmation' => 'Secure Password 123!',
         ])->assertRedirect(route('users.index', $role->name));
 
         $stationController = User::query()->where('email', 'station-controller@example.com')->sole();
 
-        $this->assertSame($station->id, $stationController->station_id);
+        $this->assertNull($stationController->station_id);
         $this->assertTrue($stationController->can('create', ServiceDeficiencyMemo::class));
 
         $editResponse = $this->actingAs($administrator)

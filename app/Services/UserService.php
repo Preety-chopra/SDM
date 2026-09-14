@@ -51,9 +51,6 @@ final class UserService
 
             $user = $this->users->create($attributes);
             $user->syncRoles([$roleName]);
-            if ($role === UserRole::StationManager) {
-                $this->hierarchies->syncStationManager($user, $data['station_ids']);
-            }
 
             return $user;
         });
@@ -76,7 +73,6 @@ final class UserService
 
             $user = $this->users->update($user, $attributes);
             $user->syncRoles([$roleName]);
-            $this->hierarchies->syncStationManager($user, $role === UserRole::StationManager ? $data['station_ids'] : []);
 
             return $user;
         });
@@ -97,7 +93,7 @@ final class UserService
      */
     private function attributesForRole(array $data, ?UserRole $role, string $roleName): array
     {
-        $attributes = Arr::except($data, ['role', 'line_id', 'station_ids', 'password_confirmation']);
+        $attributes = Arr::except($data, ['role', 'line_id', 'password_confirmation']);
 
         if (! $this->roles->requiresDirectStationAssignment($roleName)) {
             $attributes['station_id'] = null;

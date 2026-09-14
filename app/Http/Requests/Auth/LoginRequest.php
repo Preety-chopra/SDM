@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests\Auth;
 
-use App\Enums\UserRole;
 use App\Models\Station;
 use App\Rules\Username;
 use Illuminate\Auth\Events\Lockout;
@@ -34,7 +33,7 @@ class LoginRequest extends FormRequest
         return [
             'username' => ['required', 'string', 'max:255', new Username],
             'password' => ['required', 'string'],
-            'station_id' => ['nullable', 'integer', Rule::exists(Station::class, 'id')->where('is_active', true)],
+            'station_id' => ['required', 'integer', Rule::exists(Station::class, 'id')->where('is_active', true)],
         ];
     }
 
@@ -53,16 +52,6 @@ class LoginRequest extends FormRequest
             'is_enabled' => true,
         ], $this->boolean('remember'))) {
             $this->failAuthentication();
-        }
-
-        $user = Auth::user();
-        if ($user?->hasRole(UserRole::Station->value) && $user->station_id !== $this->integer('station_id')) {
-            Auth::guard('web')->logout();
-            RateLimiter::hit($this->throttleKey());
-
-            throw ValidationException::withMessages([
-                'station_id' => 'Select the station assigned to this Station Controller account.',
-            ]);
         }
 
         RateLimiter::clear($this->throttleKey());

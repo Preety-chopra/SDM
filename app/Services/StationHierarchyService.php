@@ -13,11 +13,6 @@ final class StationHierarchyService
 {
     public function __construct(private StationHierarchyRepositoryInterface $hierarchies) {}
 
-    public function all(): Collection
-    {
-        return $this->hierarchies->allWithRelations();
-    }
-
     /** @return array<int, array{subordinateRole: UserRole, supervisorRole: UserRole, subordinates: Collection, supervisors: Collection}> */
     public function mappingLevels(): array
     {
@@ -64,20 +59,22 @@ final class StationHierarchyService
     /** @return array<string, User> */
     public function resolveForStation(int $stationId, ?string $stationManagerEmployeeNumber = null): array
     {
-        $hierarchy = $stationId > 0 ? $this->hierarchies->findForStation($stationId) : null;
-        $assignee = $hierarchy?->stationManager;
-        $assignments = [];
-
-        if (filled($stationManagerEmployeeNumber) && $assignee?->employee_number !== $stationManagerEmployeeNumber) {
+        if (blank($stationManagerEmployeeNumber)) {
             throw ValidationException::withMessages([
-                'station_manager_employee_number' => 'Enter the employee number of the enabled Station Manager assigned to this station.',
+                'station_manager_employee_number' => 'Enter the employee number of an enabled Station Manager.',
             ]);
         }
+
+        $assignee = $this->hierarchies->findEnabledUserForRoleByEmployeeNumber(
+            UserRole::StationManager,
+            $stationManagerEmployeeNumber,
+        );
+        $assignments = [];
 
         foreach (WorkflowStage::cases() as $stage) {
             if (! $assignee?->is_enabled || ! $assignee->hasRole($stage->role()->value)) {
                 throw ValidationException::withMessages([
-                    'hierarchy' => 'The station approval hierarchy is incomplete. Ask an administrator to configure every reporting relationship.',
+                    'hierarchy' => 'The approval hierarchy is incomplete. Ask an administrator to configure every reporting relationship.',
                 ]);
             }
 
@@ -88,9 +85,50 @@ final class StationHierarchyService
         return $assignments;
     }
 
-    public function syncStationManager(User $user, array $stationIds): void
+    /** @return array<string, User> */
+    public function resolveForStationManagerSubmission(User $creator, ?string $lineManagerEmployeeNumber): array
     {
-        $this->hierarchies->syncStationManager($user, $stationIds);
+        if (! $creator->is_enabled || ! $creator->hasRole(UserRole::StationManager->value)) {
+            throw ValidationException::withMessages([
+                'hierarchy' => 'Only an enabled Station Manager can use Station Manager forwarding.',
+            ]);
+        }
+
+        if (blank($lineManagerEmployeeNumber)) {
+            throw ValidationException::withMessages([
+                'line_manager_employee_number' => 'Enter the employee number of an enabled Manager/Assistant Manager (O)-Line.',
+            ]);
+        }
+
+        $lineManager = $this->hierarchies->findEnabledUserForRoleByEmployeeNumber(
+            UserRole::AssistantManager,
+            $lineManagerEmployeeNumber,
+        );
+
+        if (! $lineManager) {
+            throw ValidationException::withMessages([
+                'line_manager_employee_number' => 'Enter the employee number of an enabled Manager/Assistant Manager (O)-Line.',
+            ]);
+        }
+
+        $assignments = [
+            WorkflowStage::StationManager->value => $creator,
+            WorkflowStage::LineManager->value => $lineManager,
+        ];
+        $assignee = $lineManager;
+
+        foreach ([WorkflowStage::OperationsManager, WorkflowStage::DeputyGeneralManager] as $stage) {
+            $assignee = $this->hierarchies->findSupervisorFor($assignee);
+            if (! $assignee?->is_enabled || ! $assignee->hasRole($stage->role()->value)) {
+                throw ValidationException::withMessages([
+                    'hierarchy' => 'The approval hierarchy is incomplete. Ask an administrator to configure every reporting relationship.',
+                ]);
+            }
+
+            $assignments[$stage->value] = $assignee;
+        }
+
+        return $assignments;
     }
 
     public function ensureUserCanBeChanged(User $user): void

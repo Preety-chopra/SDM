@@ -4,7 +4,6 @@ namespace App\Repositories\Eloquent;
 
 use App\Contracts\Repositories\ServiceDeficiencyMemoRepositoryInterface;
 use App\Enums\MemoStatus;
-use App\Enums\UserPermission;
 use App\Enums\WorkflowStage;
 use App\Enums\WorkflowStepType;
 use App\Models\ServiceDeficiencyMemo;
@@ -23,17 +22,6 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
                 'cancellationApproval' => fn ($query) => $query->select(['memo_approvals.id', 'memo_approvals.memo_id', 'memo_approvals.role', 'memo_approvals.decision', 'memo_approvals.acted_at']),
                 'cancellationWorkflowStep' => fn ($query) => $query->select(['memo_workflow_steps.id', 'memo_workflow_steps.memo_id', 'memo_workflow_steps.stage', 'memo_workflow_steps.decision', 'memo_workflow_steps.acted_at']),
             ])
-            ->when(! $user->can(UserPermission::ViewAllMemos->value), fn ($query) => $query->where(function ($query) use ($user): void {
-                $query->whereBelongsTo($user, 'creator')->orWhereHas('approvals', function ($query) use ($user): void {
-                    $query->where('assigned_to', $user->id)->where(function ($query): void {
-                        $query->where('decision', '!=', 'pending')->orWhereColumn('memo_approvals.role', 'service_deficiency_memos.current_stage');
-                    });
-                })->orWhere(function ($query) use ($user): void {
-                    $query->where('status', MemoStatus::Cancelled->value)
-                        ->whereHas('approvals', fn ($query) => $query->where('assigned_to', $user->id));
-                })->orWhereHas('workflowSteps', fn ($query) => $query->where('assigned_to', $user->id))
-                    ->when($user->can(UserPermission::ViewRoutedMemos->value), fn ($query) => $query->orWhere('cmc_staff_id', $user->id));
-            }))
             ->when($pendingStage, fn ($query) => $query
                 ->whereIn('status', [MemoStatus::Submitted->value, MemoStatus::UnderReview->value])
                 ->where('current_stage', $pendingStage->value)

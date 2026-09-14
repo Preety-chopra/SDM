@@ -20,7 +20,6 @@ Alpine.data('userForm', () => ({
     role: '',
     directStationRoles: [],
     stationRole: '',
-    stationManagerRole: '',
     get requiresDirectStation() {
         return this.directStationRoles.includes(this.role);
     },
@@ -28,7 +27,6 @@ Alpine.data('userForm', () => ({
         this.role = this.$el.dataset.role || '';
         this.directStationRoles = JSON.parse(this.$el.dataset.directStationRoles || '[]');
         this.stationRole = this.$el.dataset.stationRole || '';
-        this.stationManagerRole = this.$el.dataset.stationManagerRole || '';
     },
 }));
 
@@ -38,6 +36,35 @@ Alpine.data('contractForm', () => ({
     init() {
         this.lineId = this.$el.dataset.lineId || '';
         this.stationId = this.$el.dataset.stationId || '';
+    },
+}));
+
+Alpine.data('employeeAutocomplete', () => ({
+    candidates: [],
+    query: '',
+    open: false,
+    init() {
+        this.candidates = JSON.parse(this.$el.dataset.candidates || '[]');
+        this.query = this.$el.dataset.initialValue || '';
+    },
+    get filteredCandidates() {
+        const employeeNumber = this.query.trim().toLowerCase();
+
+        if (!employeeNumber) {
+            return this.candidates;
+        }
+
+        return this.candidates.filter((candidate) => candidate.employee_number.toLowerCase().includes(employeeNumber));
+    },
+    matches(employeeNumber) {
+        return employeeNumber.toLowerCase().includes(this.query.trim().toLowerCase());
+    },
+    select(employeeNumber) {
+        this.query = employeeNumber;
+        this.open = false;
+    },
+    close() {
+        this.open = false;
     },
 }));
 

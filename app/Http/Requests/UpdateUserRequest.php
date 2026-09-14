@@ -47,13 +47,6 @@ class UpdateUserRequest extends FormRequest
                     ->where('is_active', true)
                     ->when($requiresDirectStation, fn (Builder $query) => $query->where('line_id', $this->input('line_id')))),
             ],
-            'station_ids' => [
-                Rule::requiredIf($role === UserRole::StationManager),
-                Rule::prohibitedIf($role !== null && $role !== UserRole::StationManager),
-                'array',
-                'min:1',
-            ],
-            'station_ids.*' => ['integer', 'distinct', Rule::exists(Station::class, 'id')->where('is_active', true)],
             'line_id' => [
                 Rule::requiredIf($requiresDirectStation),
                 Rule::prohibitedIf(! $requiresDirectStation),

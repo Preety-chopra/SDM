@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\DeficiencyType;
 use App\Enums\SdmType;
+use App\Enums\UserPermission;
 use App\Enums\UserRole;
 use App\Enums\WorkflowStepType;
 use App\Http\Requests\ListMemosRequest;
@@ -12,6 +13,7 @@ use App\Http\Requests\StoreMemoRequest;
 use App\Http\Requests\SubmitMemoRequest;
 use App\Http\Requests\UpdateMemoRequest;
 use App\Models\ServiceDeficiencyMemo;
+use App\Models\User;
 use App\Services\MasterDataService;
 use App\Services\ServiceDeficiencyMemoService;
 use App\Services\UserService;
@@ -120,20 +122,31 @@ class ServiceDeficiencyMemoController extends Controller
 
     private function formView(Request $request, ?ServiceDeficiencyMemo $memo = null): View
     {
-        $managedStations = $request->user()->hasRole(UserRole::StationManager->value)
-            ? $request->user()->managedStationHierarchies()->with('station.metroLine')->get()->pluck('station')->filter()
-            : collect();
-        $station = $request->user()->station()->with('metroLine')->first() ?? $managedStations->first();
-        abort_unless($station, 422, 'This account must be assigned to at least one station.');
+        $stations = $this->masterData->stations(true);
+        $selectedStationId = $memo?->station_id
+            ?? $request->session()->get('auth.station_id', $request->user()->station_id);
+        $station = $stations->firstWhere('id', (int) $selectedStationId);
+        abort_unless($station, 422, 'Select an active station when signing in.');
+
+        $forwardingRole = match (true) {
+            $request->user()->hasRole(UserRole::StationManager->value) => UserRole::AssistantManager,
+            ! $request->user()->hasRole(UserRole::Administrator->value)
+                && $request->user()->can(UserPermission::SubmitOwnDraftMemos->value) => UserRole::StationManager,
+            default => null,
+        };
 
         return view('sdm-memos.form', [
             'memo' => $memo,
             'station' => $station,
             'contractors' => $this->masterData->contractors(true),
-            'stations' => $this->masterData->stations(true),
-            'issuanceStations' => $managedStations->sortBy('name')->values(),
+            'stations' => $stations,
+            'issuanceStations' => collect(),
             'sdmTypes' => SdmType::cases(),
             'deficiencyTypes' => DeficiencyType::cases(),
+            'forwardingRole' => $forwardingRole,
+            'forwardingCandidates' => $forwardingRole
+                ? $this->users->enabledForRole($forwardingRole)->filter(fn (User $user): bool => filled($user->employee_number))->values()
+                : collect(),
         ]);
     }
 }

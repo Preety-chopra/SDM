@@ -40,7 +40,7 @@
             <span x-show="! collapsed || mobileOpen" x-transition.opacity>Dashboard</span>
         </a>
 
-        @canany([\App\Enums\UserPermission::ViewOwnMemos->value, \App\Enums\UserPermission::ViewAllMemos->value, \App\Enums\UserPermission::ViewRoutedMemos->value])
+        @can('viewAny', \App\Models\ServiceDeficiencyMemo::class)
             <a href="{{ route('sdm-memos.index') }}" title="Service Deficiency Memos" class="relative {{ $baseClasses }} {{ request()->routeIs('sdm-memos.*') ? $activeClasses : $idleClasses }}">
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 3.5h8l4 4V20a1 1 0 0 1-1 1H7a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2ZM14 3v5h5M9 12h6M9 16h6" /></svg>
                 <span x-show="! collapsed || mobileOpen" x-transition.opacity class="flex-1">All memos</span>
@@ -53,7 +53,7 @@
                     >{{ $pendingMemoCount > 99 ? '99+' : $pendingMemoCount }}</span>
                 @endif
             </a>
-        @endcanany
+        @endcan
         @can('create', \App\Models\ServiceDeficiencyMemo::class)
             <a href="{{ route('sdm-memos.create') }}" title="Create SDM memo" class="{{ $baseClasses }} bg-emerald-700 text-white hover:bg-emerald-800">
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M12 5v14M5 12h14" /></svg>

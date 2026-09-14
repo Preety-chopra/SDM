@@ -3,7 +3,6 @@
 namespace App\Repositories\Eloquent;
 
 use App\Contracts\Repositories\UserRepositoryInterface;
-use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -16,7 +15,6 @@ final class UserRepository implements UserRepositoryInterface
         return User::query()
             ->select(['id', 'name', 'email', 'employee_number', 'phone', 'designation', 'station_id', 'is_enabled', 'created_at'])
             ->with('station:id,code,name')
-            ->when($role === UserRole::StationManager->value, fn (Builder $query) => $query->with('managedStationHierarchies.station:id,code,name'))
             ->role($role)
             ->when($search, function (Builder $query, string $search): void {
                 $query->where(function (Builder $query) use ($search): void {

@@ -18,7 +18,6 @@ class StationHierarchyController extends Controller
         Gate::authorize(UserPermission::ManageSdmHierarchy->value);
 
         return view('hierarchies.index', [
-            'hierarchies' => $this->hierarchies->all(),
             'mappingLevels' => $this->hierarchies->mappingLevels(),
             'reportingRelationships' => $this->hierarchies->reportingRelationships(),
         ]);

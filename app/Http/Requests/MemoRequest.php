@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\DeficiencyType;
 use App\Enums\SdmType;
+use App\Enums\UserPermission;
 use App\Enums\UserRole;
 use App\Models\Contractor;
 use App\Models\ServiceContract;
@@ -21,6 +22,15 @@ abstract class MemoRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $memo = $this->route('sdm_memo');
+        $stationId = $memo instanceof ServiceDeficiencyMemo
+            ? $memo->station_id
+            : $this->session()->get('auth.station_id', $this->user()?->station_id);
+
+        if ($stationId !== null) {
+            $this->merge(['station_id' => $stationId]);
+        }
+
         $incidentDate = $this->input('incident_date');
         if (is_string($incidentDate) && preg_match('/^(\d{2})-(\d{2})-(\d{4})$/D', $incidentDate, $parts) === 1) {
             $this->merge(['incident_date' => "{$parts[3]}-{$parts[2]}-{$parts[1]}"]);
@@ -55,8 +65,8 @@ abstract class MemoRequest extends FormRequest
         $types = $this->input('deficiencies', []);
         $serviceType = SdmType::tryFrom($this->string('service_type')->toString());
         $memo = $this->route('sdm_memo');
-        $isStationManager = $this->user()?->hasRole(UserRole::StationManager->value) === true;
-        $isStationController = $this->user()?->hasRole(UserRole::Station->value) === true;
+        $isStationController = $this->isStationControllerUser();
+        $isStationManager = $this->user()?->hasRole(UserRole::StationManager->value) ?? false;
         $uniqueSerial = Rule::unique(ServiceDeficiencyMemo::class, 'serial_number')
             ->where(fn (Builder $query) => $query->where('service_type', $this->string('service_type')->toString()))
             ->ignore($memo instanceof ServiceDeficiencyMemo ? $memo->id : null);
@@ -65,12 +75,13 @@ abstract class MemoRequest extends FormRequest
             'service_type' => ['required', Rule::enum(SdmType::class)],
             'serial_number' => ['required', 'string', 'max:50', $uniqueSerial],
             'contractor_id' => [$strict ? 'required' : 'nullable', Rule::exists(Contractor::class, 'id')->where(fn (Builder $query) => $query->where('is_active', true))],
-            'station_id' => [Rule::requiredIf($isStationManager), Rule::prohibitedIf(! $isStationManager), 'nullable', Rule::exists(Station::class, 'id')->where('is_active', true)],
+            'station_id' => ['required', 'integer', Rule::exists(Station::class, 'id')->where('is_active', true)],
             'incident_date' => [$strict ? 'required' : 'nullable', 'date_format:Y-m-d'],
             'incident_time' => [$strict ? 'required' : 'nullable', 'date_format:H:i'],
             'staff_name' => [$strict ? 'required' : 'nullable', 'string', 'max:255'],
             'employee_number' => [$strict ? 'required' : 'nullable', 'string', 'max:100'],
             'station_manager_employee_number' => [Rule::requiredIf($strict && $isStationController), 'nullable', 'string', 'max:100'],
+            'line_manager_employee_number' => [Rule::requiredIf($strict && $isStationManager), 'nullable', 'string', 'max:100'],
             'deficiencies' => [$strict ? 'required' : 'nullable', 'array', $strict ? 'min:1' : 'max:5'],
             'deficiencies.*' => [Rule::enum(DeficiencyType::class), 'distinct'],
             'deficiency_remarks' => ['nullable', 'array'],
@@ -123,7 +134,7 @@ abstract class MemoRequest extends FormRequest
             if ($this->requiresContractWorkflow()
                 && ! $validator->errors()->hasAny(['contractor_id', 'service_type', 'incident_date'])) {
                 $incidentDate = $this->date('incident_date');
-                $stationId = $this->integer('station_id') ?: (int) $this->user()?->station_id;
+                $stationId = $this->integer('station_id');
                 $matchingContracts = ServiceContract::query()
                     ->where('status', 'published')
                     ->where('contractor_id', $this->integer('contractor_id'))
@@ -140,26 +151,33 @@ abstract class MemoRequest extends FormRequest
                 }
             }
 
-            if ($this->user()?->hasRole(UserRole::StationManager->value) && $this->filled('station_id')) {
-                $mapped = $this->user()->managedStationHierarchies()->where('station_id', $this->integer('station_id'))->exists();
-                if (! $mapped) {
-                    $validator->errors()->add('station_id', 'Select a station assigned to this Station Manager account.');
-                }
-            }
-
             if ($this->isSubmission()
-                && $this->user()?->hasRole(UserRole::Station->value)
+                && $this->isStationControllerUser()
                 && $this->filled('station_manager_employee_number')
                 && ! $validator->errors()->has('station_manager_employee_number')) {
                 $stationManager = User::query()
                     ->role(UserRole::StationManager->value)
                     ->where('employee_number', $this->string('station_manager_employee_number')->toString())
                     ->where('is_enabled', true)
-                    ->whereHas('managedStationHierarchies', fn ($query) => $query->where('station_id', $this->user()->station_id))
                     ->exists();
 
                 if (! $stationManager) {
-                    $validator->errors()->add('station_manager_employee_number', 'Enter the employee number of the enabled Station Manager assigned to this station.');
+                    $validator->errors()->add('station_manager_employee_number', 'Enter the employee number of an enabled Station Manager.');
+                }
+            }
+
+            if ($this->isSubmission()
+                && $this->user()?->hasRole(UserRole::StationManager->value)
+                && $this->filled('line_manager_employee_number')
+                && ! $validator->errors()->has('line_manager_employee_number')) {
+                $lineManager = User::query()
+                    ->role(UserRole::AssistantManager->value)
+                    ->where('employee_number', $this->string('line_manager_employee_number')->toString())
+                    ->where('is_enabled', true)
+                    ->exists();
+
+                if (! $lineManager) {
+                    $validator->errors()->add('line_manager_employee_number', 'Enter the employee number of an enabled Manager/Assistant Manager (O)-Line.');
                 }
             }
 
@@ -174,5 +192,15 @@ abstract class MemoRequest extends FormRequest
     private function requiresContractWorkflow(): bool
     {
         return $this->isSubmission() && (bool) config('sdm.require_contract_workflow');
+    }
+
+    private function isStationControllerUser(): bool
+    {
+        $user = $this->user();
+
+        return $user !== null
+            && ! $user->hasRole(UserRole::StationManager->value)
+            && ! $user->hasRole(UserRole::Administrator->value)
+            && $user->can(UserPermission::SubmitOwnDraftMemos->value);
     }
 }

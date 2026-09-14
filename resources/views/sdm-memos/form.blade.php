@@ -7,6 +7,7 @@
     $incidentTime = substr((string) old('incident_time', $memo?->incident_time ?? now('Asia/Kolkata')->format('H:i')), 0, 5);
     $inputClass = 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100';
     $isDraft = ! $memo || $memo->status === \App\Enums\MemoStatus::Draft;
+    $requiresForwarding = $forwardingRole !== null && $isDraft;
     $pageTitle = $memo ? ($isDraft ? 'Edit SDM draft' : 'Edit submitted SDM') : 'Create Service Deficiency Memo';
 @endphp
 <x-app-layout :title="$pageTitle">
@@ -51,7 +52,7 @@
                             </select>
                             <x-input-error :messages="$errors->get('service_type')" class="mt-2"/>
                         </div>
-                        @if($issuanceStations->isNotEmpty())
+                        {{-- @if($issuanceStations->isNotEmpty())
                             <div class="md:col-span-2">
                                 <x-input-label for="station_id" value="Issuing station" required/>
                                 <select id="station_id" name="station_id" class="{{ $inputClass }}" required>
@@ -70,7 +71,37 @@
                             <div>
                                 <x-input-label value="Station"/><p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ $station->code }} · {{ $station->name }}</p>
                             </div>
-                        @endif
+                        @endif --}}
+                        <div>
+                            <x-input-label value="Line" required/>
+
+                            <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                                {{ collect([
+                                    $station?->metroLine?->code,
+                                    $station?->metroLine?->name,
+                                ])->filter()->join(' · ') ?: 'Not assigned' }}
+                            </p>
+                        </div>
+
+                        <div>
+                            <x-input-label value="Station" required/>
+
+                            <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                                {{ collect([
+                                    $station?->code,
+                                    $station?->name,
+                                ])->filter()->join(' · ') ?: 'Not assigned' }}
+                            </p>
+
+                            <input
+                                type="hidden"
+                                name="station_id"
+                                value="{{ $station->id }}"
+                            />
+
+                            <x-input-error :messages="$errors->get('station_id')" class="mt-2"/>
+                        </div>
+
                         <div>
                             <x-input-label for="contractor_id" value="Contractor" required/>
                             <select id="contractor_id" name="contractor_id" class="{{ $inputClass }}">
@@ -101,13 +132,6 @@
                             <x-text-input id="staff_name" name="staff_name" class="mt-1 block w-full" :value="old('staff_name',$memo?->staff_name)"/>
                             <x-input-error :messages="$errors->get('staff_name')" class="mt-2"/>
                         </div>
-                        @if(auth()->user()->hasRole(\App\Enums\UserRole::Station->value) && $isDraft)
-                            <div>
-                                <x-input-label for="station_manager_employee_number" value="Forward to Station Manager (employee number)" required/>
-                                <x-text-input id="station_manager_employee_number" name="station_manager_employee_number" class="mt-1 block w-full" :value="old('station_manager_employee_number')"/>
-                                <x-input-error :messages="$errors->get('station_manager_employee_number')" class="mt-2"/>
-                            </div>
-                        @endif
                     </div>
                 </section>
 
@@ -212,6 +236,34 @@
                         </div>
                     @endif
                 </section>
+
+                @if($requiresForwarding)
+                    <section class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/40">
+                        <h3 class="text-lg font-semibold text-emerald-950 dark:text-emerald-100">Forwarding on submission</h3>
+                        @if($forwardingRole === \App\Enums\UserRole::StationManager)
+                            <p class="mt-1 text-sm text-emerald-800 dark:text-emerald-200">Enter the employee number of the SM who should receive this SDM immediately after submission.</p>
+                        @else
+                            <p class="mt-1 text-sm text-emerald-800 dark:text-emerald-200">Select the Manager/Assistant Manager (O)-Line who should receive this SDM immediately after submission.</p>
+                        @endif
+                        <div class="mt-5">
+                            @php
+                                $forwardingField = $forwardingRole === \App\Enums\UserRole::StationManager
+                                    ? 'station_manager_employee_number'
+                                    : 'line_manager_employee_number';
+                                $forwardingLabel = $forwardingRole === \App\Enums\UserRole::StationManager
+                                    ? 'SM employee number'
+                                    : 'Manager/Assistant Manager (O)-Line employee number';
+                            @endphp
+                            <x-employee-autocomplete
+                                :name="$forwardingField"
+                                :label="$forwardingLabel"
+                                :candidates="$forwardingCandidates"
+                                :value="old($forwardingField)"
+                            />
+                            <x-input-error :messages="$errors->get($forwardingField)" class="mt-2"/>
+                        </div>
+                    </section>
+                @endif
 
                 <div class="flex flex-wrap justify-end gap-3">
                     <a href="{{ route('sdm-memos.index') }}" class="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200">Cancel</a>

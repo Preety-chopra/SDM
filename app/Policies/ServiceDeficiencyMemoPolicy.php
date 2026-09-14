@@ -4,7 +4,6 @@ namespace App\Policies;
 
 use App\Enums\MemoStatus;
 use App\Enums\UserPermission;
-use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
 use App\Enums\WorkflowStepType;
 use App\Models\ServiceDeficiencyMemo;
@@ -14,32 +13,17 @@ class ServiceDeficiencyMemoPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->canAny([UserPermission::ViewOwnMemos->value, UserPermission::ViewAllMemos->value, UserPermission::ViewRoutedMemos->value]);
+        return true;
     }
 
     public function create(User $user): bool
     {
-        return $user->can(UserPermission::CreateMemos->value)
-            && ($user->station_id !== null || ($user->hasRole(UserRole::StationManager->value) && $user->managedStationHierarchies()->exists()));
+        return $user->can(UserPermission::CreateMemos->value);
     }
 
     public function view(User $user, ServiceDeficiencyMemo $memo): bool
     {
-        if ($memo->workflow_version === 2) {
-            return $user->can(UserPermission::ViewAllMemos->value)
-                || ($user->can(UserPermission::ViewOwnMemos->value) && $memo->created_by === $user->id)
-                || ($user->can(UserPermission::ViewRoutedMemos->value) && $memo->cmc_staff_id === $user->id)
-                || ($user->can(UserPermission::ViewRoutedMemos->value) && $memo->workflowSteps()->where('assigned_to', $user->id)->exists());
-        }
-
-        return $user->can(UserPermission::ViewAllMemos->value)
-            || ($user->can(UserPermission::ViewOwnMemos->value) && $memo->created_by === $user->id)
-            || ($memo->status === MemoStatus::Cancelled
-                && $user->can(UserPermission::ViewRoutedMemos->value)
-                && $memo->approvals()->where('assigned_to', $user->id)->exists())
-            || ($user->can(UserPermission::ViewRoutedMemos->value) && $memo->approvals()->where('assigned_to', $user->id)->where(function ($query) use ($memo): void {
-                $query->where('decision', '!=', 'pending')->orWhere('role', $memo->current_stage?->value);
-            })->exists());
+        return true;
     }
 
     public function act(User $user, ServiceDeficiencyMemo $memo): bool
@@ -61,7 +45,7 @@ class ServiceDeficiencyMemoPolicy
         return $user->can(UserPermission::UpdateOwnDraftMemos->value)
             && $memo->created_by === $user->id
             && ($memo->status === MemoStatus::Draft
-                || ($user->hasRole(UserRole::Station->value) && $this->isEditableSubmittedMemo($memo)));
+                || ($user->station_id !== null && $this->isEditableSubmittedMemo($memo)));
     }
 
     public function submit(User $user, ServiceDeficiencyMemo $memo): bool

@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable(['code', 'name', 'line_id', 'is_active'])]
 class Station extends Model
@@ -27,11 +26,6 @@ class Station extends Model
     public function memos(): HasMany
     {
         return $this->hasMany(ServiceDeficiencyMemo::class);
-    }
-
-    public function hierarchy(): HasOne
-    {
-        return $this->hasOne(StationHierarchy::class);
     }
 
     protected function casts(): array

@@ -1,6 +1,6 @@
-@props(['action', 'method' => 'POST', 'managedUser' => null, 'selectedRole', 'roles', 'lines', 'stations', 'directStationRoleNames', 'managedStationIds' => [], 'submitLabel'])
+@props(['action', 'method' => 'POST', 'managedUser' => null, 'selectedRole', 'roles', 'lines', 'stations', 'directStationRoleNames', 'submitLabel'])
 
-<form method="POST" action="{{ $action }}" class="flex flex-col gap-6" x-data="userForm" data-role="{{ old('role', $selectedRole->name) }}" data-direct-station-roles='@json($directStationRoleNames)' data-station-role="{{ \App\Enums\UserRole::Station->value }}" data-station-manager-role="{{ \App\Enums\UserRole::StationManager->value }}">
+<form method="POST" action="{{ $action }}" class="flex flex-col gap-6" x-data="userForm" data-role="{{ old('role', $selectedRole->name) }}" data-direct-station-roles='@json($directStationRoleNames)' data-station-role="{{ \App\Enums\UserRole::Station->value }}">
     @csrf
     @if (strtoupper($method) !== 'POST')
         @method($method)
@@ -27,9 +27,9 @@
             </select>
             <x-input-error :messages="$errors->get('role')" class="mt-2" />
         </div>
-        <div x-cloak x-show="requiresDirectStation">
-            <x-input-label for="line_id" value="Line" required />
-            <select id="line_id" name="line_id" :disabled="! requiresDirectStation" :required="requiresDirectStation" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+        <div>
+            <x-input-label for="line_id" value="Line" />
+            <select id="line_id" name="line_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
                 <option value="">Select a line</option>
                 @foreach ($lines as $line)
                     <option value="{{ $line->id }}" @selected((string) old('line_id', $managedUser?->station?->line_id) === (string) $line->id)>{{ $line->code }} · {{ $line->name }}</option>
@@ -38,24 +38,14 @@
             <x-input-error :messages="$errors->get('line_id')" class="mt-2" />
         </div>
         <div>
-            <x-input-label for="station_id" value="Station" required />
-            <select id="station_id" name="station_id" :disabled="! requiresDirectStation" :required="requiresDirectStation" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+            <x-input-label for="station_id" value="Station" />
+            <select id="station_id" name="station_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
                 <option value="">Select a station</option>
                 @foreach ($stations as $station)
                     <option value="{{ $station->id }}" @selected((string) old('station_id', $managedUser?->station_id) === (string) $station->id)>{{ $station->metroLine->code }} · {{ $station->code }} · {{ $station->name }}</option>
                 @endforeach
             </select>
             <x-input-error :messages="$errors->get('station_id')" class="mt-2" />
-        </div>
-        <div class="md:col-span-2" x-cloak x-show="role === stationManagerRole">
-            <x-input-label for="station_ids" value="Stations managed by this Station Manager" required />
-            <select id="station_ids" name="station_ids[]" multiple size="8" :disabled="role !== stationManagerRole" :required="role === stationManagerRole" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
-                @foreach ($stations as $station)
-                    <option value="{{ $station->id }}" @selected(in_array($station->id, old('station_ids', $managedStationIds)))>{{ $station->metroLine->code }} · {{ $station->code }} · {{ $station->name }}</option>
-                @endforeach
-            </select>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Hold Ctrl (Windows) or Command (Mac) to select multiple stations.</p>
-            <x-input-error :messages="$errors->get('station_ids')" class="mt-2" />
         </div>
         <div>
             <x-input-label for="employee_number">Employee number <span x-show="role !== stationRole" data-required-marker aria-hidden="true" class="font-bold !text-red-600 dark:!text-red-400">*</span><span x-show="role !== stationRole" class="sr-only"> (required)</span></x-input-label>

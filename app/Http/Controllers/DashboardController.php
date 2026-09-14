@@ -6,6 +6,7 @@ use App\Enums\UserPermission;
 use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
 use App\Enums\WorkflowStepType;
+use App\Models\ServiceDeficiencyMemo;
 use App\Services\RoleService;
 use App\Services\ServiceDeficiencyMemoService;
 use App\Services\UserService;
@@ -23,10 +24,7 @@ class DashboardController extends Controller
     public function __invoke(Request $request): View
     {
         $canManageUsers = $request->user()->can(UserPermission::ViewUsers->value);
-        $canUseMemos = $request->user()->canAny([
-            UserPermission::ViewOwnMemos->value,
-            UserPermission::ViewAllMemos->value,
-        ]);
+        $canUseMemos = $request->user()->can('viewAny', ServiceDeficiencyMemo::class);
 
         $roles = $canManageUsers ? $this->roles->managedRoles() : collect();
         $isAdministrator = $request->user()->hasRole(UserRole::Administrator->value);

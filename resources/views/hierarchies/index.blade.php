@@ -21,8 +21,8 @@
             @endif
 
             <div class="overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/30">
-                <div class="grid divide-y divide-emerald-200 text-center text-sm font-semibold text-emerald-950 lg:grid-cols-5 lg:divide-x lg:divide-y-0 dark:divide-emerald-900 dark:text-emerald-100">
-                    @foreach(['Station', 'Station Manager', 'Assistant Manager', 'Manager (Operations)', 'DGM/O'] as $step)
+                <div class="grid divide-y divide-emerald-200 text-center text-sm font-semibold text-emerald-950 lg:grid-cols-4 lg:divide-x lg:divide-y-0 dark:divide-emerald-900 dark:text-emerald-100">
+                    @foreach(['Station Manager', 'Assistant Manager', 'Manager (Operations)', 'DGM/O'] as $step)
                         @if(!$loop->last)
                             <div class="flex items-center justify-center gap-2 px-3 py-3">
                                 <span>{{ $step }}</span>
@@ -33,22 +33,6 @@
                     <div class="px-3 py-3">DGM/O</div>
                 </div>
             </div>
-
-            <section class="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                <div class="border-b border-gray-200 px-5 py-4 dark:border-gray-700">
-                    <h3 class="font-semibold text-gray-900 dark:text-white">Stations → Station Managers</h3>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Station assignments are managed when creating or editing a Station Manager.</p>
-                </div>
-                <div class="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    @foreach($hierarchies as $hierarchy)
-                        <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/60">
-                            <p class="font-medium text-gray-900 dark:text-white">{{ $hierarchy->station->name }}</p>
-                            <p class="text-xs text-gray-500 dark:text-gray-400">{{ $hierarchy->station->metroLine?->name }}</p>
-                            <p class="mt-2 text-sm text-emerald-700 dark:text-emerald-300">{{ $hierarchy->stationManager?->name ?? 'Not assigned' }}</p>
-                        </div>
-                    @endforeach
-                </div>
-            </section>
 
             <div class="grid items-start gap-6 xl:grid-cols-3">
                 @foreach($mappingLevels as $level)

@@ -49,43 +49,60 @@ class AuthenticationTest extends TestCase
     public function test_users_can_authenticate_using_the_login_screen(): void
     {
         $user = User::factory()->create(['name' => 'Central Station']);
+        $station = Station::query()->create([
+            'code' => 'CENTRAL',
+            'name' => 'Central Station',
+            'is_active' => true,
+        ]);
 
         $response = $this->post('/login', [
             'username' => $user->name,
             'password' => 'password',
+            'station_id' => $station->id,
         ]);
 
         $this->assertAuthenticated();
-        $response->assertRedirect(route('dashboard', absolute: false));
+        $response
+            ->assertRedirect(route('dashboard', absolute: false))
+            ->assertSessionHas('auth.station_id', $station->id);
     }
 
-    public function test_login_lists_active_stations_alphabetically_and_station_controller_must_select_their_station(): void
+    public function test_login_lists_active_stations_and_requires_every_user_to_select_one(): void
     {
         $line = Line::query()->create(['code' => 'BLUE', 'name' => 'Blue Line', 'is_active' => true]);
         $zulu = Station::query()->create(['code' => 'ZULU', 'name' => 'Zulu Station', 'line_id' => $line->id, 'is_active' => true]);
         $alpha = Station::query()->create(['code' => 'ALPHA', 'name' => 'Alpha Station', 'line_id' => $line->id, 'is_active' => true]);
-        Station::query()->create(['code' => 'DISABLED', 'name' => 'Disabled Station', 'line_id' => $line->id, 'is_active' => false]);
-        $controller = User::factory()->create(['name' => 'Station Controller', 'station_id' => $alpha->id]);
-        $controller->assignRole(UserRole::Station->value);
+        $disabled = Station::query()->create(['code' => 'DISABLED', 'name' => 'Disabled Station', 'line_id' => $line->id, 'is_active' => false]);
+        $user = User::factory()->create(['name' => 'Operations User']);
+        $user->assignRole(UserRole::AssistantManager->value);
 
         $this->get(route('login'))
             ->assertOk()
             ->assertSeeInOrder(['Alpha Station', 'Zulu Station'])
-            ->assertDontSee('Disabled Station');
+            ->assertDontSee('Disabled Station')
+            ->assertSee('name="station_id"', false)
+            ->assertSee('id="station_id" name="station_id"', false);
 
         $this->post(route('login'), [
-            'username' => $controller->name,
+            'username' => $user->name,
             'password' => 'password',
-            'station_id' => $zulu->id,
         ])->assertSessionHasErrors('station_id');
         $this->assertGuest();
 
         $this->post(route('login'), [
-            'username' => $controller->name,
+            'username' => $user->name,
             'password' => 'password',
-            'station_id' => $alpha->id,
-        ])->assertRedirect(route('dashboard', absolute: false));
-        $this->assertAuthenticatedAs($controller);
+            'station_id' => $disabled->id,
+        ])->assertSessionHasErrors('station_id');
+        $this->assertGuest();
+
+        $this->post(route('login'), [
+            'username' => $user->name,
+            'password' => 'password',
+            'station_id' => $zulu->id,
+        ])->assertRedirect(route('dashboard', absolute: false))
+            ->assertSessionHas('auth.station_id', $zulu->id);
+        $this->assertAuthenticatedAs($user);
     }
 
     public function test_users_can_not_authenticate_with_invalid_password(): void

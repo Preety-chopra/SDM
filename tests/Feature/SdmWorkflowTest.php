@@ -12,7 +12,6 @@ use App\Models\Line;
 use App\Models\ReportingRelationship;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
-use App\Models\StationHierarchy;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,13 +31,9 @@ class SdmWorkflowTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
     }
 
-    public function test_submission_is_blocked_until_the_station_hierarchy_is_complete(): void
+    public function test_submission_is_blocked_until_the_reporting_hierarchy_is_complete(): void
     {
-        [$stationUser, $stationManager, , , , $station] = $this->workflowUsers(false);
-        StationHierarchy::query()->create([
-            'station_id' => $station->id,
-            'station_manager_id' => $stationManager->id,
-        ]);
+        [$stationUser] = $this->workflowUsers(false);
 
         $this->actingAs($stationUser)
             ->post(route('sdm-memos.store-and-submit'), $this->validMemoData())
@@ -51,12 +46,8 @@ class SdmWorkflowTest extends TestCase
 
     public function test_administrator_maps_each_approval_role_to_its_immediate_supervisor(): void
     {
-        [$stationUser, $stationManager, $lineManager, $operationsManager, $dgm, $station] = $this->workflowUsers(false);
+        [$stationUser, $stationManager, $lineManager, $operationsManager, $dgm] = $this->workflowUsers(false);
         $administrator = $this->user(UserRole::Administrator);
-        StationHierarchy::query()->create([
-            'station_id' => $station->id,
-            'station_manager_id' => $stationManager->id,
-        ]);
 
         foreach ([
             [$stationManager, $lineManager],
@@ -95,16 +86,15 @@ class SdmWorkflowTest extends TestCase
 
     public function test_hierarchy_page_presents_adjacent_role_mappings_instead_of_repeating_every_role_per_station(): void
     {
-        [, , , , , $station] = $this->workflowUsers();
+        $this->workflowUsers();
         $administrator = $this->user(UserRole::Administrator);
 
         $this->actingAs($administrator)->get(route('hierarchies.index'))
             ->assertOk()
-            ->assertSee('Stations → Station Managers')
             ->assertSee('Station Managers → Assistant Managers')
             ->assertSee('Assistant Managers → Managers (Operations)')
             ->assertSee('Managers (Operations) → DGM/O')
-            ->assertSee($station->name)
+            ->assertDontSee('Stations → Station Managers')
             ->assertDontSee('name="station_id"', false);
     }
 
@@ -127,8 +117,8 @@ class SdmWorkflowTest extends TestCase
             WorkflowStage::DeputyGeneralManager,
         ], $memo->approvals()->orderBy('sequence')->get()->pluck('role')->all());
         $this->actingAs($stationManager)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
-        $this->actingAs($lineManager)->get(route('sdm-memos.index'))->assertOk()->assertDontSee($memo->serial_number);
-        $this->actingAs($operationsManager)->get(route('sdm-memos.index'))->assertOk()->assertDontSee($memo->serial_number);
+        $this->actingAs($lineManager)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
+        $this->actingAs($operationsManager)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
 
         foreach ([
             [$stationManager, 'forward', WorkflowStage::LineManager, MemoStatus::UnderReview, $lineManager->employee_number],
@@ -152,6 +142,11 @@ class SdmWorkflowTest extends TestCase
     public function test_submission_requires_the_station_managers_employee_number(): void
     {
         [$stationUser, $stationManager] = $this->workflowUsers();
+        $inactiveStationManager = $this->user(UserRole::StationManager, [
+            'employee_number' => 'SM-INACTIVE',
+            'is_enabled' => false,
+        ]);
+        $lineManager = $this->user(UserRole::AssistantManager, ['employee_number' => 'AM-NOT-SM']);
         $data = $this->validMemoData();
         unset($data['station_manager_employee_number']);
 
@@ -159,6 +154,14 @@ class SdmWorkflowTest extends TestCase
             ->assertSessionHasErrors('station_manager_employee_number');
 
         $data['station_manager_employee_number'] = 'UNKNOWN-SM';
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), $data)
+            ->assertSessionHasErrors('station_manager_employee_number');
+
+        $data['station_manager_employee_number'] = $inactiveStationManager->employee_number;
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), $data)
+            ->assertSessionHasErrors('station_manager_employee_number');
+
+        $data['station_manager_employee_number'] = $lineManager->employee_number;
         $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), $data)
             ->assertSessionHasErrors('station_manager_employee_number');
 
@@ -200,6 +203,13 @@ class SdmWorkflowTest extends TestCase
         $selectedLineManager = $this->user(UserRole::AssistantManager, ['employee_number' => 'AM-SELECTED']);
         $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), $this->validMemoData());
         $memo = ServiceDeficiencyMemo::query()->sole();
+
+        $this->actingAs($stationManager)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('Action required: Station Manager')
+            ->assertSee('name="forward_to_employee_number"', false)
+            ->assertSee('value="forward"', false)
+            ->assertSee('Cancel SDM');
 
         $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'forward'])
             ->assertSessionHasErrors('forward_to_employee_number');
@@ -253,9 +263,9 @@ class SdmWorkflowTest extends TestCase
             ->assertSee('Cancelled by AM/Line');
     }
 
-    public function test_station_manager_mapping_can_be_changed_without_editing_each_station(): void
+    public function test_station_manager_reporting_line_can_be_changed_without_station_mapping(): void
     {
-        [, $stationManager, , , , $station] = $this->workflowUsers();
+        [, $stationManager] = $this->workflowUsers();
         $administrator = $this->user(UserRole::Administrator);
         $otherLineManager = $this->user(UserRole::AssistantManager, ['employee_number' => 'AM-2']);
 
@@ -264,7 +274,6 @@ class SdmWorkflowTest extends TestCase
             'supervisor_id' => $otherLineManager->id,
         ])->assertRedirect();
 
-        $this->assertSame($stationManager->id, $station->hierarchy()->value('station_manager_id'));
         $this->assertSame($otherLineManager->id, ReportingRelationship::query()->where('subordinate_id', $stationManager->id)->value('supervisor_id'));
     }
 
@@ -357,14 +366,13 @@ class SdmWorkflowTest extends TestCase
             ->assertSee('data-memo-notification-count="1"', false);
     }
 
-    public function test_administrator_can_configure_hierarchy_and_station_manager_selection_transfers_silently(): void
+    public function test_administrator_can_create_station_manager_without_station_mapping(): void
     {
-        [$stationUser, $oldStationManager, $lineManager, $operationsManager, $dgm, $station] = $this->workflowUsers();
+        [, $stationManager] = $this->workflowUsers();
         $administrator = $this->user(UserRole::Administrator);
-        $newStationManager = $this->user(UserRole::StationManager, ['email' => 'new-sm@example.com', 'employee_number' => 'SM-NEW']);
 
-        $this->actingAs($administrator)->get(route('hierarchies.index'))->assertOk()->assertSee($station->name);
-        $this->actingAs($stationUser)->get(route('hierarchies.index'))->assertForbidden();
+        $this->actingAs($administrator)->get(route('hierarchies.index'))->assertOk()->assertDontSee('Stations → Station Managers');
+        $this->actingAs($stationManager)->get(route('hierarchies.index'))->assertForbidden();
 
         $this->actingAs($administrator)->post(route('users.store'), [
             'name' => 'Replacement Station Manager',
@@ -373,16 +381,14 @@ class SdmWorkflowTest extends TestCase
             'employee_number' => 'SM-REPLACEMENT',
             'phone' => null,
             'designation' => 'Station Manager',
-            'station_ids' => [$station->id],
             'is_enabled' => '1',
             'password' => 'Secure Password 123!',
             'password_confirmation' => 'Secure Password 123!',
         ])->assertRedirect();
 
         $replacement = User::query()->where('email', 'replacement-sm@example.com')->sole();
-        $this->assertSame($replacement->id, $station->hierarchy()->value('station_manager_id'));
-        $this->assertNotSame($oldStationManager->id, $replacement->id);
-        $this->assertNotSame($newStationManager->id, $replacement->id);
+        $this->assertTrue($replacement->hasRole(UserRole::StationManager->value));
+        $this->assertNull($replacement->station_id);
     }
 
     public function test_hierarchy_changes_apply_only_to_new_submissions(): void
@@ -450,10 +456,6 @@ class SdmWorkflowTest extends TestCase
         $dgm = $this->user(UserRole::DeputyGeneralManager, ['employee_number' => 'DGM-'.$suffix]);
 
         if ($completeHierarchy) {
-            StationHierarchy::query()->create([
-                'station_id' => $station->id,
-                'station_manager_id' => $stationManager->id,
-            ]);
             ReportingRelationship::query()->create(['subordinate_id' => $stationManager->id, 'supervisor_id' => $lineManager->id]);
             ReportingRelationship::query()->create(['subordinate_id' => $lineManager->id, 'supervisor_id' => $operationsManager->id]);
             ReportingRelationship::query()->create(['subordinate_id' => $operationsManager->id, 'supervisor_id' => $dgm->id]);

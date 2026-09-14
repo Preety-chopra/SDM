@@ -31,6 +31,8 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
+        $request->session()->put('auth.station_id', $request->integer('station_id'));
+
         return redirect()->intended(route('dashboard', absolute: false));
     }
 

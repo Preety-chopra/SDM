@@ -28,7 +28,6 @@ class StoreMemoWorkflowActionRequest extends FormRequest
 
         $isCancel = $this->string('action')->toString() === 'cancel';
         $stage = $memo->current_stage;
-        $requiresEvidence = $isCancel && $memo->current_stage === WorkflowStage::StationManager;
 
         return [
             'action' => ['required', Rule::in(['forward', 'approve', 'cancel'])],
@@ -39,7 +38,7 @@ class StoreMemoWorkflowActionRequest extends FormRequest
                 'max:100',
             ],
             'remarks' => [Rule::requiredIf($isCancel), 'nullable', 'string', 'max:5000'],
-            'evidence' => [Rule::requiredIf($requiresEvidence), 'array', 'max:10'],
+            'evidence' => ['nullable', 'array', 'max:10'],
             'evidence.*' => ['file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
         ];
     }

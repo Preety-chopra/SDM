@@ -28,7 +28,7 @@
                         'Incident time (IST)'=>filled($memo->incident_time) ? substr($memo->incident_time, 0, 5) : null,
                         'Staff'=>$memo->staff_name,
                         'Employee number'=>$memo->employee_number,
-                        'Staff mobile'=>$memo->staffAcknowledgement?->mobile_number,
+                        // 'Staff mobile'=>$memo->staffAcknowledgement?->mobile_number,
                         'Created by'=>$memo->creator->name,
                         'Submitted'=>$memo->submitted_at?->format('d-m-Y H:i')
                         ] as $label=>$value)
@@ -152,7 +152,7 @@
                             </div>
                         @endif
                         <div>
-                            <x-input-label for="evidence" :value="$memo->current_stage === \App\Enums\WorkflowStage::StationManager ? 'Evidence (mandatory for cancellation by SM)' : 'Supporting evidence (optional)'" :required="$memo->current_stage === \App\Enums\WorkflowStage::StationManager"/>
+                            <x-input-label for="evidence" value="Supporting evidence (optional)"/>
                             <input id="evidence" name="evidence[]" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp" class="mt-1 block w-full text-sm">
                             <x-input-error :messages="$errors->get('evidence')" class="mt-2"/>
                         </div>

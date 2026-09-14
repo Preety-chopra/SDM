@@ -13,7 +13,6 @@ use App\Models\ReportingRelationship;
 use App\Models\ServiceContract;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
-use App\Models\StationHierarchy;
 use App\Models\User;
 use App\Services\MemoAssessmentService;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -499,7 +498,7 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->assertSame($assignedStaff->id, $memo->cmc_staff_id);
         $this->assertSame(WorkflowStepType::CmcAssessment, $memo->currentWorkflowStep->stage);
         $this->assertSame($assignedStaff->id, $memo->currentWorkflowStep->assigned_to);
-        $this->actingAs($replacementStaff)->get(route('sdm-memos.show', $memo))->assertForbidden();
+        $this->actingAs($replacementStaff)->get(route('sdm-memos.show', $memo))->assertOk()->assertSee($memo->serial_number);
 
         $this->actingAs($cmcTeamLead)->patch(route('sdm-memos.cmc-assignment.update', $memo), [
             'cmc_staff_id' => $replacementStaff->id,
@@ -661,7 +660,6 @@ class ContractPenaltyWorkflowTest extends TestCase
         $dgm = $this->user(UserRole::DeputyGeneralManager, ['employee_number' => 'DGM-CONTRACT']);
         $cmcTeamLead = $this->user(UserRole::CmcTeamLead);
 
-        StationHierarchy::query()->create(['station_id' => $station->id, 'station_manager_id' => $stationManager->id]);
         ReportingRelationship::query()->create(['subordinate_id' => $stationManager->id, 'supervisor_id' => $lineManager->id]);
         ReportingRelationship::query()->create(['subordinate_id' => $lineManager->id, 'supervisor_id' => $operationsManager->id]);
         ReportingRelationship::query()->create(['subordinate_id' => $operationsManager->id, 'supervisor_id' => $dgm->id]);

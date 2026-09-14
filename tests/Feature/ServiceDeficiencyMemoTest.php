@@ -7,18 +7,19 @@ use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\UserPermission;
 use App\Enums\UserRole;
+use App\Enums\WorkflowStage;
 use App\Models\Contractor;
 use App\Models\Line;
 use App\Models\ReportingRelationship;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
-use App\Models\StationHierarchy;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class ServiceDeficiencyMemoTest extends TestCase
@@ -34,7 +35,7 @@ class ServiceDeficiencyMemoTest extends TestCase
 
     public function test_station_role_receives_memo_permissions_and_administrator_receives_all_permissions(): void
     {
-        $stationUser = $this->stationUser();
+        [$stationUser, , $station] = $this->stationUserWithLine();
         $stationManager = User::factory()->create();
         $stationManager->assignRole(UserRole::StationManager->value);
         $administrator = User::factory()->create();
@@ -43,29 +44,94 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->assertTrue($stationUser->can(UserPermission::CreateMemos->value));
         $this->assertFalse($stationUser->can(UserPermission::ViewAllMemos->value));
         $this->assertTrue($stationManager->can(UserPermission::CreateMemos->value));
+        $this->assertTrue($stationManager->can('create', ServiceDeficiencyMemo::class));
         $this->assertTrue($administrator->can(UserPermission::ViewAllMemos->value));
         $this->assertTrue($administrator->can(UserPermission::ManageLines->value));
 
-        $this->actingAs($stationManager)
+        $this->withSession(['auth.station_id' => $station->id])
+            ->actingAs($stationManager)
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertDontSee('Create SDM memo');
+            ->assertSee('Create SDM memo');
 
-        $this->actingAs($stationManager)
+        $this->withSession(['auth.station_id' => $station->id])
+            ->actingAs($stationManager)
             ->get(route('sdm-memos.create'))
-            ->assertForbidden();
+            ->assertOk()
+            ->assertSee($station->code.' · '.$station->name);
     }
 
-    public function test_station_login_uses_the_users_assigned_station_without_line_input(): void
+    public function test_station_manager_can_create_and_submit_a_memo_for_the_station_selected_at_login(): void
+    {
+        [, $line, $station] = $this->stationUserWithLine();
+        $stationManager = User::query()->role(UserRole::StationManager->value)->firstOrFail();
+        $lineManager = User::query()->role(UserRole::AssistantManager->value)->firstOrFail();
+        $inactiveLineManager = User::factory()->disabled()->create(['employee_number' => 'AM-INACTIVE']);
+        $inactiveLineManager->assignRole(UserRole::AssistantManager->value);
+        $contractor = Contractor::query()->create(['name' => 'Metro Services', 'is_active' => true]);
+
+        $this->post(route('login'), [
+            'username' => $stationManager->name,
+            'password' => 'password',
+            'station_id' => $station->id,
+        ])->assertRedirect(route('dashboard', absolute: false));
+
+        $this->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertSee($line->name)
+            ->assertSee($station->code.' · '.$station->name)
+            ->assertSee('name="line_manager_employee_number"', false)
+            ->assertSee($lineManager->employee_number.' - '.$lineManager->name)
+            ->assertDontSee($inactiveLineManager->employee_number.' - '.$inactiveLineManager->name)
+            ->assertDontSee('name="station_manager_employee_number"', false);
+
+        $memoData = [
+            'service_type' => SdmType::Cfs->value,
+            'serial_number' => 'SM-SUBMITTED-1',
+            'contractor_id' => $contractor->id,
+            'incident_date' => '18-08-2026',
+            'incident_time' => '14:25',
+            'staff_name' => 'Test Staff',
+            'employee_number' => 'EMP-STAFF-1',
+            'deficiencies' => [DeficiencyType::Misbehavior->value],
+            'deficiency_remarks' => [DeficiencyType::Misbehavior->value => 'Test incident'],
+        ];
+
+        $this->post(route('sdm-memos.store-and-submit'), $memoData)
+            ->assertSessionHasErrors('line_manager_employee_number');
+        $this->post(route('sdm-memos.store-and-submit'), [...$memoData, 'line_manager_employee_number' => $inactiveLineManager->employee_number])
+            ->assertSessionHasErrors('line_manager_employee_number');
+        $this->post(route('sdm-memos.store-and-submit'), [...$memoData, 'line_manager_employee_number' => $stationManager->employee_number])
+            ->assertSessionHasErrors('line_manager_employee_number');
+        $this->post(route('sdm-memos.store-and-submit'), [...$memoData, 'line_manager_employee_number' => $lineManager->employee_number])
+            ->assertRedirect();
+
+        $memo = ServiceDeficiencyMemo::query()->where('serial_number', 'SM-SUBMITTED-1')->sole();
+        $this->assertSame($station->id, $memo->station_id);
+        $this->assertSame($line->name, $memo->line_name);
+        $this->assertSame(MemoStatus::UnderReview, $memo->status);
+        $this->assertSame(WorkflowStage::LineManager, $memo->current_stage);
+        $this->assertSame($lineManager->id, $memo->approvals()->where('role', WorkflowStage::LineManager->value)->value('assigned_to'));
+    }
+
+    public function test_station_login_selection_defaults_the_create_form_station_and_line(): void
     {
         [$user] = $this->stationUserWithLine();
+        $line = Line::query()->create(['code' => 'BLUE', 'name' => 'Blue Line', 'is_active' => true]);
+        $station = Station::query()->create(['code' => 'BLUE-01', 'name' => 'Blue Station', 'line_id' => $line->id, 'is_active' => true]);
 
         $this->post(route('login'), ['username' => $user->name, 'password' => 'password'])
             ->assertSessionHasErrors('station_id');
 
-        $this->post(route('login'), ['username' => $user->name, 'password' => 'password', 'station_id' => $user->station_id])
-            ->assertRedirect(route('dashboard', absolute: false));
+        $this->post(route('login'), ['username' => $user->name, 'password' => 'password', 'station_id' => $station->id])
+            ->assertRedirect(route('dashboard', absolute: false))
+            ->assertSessionHas('auth.station_id', $station->id);
         $this->assertAuthenticatedAs($user);
+
+        $this->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertSee($line->code.' · '.$line->name)
+            ->assertSee($station->code.' · '.$station->name);
     }
 
     public function test_station_user_can_save_partial_draft_but_submission_is_strict(): void
@@ -319,7 +385,7 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->actingAs($user)->get(route('sdm-memos.create'))
             ->assertOk()
             ->assertSee('<title>Create Service Deficiency Memo</title>', false)
-            ->assertSee('RED, RED Line')
+            ->assertSee('RED · RED Line')
             ->assertSee('data-selected-deficiencies', false)
             ->assertSee(route('sdm-memos.store-and-submit'), false)
             ->assertSee('Submit memo')
@@ -336,6 +402,45 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertSee('Cash-check remarks (if any)')
             ->assertDontSee('cash_check[operator_name]', false)
             ->assertDontSee('cash_check[checked_at]', false);
+    }
+
+    public function test_station_controller_create_form_has_a_clear_submit_forwarding_prompt(): void
+    {
+        [$user] = $this->stationUserWithLine();
+        $stationManager = User::query()->role(UserRole::StationManager->value)->firstOrFail();
+        $lineManager = User::query()->role(UserRole::AssistantManager->value)->firstOrFail();
+        $inactiveStationManager = User::factory()->disabled()->create(['employee_number' => 'SM-INACTIVE']);
+        $inactiveStationManager->assignRole(UserRole::StationManager->value);
+
+        $this->actingAs($user)->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertSee('Forwarding on submission')
+            ->assertSee('Enter the employee number of the SM who should receive this SDM immediately after submission.')
+            ->assertSee('name="station_manager_employee_number"', false)
+            ->assertSee('data-employee-autocomplete', false)
+            ->assertSee($stationManager->employee_number.' - '.$stationManager->name)
+            ->assertDontSee($inactiveStationManager->employee_number.' - '.$inactiveStationManager->name)
+            ->assertDontSee($lineManager->employee_number.' - '.$lineManager->name)
+            ->assertSee(route('sdm-memos.store-and-submit'), false);
+    }
+
+    public function test_custom_station_controller_role_sees_the_submit_forwarding_prompt(): void
+    {
+        [, , $station] = $this->stationUserWithLine();
+        $role = Role::findOrCreate('station_controller');
+        $role->givePermissionTo([
+            UserPermission::CreateMemos->value,
+            UserPermission::ViewOwnMemos->value,
+            UserPermission::UpdateOwnDraftMemos->value,
+            UserPermission::SubmitOwnDraftMemos->value,
+        ]);
+        $controller = User::factory()->create(['station_id' => $station->id]);
+        $controller->assignRole($role->name);
+
+        $this->actingAs($controller)->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertSee('Forwarding on submission')
+            ->assertSee('name="station_manager_employee_number"', false);
     }
 
     public function test_late_reporting_uses_custom_times_and_displays_the_calculated_delay(): void
@@ -384,18 +489,23 @@ class ServiceDeficiencyMemoTest extends TestCase
         ]);
     }
 
-    public function test_serial_number_is_unique_per_sdm_type_and_users_cannot_access_another_creators_memo(): void
+    public function test_serial_number_is_unique_per_sdm_type_and_every_user_can_view_every_memo(): void
     {
         [$owner] = $this->stationUserWithLine('RED');
         [$other] = $this->stationUserWithLine('GREEN');
+        $viewerWithoutMemoPermissions = User::factory()->create();
         $memo = $this->draft($owner, SdmType::Cfs, 'SAME-1');
 
         $this->actingAs($owner)->post(route('sdm-memos.store'), ['service_type' => SdmType::Cfs->value, 'serial_number' => 'SAME-1'])
             ->assertSessionHasErrors('serial_number');
         $this->actingAs($owner)->post(route('sdm-memos.store'), ['service_type' => SdmType::Ticketing->value, 'serial_number' => 'SAME-1'])
             ->assertRedirect();
-        $this->actingAs($other)->get(route('sdm-memos.show', $memo))->assertForbidden();
+        $this->actingAs($other)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
+        $this->actingAs($other)->get(route('sdm-memos.show', $memo))->assertOk()->assertSee($memo->serial_number);
         $this->actingAs($other)->get(route('sdm-memos.edit', $memo))->assertForbidden();
+        $this->actingAs($viewerWithoutMemoPermissions)->get(route('dashboard'))->assertOk()->assertSee('All memos');
+        $this->actingAs($viewerWithoutMemoPermissions)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
+        $this->actingAs($viewerWithoutMemoPermissions)->get(route('sdm-memos.show', $memo))->assertOk()->assertSee($memo->serial_number);
     }
 
     public function test_administrator_can_manage_master_data_and_referenced_records_cannot_be_deleted(): void
@@ -480,10 +590,6 @@ class ServiceDeficiencyMemoTest extends TestCase
         $operationsManager->assignRole(UserRole::ManagerOperations->value);
         $dgm = User::factory()->create();
         $dgm->assignRole(UserRole::DeputyGeneralManager->value);
-        StationHierarchy::query()->create([
-            'station_id' => $station->id,
-            'station_manager_id' => $stationManager->id,
-        ]);
         ReportingRelationship::query()->create(['subordinate_id' => $stationManager->id, 'supervisor_id' => $lineManager->id]);
         ReportingRelationship::query()->create(['subordinate_id' => $lineManager->id, 'supervisor_id' => $operationsManager->id]);
         ReportingRelationship::query()->create(['subordinate_id' => $operationsManager->id, 'supervisor_id' => $dgm->id]);

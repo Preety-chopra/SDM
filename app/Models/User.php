@@ -54,11 +54,6 @@ class User extends Authenticatable
         return $this->hasMany(ServiceDeficiencyMemo::class, 'cmc_staff_id');
     }
 
-    public function managedStationHierarchies(): HasMany
-    {
-        return $this->hasMany(StationHierarchy::class, 'station_manager_id');
-    }
-
     /**
      * Get the attributes that should be cast.
      *
