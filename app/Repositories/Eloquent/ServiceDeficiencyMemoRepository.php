@@ -12,7 +12,8 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepositoryInterface
 {
-    public function paginateFor(User $user, ?WorkflowStage $pendingStage = null): LengthAwarePaginator
+    /** @param array<string, int|string> $filters */
+    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null): LengthAwarePaginator
     {
         return ServiceDeficiencyMemo::query()
             ->select(['id', 'service_type', 'serial_number', 'station_name', 'line_name', 'incident_date', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'cmc_staff_id', 'created_by', 'submitted_at', 'created_at'])
@@ -22,6 +23,12 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
                 'cancellationApproval' => fn ($query) => $query->select(['memo_approvals.id', 'memo_approvals.memo_id', 'memo_approvals.role', 'memo_approvals.decision', 'memo_approvals.acted_at']),
                 'cancellationWorkflowStep' => fn ($query) => $query->select(['memo_workflow_steps.id', 'memo_workflow_steps.memo_id', 'memo_workflow_steps.stage', 'memo_workflow_steps.decision', 'memo_workflow_steps.acted_at']),
             ])
+            ->when($filters['service_type'] ?? null, fn ($query, $serviceType) => $query->where('service_type', $serviceType))
+            ->when($filters['serial_number'] ?? null, fn ($query, $serialNumber) => $query->where('serial_number', 'like', "%{$serialNumber}%"))
+            ->when($filters['station_id'] ?? null, fn ($query, $stationId) => $query->where('station_id', $stationId))
+            ->when($filters['line_code'] ?? null, fn ($query, $lineCode) => $query->where('line_code', $lineCode))
+            ->when($filters['incident_date'] ?? null, fn ($query, $incidentDate) => $query->whereDate('incident_date', $incidentDate))
+            ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($pendingStage, fn ($query) => $query
                 ->whereIn('status', [MemoStatus::Submitted->value, MemoStatus::UnderReview->value])
                 ->where('current_stage', $pendingStage->value)

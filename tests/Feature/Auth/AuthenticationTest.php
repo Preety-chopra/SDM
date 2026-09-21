@@ -27,6 +27,16 @@ class AuthenticationTest extends TestCase
         $response->assertStatus(200);
     }
 
+    public function test_forgot_password_link_displays_it_cell_contact_popup(): void
+    {
+        $this->get('/login')
+            ->assertOk()
+            ->assertSee('Forgot password?')
+            ->assertSee('Please contact Ops IT Cell - 110426 or send an email to itcellops@dmrc.org')
+            ->assertSee('@click="forgotPasswordOpen = true"', false)
+            ->assertSee('role="dialog"', false);
+    }
+
     public function test_homepage_displays_the_login_screen(): void
     {
         $response = $this->get('/');

@@ -47,7 +47,8 @@
             <button
                 type="button"
                 data-employee-number="{{ $option['employee_number'] }}"
-                x-show="matches($el.dataset.employeeNumber)"
+                data-employee-name="{{ $option['name'] }}"
+                x-show="matches($el.dataset.employeeNumber, $el.dataset.employeeName)"
                 @click="select($el.dataset.employeeNumber)"
                 class="block w-full px-3 py-2 text-left text-sm text-gray-800 hover:bg-emerald-50 focus:bg-emerald-50 focus:outline-none dark:text-gray-100 dark:hover:bg-emerald-950 dark:focus:bg-emerald-950"
                 role="option"

@@ -35,9 +35,10 @@ final class ServiceDeficiencyMemoService
         private AuditService $audit,
     ) {}
 
-    public function paginateFor(User $user, ?WorkflowStage $pendingStage = null): LengthAwarePaginator
+    /** @param array<string, int|string> $filters */
+    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null): LengthAwarePaginator
     {
-        return $this->memos->paginateFor($user, $pendingStage);
+        return $this->memos->paginateFor($user, $filters, $pendingStage);
     }
 
     /** @return array<string, array{memos: Collection, total: int}> */
@@ -139,6 +140,8 @@ final class ServiceDeficiencyMemoService
                     $attributes['status'] = $contract ? MemoStatus::AwaitingStationManager->value : MemoStatus::Submitted->value;
                     $attributes['workflow_version'] = $contract ? 2 : 1;
                     $attributes['current_stage'] = $contract ? null : WorkflowStage::StationManager->value;
+                    $attributes['submitted_at'] = now();
+                } elseif ($memo?->submitted_at !== null && $user->hasRole(UserRole::Station->value)) {
                     $attributes['submitted_at'] = now();
                 }
 

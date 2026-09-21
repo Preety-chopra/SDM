@@ -8,6 +8,29 @@
     $inputClass = 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100';
     $isDraft = ! $memo || $memo->status === \App\Enums\MemoStatus::Draft;
     $requiresForwarding = $forwardingRole !== null && $isDraft;
+    $forwardingField = $forwardingRole === \App\Enums\UserRole::StationManager
+        ? 'station_manager_employee_number'
+        : 'line_manager_employee_number';
+    $forwardingLabel = $forwardingRole === \App\Enums\UserRole::StationManager
+        ? 'SM employee number'
+        : 'Manager/Assistant Manager (O)-Line employee number';
+    $confirmationPreview = [
+        ['label' => 'From', 'value' => collect([auth()->user()->name, auth()->user()->employee_number])->filter()->join(' · ')],
+        ['label' => 'Line', 'value' => collect([$station?->metroLine?->code, $station?->metroLine?->name])->filter()->join(' · ')],
+        ['label' => 'Station', 'value' => collect([$station?->code, $station?->name])->filter()->join(' · ')],
+        ['label' => 'Status', 'value' => 'Ready to submit'],
+    ];
+    $confirmationFields = [
+        ['label' => 'SDM number', 'name' => 'serial_number'],
+        ['label' => 'SDM type', 'name' => 'service_type'],
+        ['label' => 'Contractor', 'name' => 'contractor_id'],
+        ['label' => 'Incident date', 'name' => 'incident_date'],
+        ['label' => 'Incident time', 'name' => 'incident_time'],
+        ['label' => 'Staff', 'name' => 'staff_name'],
+        ['label' => 'Employee number', 'name' => 'employee_number'],
+        ['label' => 'Deficiencies', 'name' => 'deficiencies[]'],
+        ...($requiresForwarding ? [['label' => 'Forward to', 'name' => $forwardingField]] : []),
+    ];
     $pageTitle = $memo ? ($isDraft ? 'Edit SDM draft' : 'Edit submitted SDM') : 'Create Service Deficiency Memo';
 @endphp
 <x-app-layout :title="$pageTitle">
@@ -32,7 +55,7 @@
                     </ul>
                 </div>
             @endif
-            <form method="POST" enctype="multipart/form-data" action="{{ $memo ? route('sdm-memos.update', $memo) : route('sdm-memos.store') }}" class="flex flex-col gap-6" x-data="memoForm" data-selected-deficiencies='@json($selected)' data-service-type="{{ $serviceType }}" data-deficiency-labels='@json($labels)' data-booked-shift-from="{{ $lateTime('booked_shift_from') }}" data-booked-shift-to="{{ $lateTime('booked_shift_to') }}" data-actual-reporting-time="{{ $lateTime('actual_reporting_time') }}">
+            <form method="POST" enctype="multipart/form-data" action="{{ $memo ? route('sdm-memos.update', $memo) : route('sdm-memos.store') }}" class="flex flex-col gap-6" x-data="memoForm" @submit="requestSdmConfirmation($event)" data-selected-deficiencies='@json($selected)' data-service-type="{{ $serviceType }}" data-deficiency-labels='@json($labels)' data-booked-shift-from="{{ $lateTime('booked_shift_from') }}" data-booked-shift-to="{{ $lateTime('booked_shift_to') }}" data-actual-reporting-time="{{ $lateTime('actual_reporting_time') }}" data-confirmation-preview="{{ json_encode($confirmationPreview) }}" data-confirmation-fields="{{ json_encode($confirmationFields) }}">
                 @csrf
                 <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Memo details</h3>
@@ -246,14 +269,6 @@
                             <p class="mt-1 text-sm text-emerald-800 dark:text-emerald-200">Select the Manager/Assistant Manager (O)-Line who should receive this SDM immediately after submission.</p>
                         @endif
                         <div class="mt-5">
-                            @php
-                                $forwardingField = $forwardingRole === \App\Enums\UserRole::StationManager
-                                    ? 'station_manager_employee_number'
-                                    : 'line_manager_employee_number';
-                                $forwardingLabel = $forwardingRole === \App\Enums\UserRole::StationManager
-                                    ? 'SM employee number'
-                                    : 'Manager/Assistant Manager (O)-Line employee number';
-                            @endphp
                             <x-employee-autocomplete
                                 :name="$forwardingField"
                                 :label="$forwardingLabel"
@@ -269,9 +284,11 @@
                     <a href="{{ route('sdm-memos.index') }}" class="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200">Cancel</a>
                     <button type="submit" class="rounded-lg border border-emerald-700 px-5 py-2.5 text-sm font-semibold text-emerald-700">{{ $isDraft ? 'Save draft' : 'Save changes' }}</button>
                     @if($isDraft)
-                        <button type="submit" formaction="{{ $memo ? route('sdm-memos.submit', $memo) : route('sdm-memos.store-and-submit') }}" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Submit memo</button>
+                        <button type="submit" formaction="{{ $memo ? route('sdm-memos.submit', $memo) : route('sdm-memos.store-and-submit') }}" data-sdm-confirm data-confirmation-action="Submit SDM" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">Submit memo</button>
                     @endif
                 </div>
+
+                <x-sdm-confirmation-preview />
             
             </form>
             @if($memo)

@@ -229,6 +229,23 @@ class ContractPenaltyWorkflowTest extends TestCase
             WorkflowStepType::DgmApproval,
         ], $memo->workflowSteps()->orderBy('sequence')->get()->pluck('stage')->all());
 
+        $alternativeLineManager = $this->user(UserRole::AssistantManager, ['employee_number' => 'AM-ALTERNATIVE']);
+        $inactiveLineManager = $this->user(UserRole::AssistantManager, [
+            'employee_number' => 'AM-INACTIVE',
+            'is_enabled' => false,
+        ]);
+
+        $this->actingAs($stationManager)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('name="forward_to_employee_number"', false)
+            ->assertSee('x-data="employeeAutocomplete"', false)
+            ->assertSee($lineManager->employee_number.' - '.$lineManager->name)
+            ->assertSee($alternativeLineManager->employee_number.' - '.$alternativeLineManager->name)
+            ->assertDontSee($inactiveLineManager->employee_number.' - '.$inactiveLineManager->name)
+            ->assertSee('data-sdm-confirm', false)
+            ->assertSee('data-confirmation-action="Forward SDM"', false)
+            ->assertSee('Are you sure you want to proceed?');
+
         $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'forward', 'forward_to_employee_number' => $lineManager->employee_number])->assertRedirect();
         $this->actingAs($lineManager)->get(route('sdm-memos.show', $memo))
             ->assertOk()

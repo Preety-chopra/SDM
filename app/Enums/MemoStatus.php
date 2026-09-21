@@ -2,6 +2,8 @@
 
 namespace App\Enums;
 
+use Illuminate\Support\Str;
+
 enum MemoStatus: string
 {
     case Draft = 'draft';
@@ -19,4 +21,15 @@ enum MemoStatus: string
     case PendingDeduction = 'pending_deduction';
     case Closed = 'closed';
     case Cancelled = 'cancelled';
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::AmCmcReview => 'AM CMC Review',
+            self::CmcAssignment => 'CMC Assignment',
+            self::CmcScrutiny => 'CMC Scrutiny',
+            self::DgmApproval => 'DGM Approval',
+            default => Str::headline($this->value),
+        };
+    }
 }

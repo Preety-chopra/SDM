@@ -82,7 +82,7 @@
         @endcanany
         @foreach ([
             [\App\Enums\UserPermission::ManageRoles->value, 'roles.index', 'roles.*', 'Roles & permissions'],
-            [\App\Enums\UserPermission::ManageSdmHierarchy->value, 'hierarchies.index', 'hierarchies.*', 'SDM hierarchy'],
+            // [\App\Enums\UserPermission::ManageSdmHierarchy->value, 'hierarchies.index', 'hierarchies.*', 'SDM hierarchy'],
             [\App\Enums\UserPermission::ManageLines->value, 'lines.index', 'lines.*', 'Lines'],
             [\App\Enums\UserPermission::ManageStations->value, 'stations.index', 'stations.*', 'Stations'],
             [\App\Enums\UserPermission::ManageContractors->value, 'contractors.index', 'contractors.*', 'Contractors'],

@@ -13,7 +13,11 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
     <body class="min-h-screen bg-slate-100 font-sans text-slate-900 antialiased">
-        <main class="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-100 px-4 py-6 sm:px-6 lg:py-10">
+        <main
+            class="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-100 px-4 py-6 sm:px-6 lg:py-10"
+            x-data="{ forgotPasswordOpen: false }"
+            @keydown.escape.window="forgotPasswordOpen = false"
+        >
             <div class="pointer-events-none absolute -left-20 top-10 h-72 w-72 rounded-full bg-emerald-200/40 blur-3xl" aria-hidden="true"></div>
             <div class="pointer-events-none absolute -bottom-24 right-0 h-80 w-80 rounded-full bg-sky-200/40 blur-3xl" aria-hidden="true"></div>
 
@@ -82,7 +86,7 @@
                             <div class="mb-2 flex items-center justify-between">
                                 <label for="password" class="block text-sm font-semibold text-slate-700">Password <span data-required-marker aria-hidden="true" class="font-bold !text-red-600">*</span><span class="sr-only"> (required)</span></label>
                                 @if (Route::has('password.request'))
-                                    <a href="{{ route('password.request') }}" class="rounded text-sm font-semibold text-[#0f766e] transition hover:text-[#115e59] focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">Forgot password?</a>
+                                    <button type="button" class="rounded text-sm font-semibold text-[#0f766e] transition hover:text-[#115e59] focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2" @click="forgotPasswordOpen = true">Forgot password?</button>
                                 @endif
                             </div>
                             <div class="relative">
@@ -123,6 +127,33 @@
                     <p class="mt-10 text-center text-xs text-slate-400">Authorized users only · Activity may be monitored for security.</p>
                 </div>
             </section>
+
+            <div
+                x-cloak
+                x-show="forgotPasswordOpen"
+                x-transition.opacity
+                class="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 px-4 py-6 backdrop-blur-sm"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="forgot-password-title"
+                @click.self="forgotPasswordOpen = false"
+            >
+                <div x-show="forgotPasswordOpen" x-transition class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl sm:p-7">
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-100 text-[#0f766e]" aria-hidden="true">
+                            <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v14H4z" stroke-linejoin="round"/><path d="m4 7 8 6 8-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+                        <button type="button" class="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500" aria-label="Close password help" @click="forgotPasswordOpen = false">
+                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke-linecap="round"/></svg>
+                        </button>
+                    </div>
+
+                    <h2 id="forgot-password-title" class="mt-5 text-xl font-bold text-slate-950">Password assistance</h2>
+                    <p class="mt-3 text-sm leading-6 text-slate-600">Please contact Ops IT Cell - 110426 or send an email to itcellops@dmrc.org</p>
+
+                    <button type="button" class="mt-6 flex w-full items-center justify-center rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#115e59] focus:outline-none focus:ring-4 focus:ring-emerald-200" @click="forgotPasswordOpen = false">Close</button>
+                </div>
+            </div>
         </main>
     </body>
 </html>

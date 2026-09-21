@@ -1,6 +1,8 @@
 
 
 import Alpine from 'alpinejs';
+import { createDashboardCharts } from './dashboard-charts';
+import { createSdmConfirmation } from './sdm-confirmation';
 
 window.Alpine = Alpine;
 
@@ -48,16 +50,21 @@ Alpine.data('employeeAutocomplete', () => ({
         this.query = this.$el.dataset.initialValue || '';
     },
     get filteredCandidates() {
-        const employeeNumber = this.query.trim().toLowerCase();
+        const query = this.query.trim().toLowerCase();
 
-        if (!employeeNumber) {
+        if (!query) {
             return this.candidates;
         }
 
-        return this.candidates.filter((candidate) => candidate.employee_number.toLowerCase().includes(employeeNumber));
+        return this.candidates.filter((candidate) => (
+            candidate.employee_number.toLowerCase().includes(query)
+            || candidate.name.toLowerCase().includes(query)
+        ));
     },
-    matches(employeeNumber) {
-        return employeeNumber.toLowerCase().includes(this.query.trim().toLowerCase());
+    matches(employeeNumber, name) {
+        const query = this.query.trim().toLowerCase();
+
+        return employeeNumber.toLowerCase().includes(query) || name.toLowerCase().includes(query);
     },
     select(employeeNumber) {
         this.query = employeeNumber;
@@ -69,6 +76,7 @@ Alpine.data('employeeAutocomplete', () => ({
 }));
 
 Alpine.data('memoForm', () => ({
+    ...createSdmConfirmation(),
     selected: [],
     labels: {},
     serviceType: '',
@@ -110,5 +118,8 @@ Alpine.data('memoForm', () => ({
         return `${hours} ${hours === 1 ? 'hour' : 'hours'}${remainingMinutes ? ` ${remainingMinutes} ${remainingMinutes === 1 ? 'minute' : 'minutes'}` : ''}`;
     },
 }));
+
+Alpine.data('sdmActionForm', () => createSdmConfirmation());
+Alpine.data('dashboardCharts', (config) => createDashboardCharts(config));
 
 Alpine.start();

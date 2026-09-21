@@ -11,6 +11,7 @@
 
     <div class="py-8 sm:py-10">
         <div class="mx-auto flex max-w-7xl flex-col gap-8 px-4 sm:px-6 lg:px-8">
+            @unless ($isStationController)
             <section aria-labelledby="quick-actions-heading">
                 <div class="mb-4 flex items-center justify-between gap-4">
                     <div>
@@ -64,6 +65,11 @@
                     @endcan
                 </div>
             </section>
+            @endunless
+
+            @if ($isStationController)
+                <x-station-controller-dashboard :dashboard="$stationControllerDashboard" />
+            @endif
 
             @if (!empty($workflowStepTypes))
                 @php

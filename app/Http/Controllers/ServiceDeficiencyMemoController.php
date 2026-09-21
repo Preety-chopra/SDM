@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Enums\DeficiencyType;
+use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\UserPermission;
 use App\Enums\UserRole;
+use App\Enums\WorkflowStage;
 use App\Enums\WorkflowStepType;
 use App\Http\Requests\ListMemosRequest;
 use App\Http\Requests\StoreAndSubmitMemoRequest;
@@ -35,10 +37,16 @@ class ServiceDeficiencyMemoController extends Controller
         Gate::authorize('viewAny', ServiceDeficiencyMemo::class);
 
         $pendingStage = $request->pendingStage();
+        $filters = $request->filters();
 
         return view('sdm-memos.index', [
-            'memos' => $this->memos->paginateFor($request->user(), $pendingStage),
+            'memos' => $this->memos->paginateFor($request->user(), $filters, $pendingStage),
             'pendingStage' => $pendingStage,
+            'filters' => $filters,
+            'sdmTypes' => SdmType::cases(),
+            'statuses' => MemoStatus::cases(),
+            'stations' => $this->masterData->stations(),
+            'lines' => $this->masterData->lines(),
         ]);
     }
 
@@ -76,6 +84,13 @@ class ServiceDeficiencyMemoController extends Controller
 
         return view('sdm-memos.show', [
             'memo' => $sdmMemo,
+            'lineManagerCandidates' => ($sdmMemo->current_stage === WorkflowStage::StationManager
+                || $sdmMemo->currentWorkflowStep?->stage === WorkflowStepType::StationManager)
+                && $request->user()->can('act', $sdmMemo)
+                    ? $this->users->enabledForRole(UserRole::AssistantManager)
+                        ->filter(fn (User $user): bool => filled($user->employee_number))
+                        ->values()
+                    : collect(),
             'cmcStaffUsers' => ($sdmMemo->currentWorkflowStep?->stage === WorkflowStepType::CmcAssignment
                 && $request->user()->can('act', $sdmMemo)) || $request->user()->can('assignCmcStaff', $sdmMemo)
                 ? $this->users->enabledForRole(UserRole::CmcStaff)

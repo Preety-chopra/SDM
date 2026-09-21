@@ -178,15 +178,19 @@ class SdmWorkflowTest extends TestCase
         [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
         $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), $this->validMemoData());
         $memo = ServiceDeficiencyMemo::query()->sole();
+        $this->assertSame('2026-09-01 10:00:00', $memo->submitted_at?->format('Y-m-d H:i:s'));
 
         $this->actingAs($stationUser)->get(route('sdm-memos.edit', $memo))->assertOk();
+        Carbon::setTestNow('2026-09-01 11:00:00');
         $this->actingAs($stationUser)->post(route('sdm-memos.update', $memo), [
             ...$this->validMemoData($memo->serial_number),
             'staff_name' => 'Corrected Staff Name',
         ])->assertRedirect();
-        $this->assertSame('Corrected Staff Name', $memo->fresh()->staff_name);
+        $memo->refresh();
+        $this->assertSame('Corrected Staff Name', $memo->staff_name);
+        $this->assertSame('2026-09-01 11:00:00', $memo->submitted_at?->format('Y-m-d H:i:s'));
 
-        Carbon::setTestNow('2026-09-03 10:00:01');
+        Carbon::setTestNow('2026-09-03 11:00:01');
         $this->actingAs($stationUser)->get(route('sdm-memos.edit', $memo))->assertForbidden();
 
         Carbon::setTestNow('2026-09-01 11:00:00');
@@ -201,6 +205,10 @@ class SdmWorkflowTest extends TestCase
     {
         [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
         $selectedLineManager = $this->user(UserRole::AssistantManager, ['employee_number' => 'AM-SELECTED']);
+        $inactiveLineManager = $this->user(UserRole::AssistantManager, [
+            'employee_number' => 'AM-INACTIVE',
+            'is_enabled' => false,
+        ]);
         $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), $this->validMemoData());
         $memo = ServiceDeficiencyMemo::query()->sole();
 
@@ -208,7 +216,13 @@ class SdmWorkflowTest extends TestCase
             ->assertOk()
             ->assertSee('Action required: Station Manager')
             ->assertSee('name="forward_to_employee_number"', false)
+            ->assertSee('x-data="employeeAutocomplete"', false)
+            ->assertSee($lineManager->employee_number.' - '.$lineManager->name)
+            ->assertSee($selectedLineManager->employee_number.' - '.$selectedLineManager->name)
+            ->assertDontSee($inactiveLineManager->employee_number.' - '.$inactiveLineManager->name)
             ->assertSee('value="forward"', false)
+            ->assertSee('data-sdm-confirm', false)
+            ->assertSee('Are you sure you want to proceed?')
             ->assertSee('Cancel SDM');
 
         $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'forward'])

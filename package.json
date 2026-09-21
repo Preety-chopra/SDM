@@ -4,12 +4,14 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test:js": "node --test tests/JavaScript/sdm-confirmation.test.js"
     },
     "devDependencies": {
         "@tailwindcss/forms": "^0.5.2",
         "alpinejs": "^3.4.2",
         "autoprefixer": "^10.4.2",
+        "chart.js": "^4.5.1",
         "concurrently": "^9.0.1",
         "laravel-vite-plugin": "^3.1",
         "postcss": "^8.4.31",

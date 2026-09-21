@@ -81,6 +81,8 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertSee($line->name)
             ->assertSee($station->code.' · '.$station->name)
             ->assertSee('name="line_manager_employee_number"', false)
+            ->assertSee('x-data="employeeAutocomplete"', false)
+            ->assertSee('data-candidates=', false)
             ->assertSee($lineManager->employee_number.' - '.$lineManager->name)
             ->assertDontSee($inactiveLineManager->employee_number.' - '.$inactiveLineManager->name)
             ->assertDontSee('name="station_manager_employee_number"', false);
@@ -389,6 +391,10 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertSee('data-selected-deficiencies', false)
             ->assertSee(route('sdm-memos.store-and-submit'), false)
             ->assertSee('Submit memo')
+            ->assertSee('data-sdm-confirm', false)
+            ->assertSee('Are you sure you want to proceed?')
+            ->assertSee('SDM number')
+            ->assertSee('Proceed')
             ->assertSee('id="incident_date" type="date" name="incident_date"', false)
             ->assertSee('Time of incident (HH:MM, IST)')
             ->assertSee('id="incident_time" type="time" name="incident_time"', false)
@@ -506,6 +512,44 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->actingAs($viewerWithoutMemoPermissions)->get(route('dashboard'))->assertOk()->assertSee('All memos');
         $this->actingAs($viewerWithoutMemoPermissions)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
         $this->actingAs($viewerWithoutMemoPermissions)->get(route('sdm-memos.show', $memo))->assertOk()->assertSee($memo->serial_number);
+    }
+
+    public function test_memo_index_can_filter_by_type_serial_station_line_incident_date_and_status(): void
+    {
+        [$user, $targetLine, $targetStation] = $this->stationUserWithLine('FILTER-RED');
+        [$otherUser] = $this->stationUserWithLine('FILTER-GREEN');
+        $target = $this->draft($user, SdmType::Cfs, 'FILTER-TARGET-101');
+        $target->update([
+            'incident_date' => '2026-09-10',
+            'status' => MemoStatus::Submitted->value,
+        ]);
+        $other = $this->draft($otherUser, SdmType::Ticketing, 'OTHER-MEMO-202');
+        $other->update(['incident_date' => '2026-09-11']);
+
+        $this->actingAs($user)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('name="service_type"', false)
+            ->assertSee('name="serial_number"', false)
+            ->assertSee('name="station_id"', false)
+            ->assertSee('name="line_code"', false)
+            ->assertSee('name="incident_date"', false)
+            ->assertSee('name="status"', false);
+
+        $filters = [
+            ['service_type' => SdmType::Cfs->value],
+            ['serial_number' => 'TARGET-101'],
+            ['station_id' => $targetStation->id],
+            ['line_code' => $targetLine->code],
+            ['incident_date' => '2026-09-10'],
+            ['status' => MemoStatus::Submitted->value],
+        ];
+
+        foreach ($filters as $filter) {
+            $this->actingAs($user)->get(route('sdm-memos.index', $filter))
+                ->assertOk()
+                ->assertSee($target->serial_number)
+                ->assertDontSee($other->serial_number);
+        }
     }
 
     public function test_administrator_can_manage_master_data_and_referenced_records_cannot_be_deleted(): void

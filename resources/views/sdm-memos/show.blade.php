@@ -137,7 +137,27 @@
                 @if($memo->workflow_version < 2)
                 <section class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 dark:border-emerald-900 dark:bg-emerald-950">
                     <h3 class="font-semibold text-emerald-950 dark:text-emerald-100">Action required: {{ $memo->current_stage->label() }}</h3>
-                    <form method="POST" enctype="multipart/form-data" action="{{ route('sdm-memos.workflow.store', $memo) }}" class="mt-4 flex flex-col gap-4">
+                    <form
+                        method="POST"
+                        enctype="multipart/form-data"
+                        action="{{ route('sdm-memos.workflow.store', $memo) }}"
+                        class="mt-4 flex flex-col gap-4"
+                        x-data="sdmActionForm"
+                        @submit="requestSdmConfirmation($event)"
+                        data-confirmation-preview="{{ json_encode([
+                            ['label' => 'SDM number', 'value' => $memo->serial_number],
+                            ['label' => 'SDM type', 'value' => $memo->service_type->label()],
+                            ['label' => 'From', 'value' => collect([auth()->user()->name, auth()->user()->employee_number])->filter()->join(' · ')],
+                            ['label' => 'Staff', 'value' => collect([$memo->staff_name, $memo->employee_number])->filter()->join(' · ')],
+                            ['label' => 'Station', 'value' => $memo->station_name],
+                            ['label' => 'Incident date', 'value' => $memo->incident_date?->format('d-m-Y')],
+                            ['label' => 'Current stage', 'value' => $memo->current_stage->label()],
+                        ]) }}"
+                        data-confirmation-fields="{{ json_encode([
+                            ['label' => 'Forward to', 'name' => 'forward_to_employee_number'],
+                            ['label' => 'Remarks', 'name' => 'remarks'],
+                        ]) }}"
+                    >
                         @csrf
                         <div>
                             <x-input-label for="remarks" value="Remarks (mandatory for cancellation)" required/>
@@ -146,8 +166,12 @@
                         </div>
                         @if($memo->current_stage === \App\Enums\WorkflowStage::StationManager)
                             <div>
-                                <x-input-label for="forward_to_employee_number" value="Forward to AM/Line (employee number)" required/>
-                                <x-text-input id="forward_to_employee_number" name="forward_to_employee_number" class="mt-1 block w-full" :value="old('forward_to_employee_number')"/>
+                                <x-employee-autocomplete
+                                    name="forward_to_employee_number"
+                                    label="Forward to AM/Line (employee number)"
+                                    :candidates="$lineManagerCandidates"
+                                    :value="old('forward_to_employee_number')"
+                                />
                                 <x-input-error :messages="$errors->get('forward_to_employee_number')" class="mt-2"/>
                             </div>
                         @endif
@@ -160,9 +184,10 @@
                             @if($memo->current_stage === \App\Enums\WorkflowStage::DeputyGeneralManager)
                                 <button name="action" value="approve" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Approve SDM</button>
                             @else
-                                <button name="action" value="forward" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Verify and forward</button>
+                                <button name="action" value="forward" data-sdm-confirm data-confirmation-action="Forward SDM" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Verify and forward</button>
                             @endif<button name="action" value="cancel" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel SDM</button>
                         </div>
+                        <x-sdm-confirmation-preview />
                     </form>
                 </section>
                 @endif

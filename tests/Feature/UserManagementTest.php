@@ -165,7 +165,7 @@ class UserManagementTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('Create SDM memo')
-            ->assertSee('View all memos')
+            ->assertSee('View All SDMs')
             ->assertDontSee('User management')
             ->assertDontSee('Pending memos by approval level')
             ->assertDontSee('Users menu');

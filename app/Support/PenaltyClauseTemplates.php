@@ -13,6 +13,8 @@ final class PenaltyClauseTemplates
         return match ($type) {
             SdmType::Cfs => self::cfa(),
             SdmType::Ticketing => self::tvs(),
+            SdmType::WandW => self::watchAndWard(),
+            SdmType::Marshall => self::marshal(),
         };
     }
 
@@ -57,6 +59,43 @@ final class PenaltyClauseTemplates
             self::perDayWorker(16, 'Short deployment of staff', 1000, true),
             self::fixedPlusCost(17, "Theft by contractor's staff", 50000, false),
             self::fixedPlusCost(18, "Damage by contractor's staff", 5000, false),
+        ];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function watchAndWard(): array
+    {
+        return self::personnelServiceClauses(
+            'Misbehaviour and poor customer support',
+            'Possession of live tokens, CSCs',
+        );
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function marshal(): array
+    {
+        return self::personnelServiceClauses(
+            'Misbehavior and poor customer support by Marshal/Supervisor',
+            'Possession of live tickets/CSCs',
+        );
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function personnelServiceClauses(string $customerSupportDescription, string $possessionDescription): array
+    {
+        return [
+            self::maximum(1, 'Poor dress code', 200, true),
+            self::maximum(2, 'Carrying a mobile phone on duty or listening to music on mobile/other devices', 200, true),
+            self::maximum(3, 'Improper cleanliness at or near the deputed place', 200, true),
+            self::maximum(4, 'Late reporting, leaving duty before scheduled time, or leaving without informing the on-duty SM/SC', 500, true),
+            self::maximum(5, $customerSupportDescription, 500, true),
+            self::maximum(6, 'Public complaint on any account in a proved case of deficiency', 500, true),
+            self::maximum(7, $possessionDescription, 500, true),
+            self::maximum(8, 'Breach of instructions', 500, true),
+            self::discretionary(9, 'Violation of terms and conditions of the contract', true),
+            self::perDayWorker(10, 'Short deployment of staff', 1000, true),
+            self::fixedPlusCost(11, "Theft by contractor's staff", 50000, false),
+            self::fixedPlusCost(12, "Damage by contractor's staff", 5000, false),
         ];
     }
 

@@ -125,7 +125,30 @@
 @can('act', $memo)
     <section class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 dark:border-emerald-900 dark:bg-emerald-950/40" @if($assessmentStage) x-data="{ selectedClauses: [] }" @endif>
         <h3 class="font-semibold text-emerald-950 dark:text-emerald-100">Action required: {{ $currentStep->stage->label() }}</h3>
-        <form method="POST" action="{{ route('sdm-memos.workflow.store', $memo) }}" class="mt-4 flex flex-col gap-5">@csrf
+        <form
+            method="POST"
+            action="{{ route('sdm-memos.workflow.store', $memo) }}"
+            class="mt-4 flex flex-col gap-5"
+            x-data="sdmActionForm"
+            @submit="requestSdmConfirmation($event)"
+            data-confirmation-preview="{{ json_encode([
+                ['label' => 'SDM number', 'value' => $memo->serial_number],
+                ['label' => 'SDM type', 'value' => $memo->service_type->label()],
+                ['label' => 'From', 'value' => collect([auth()->user()->name, auth()->user()->employee_number])->filter()->join(' · ')],
+                ['label' => 'Staff', 'value' => collect([$memo->staff_name, $memo->employee_number])->filter()->join(' · ')],
+                ['label' => 'Station', 'value' => $memo->station_name],
+                ['label' => 'Incident date', 'value' => $memo->incident_date?->format('d-m-Y')],
+                ['label' => 'Current stage', 'value' => $currentStep->stage->label()],
+            ]) }}"
+            data-confirmation-fields="{{ json_encode([
+                ['label' => 'Forward to', 'name' => 'forward_to_employee_number'],
+                ['label' => 'Negative points', 'name' => 'negative_points'],
+                ['label' => 'Staff action', 'name' => 'staff_action'],
+                ['label' => 'Bill month', 'name' => 'bill_month'],
+                ['label' => 'Monthly bill value', 'name' => 'monthly_bill_value'],
+                ['label' => 'Remarks', 'name' => 'remarks'],
+            ]) }}"
+        >@csrf
             @if($assignmentStage)
                 <div>
                     <x-input-label for="cmc_staff_id" value="Assign CMC Staff" required/>
@@ -164,12 +187,21 @@
             @endif
             @unless($assignmentStage)<div><x-input-label :value="$dgmStage ? 'Remarks (mandatory when returning or cancelling)' : ($currentStep->stage === \App\Enums\WorkflowStepType::StationManager || $currentStep->stage === \App\Enums\WorkflowStepType::LineReview ? 'Remarks (mandatory for cancellation)' : 'Remarks')" :required="$dgmStage"/><textarea name="remarks" rows="3" class="{{ $inputClass }}"></textarea><x-input-error :messages="$errors->get('remarks')" class="mt-2"/></div>@endunless
             @if($currentStep->stage === \App\Enums\WorkflowStepType::StationManager)
-                <div><x-input-label value="Forward to AM/Line (employee number)" required/><input name="forward_to_employee_number" value="{{ old('forward_to_employee_number') }}" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('forward_to_employee_number')" class="mt-2"/></div>
+                <div>
+                    <x-employee-autocomplete
+                        name="forward_to_employee_number"
+                        label="Forward to AM/Line (employee number)"
+                        :candidates="$lineManagerCandidates"
+                        :value="old('forward_to_employee_number')"
+                    />
+                    <x-input-error :messages="$errors->get('forward_to_employee_number')" class="mt-2"/>
+                </div>
             @endif
             @if($dgmStage && $latestAssessment?->cap_warning)<label class="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200"><input type="checkbox" name="cap_acknowledged" value="1" class="rounded border-gray-300 text-emerald-700"> <span>I acknowledge the advisory 10% monthly-bill warning. <span data-required-marker aria-hidden="true" class="font-bold !text-red-600 dark:!text-red-400">*</span><span class="sr-only"> (required for approval)</span></span></label>@endif
             <div class="flex flex-wrap justify-end gap-3">
-                @if($assignmentStage)<button name="action" value="assign" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Assign for scrutiny</button>@elseif($dgmStage)<button name="action" value="return" class="rounded-lg border border-amber-600 px-5 py-2.5 text-sm font-semibold text-amber-800 dark:text-amber-300">Return to CMC</button><button name="action" value="cancel" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel</button><button name="action" value="approve" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Approve assessment</button>@else<button name="action" value="forward" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Verify and forward</button>@if(in_array($currentStep->stage, [\App\Enums\WorkflowStepType::StationManager, \App\Enums\WorkflowStepType::LineReview], true))<button name="action" value="cancel" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel SDM</button>@endif @endif
+                @if($assignmentStage)<button name="action" value="assign" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Assign for scrutiny</button>@elseif($dgmStage)<button name="action" value="return" class="rounded-lg border border-amber-600 px-5 py-2.5 text-sm font-semibold text-amber-800 dark:text-amber-300">Return to CMC</button><button name="action" value="cancel" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel</button><button name="action" value="approve" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Approve assessment</button>@else<button name="action" value="forward" data-sdm-confirm data-confirmation-action="Forward SDM" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Verify and forward</button>@if(in_array($currentStep->stage, [\App\Enums\WorkflowStepType::StationManager, \App\Enums\WorkflowStepType::LineReview], true))<button name="action" value="cancel" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel SDM</button>@endif @endif
             </div>
+            <x-sdm-confirmation-preview />
         </form>
     </section>
 @endcan
