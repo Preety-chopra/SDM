@@ -20,6 +20,7 @@ class ListMemosRequest extends FormRequest
     {
         return [
             'pending_stage' => ['nullable', Rule::enum(WorkflowStage::class)],
+            'category' => ['nullable', Rule::in(['pending', 'transferred'])],
             'service_type' => ['nullable', Rule::enum(SdmType::class)],
             'serial_number' => ['nullable', 'string', 'max:50'],
             'station_id' => ['nullable', 'integer', Rule::exists('stations', 'id')],
@@ -32,6 +33,13 @@ class ListMemosRequest extends FormRequest
     public function pendingStage(): ?WorkflowStage
     {
         return WorkflowStage::tryFrom($this->string('pending_stage')->toString());
+    }
+
+    public function category(): ?string
+    {
+        $category = $this->string('category')->toString();
+
+        return in_array($category, ['pending', 'transferred'], true) ? $category : null;
     }
 
     /** @return array<string, int|string> */

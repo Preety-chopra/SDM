@@ -44,6 +44,7 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::post('/sdm-memos/submit', [ServiceDeficiencyMemoController::class, 'storeAndSubmit'])->name('sdm-memos.store-and-submit');
     Route::resource('sdm-memos', ServiceDeficiencyMemoController::class)->except('update');
     Route::post('/sdm-memos/{sdm_memo}', [ServiceDeficiencyMemoController::class, 'update'])->name('sdm-memos.update');
+    Route::patch('/sdm-memos/{sdm_memo}/station-manager', [ServiceDeficiencyMemoController::class, 'updateStationManager'])->name('sdm-memos.station-manager.update');
     Route::post('/sdm-memos/{sdm_memo}/submit', [ServiceDeficiencyMemoController::class, 'submit'])->name('sdm-memos.submit');
     Route::post('/sdm-memos/{sdm_memo}/workflow', [MemoWorkflowController::class, 'store'])->name('sdm-memos.workflow.store');
     Route::patch('/sdm-memos/{sdm_memo}/cmc-assignment', [MemoWorkflowController::class, 'reassign'])->name('sdm-memos.cmc-assignment.update');

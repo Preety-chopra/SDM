@@ -1,7 +1,7 @@
 
 
 import Alpine from 'alpinejs';
-import { createDashboardCharts } from './dashboard-charts';
+import { createDashboardCharts, createStationManagerDashboardCharts } from './dashboard-charts';
 import { createSdmConfirmation } from './sdm-confirmation';
 
 window.Alpine = Alpine;
@@ -121,5 +121,6 @@ Alpine.data('memoForm', () => ({
 
 Alpine.data('sdmActionForm', () => createSdmConfirmation());
 Alpine.data('dashboardCharts', (config) => createDashboardCharts(config));
+Alpine.data('stationManagerDashboardCharts', (config) => createStationManagerDashboardCharts(config));
 
 Alpine.start();

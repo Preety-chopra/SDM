@@ -14,6 +14,7 @@ use App\Http\Requests\StoreAndSubmitMemoRequest;
 use App\Http\Requests\StoreMemoRequest;
 use App\Http\Requests\SubmitMemoRequest;
 use App\Http\Requests\UpdateMemoRequest;
+use App\Http\Requests\UpdateMemoStationManagerRequest;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
 use App\Services\MasterDataService;
@@ -37,11 +38,13 @@ class ServiceDeficiencyMemoController extends Controller
         Gate::authorize('viewAny', ServiceDeficiencyMemo::class);
 
         $pendingStage = $request->pendingStage();
+        $category = $request->category();
         $filters = $request->filters();
 
         return view('sdm-memos.index', [
-            'memos' => $this->memos->paginateFor($request->user(), $filters, $pendingStage),
+            'memos' => $this->memos->paginateFor($request->user(), $filters, $pendingStage, $category),
             'pendingStage' => $pendingStage,
+            'category' => $category,
             'filters' => $filters,
             'sdmTypes' => SdmType::cases(),
             'statuses' => MemoStatus::cases(),
@@ -84,6 +87,11 @@ class ServiceDeficiencyMemoController extends Controller
 
         return view('sdm-memos.show', [
             'memo' => $sdmMemo,
+            'stationManagerCandidates' => $request->user()->can('reassignStationManager', $sdmMemo)
+                ? $this->users->enabledForRole(UserRole::StationManager)
+                    ->filter(fn (User $user): bool => filled($user->employee_number) && $user->id !== $request->user()->id)
+                    ->values()
+                : collect(),
             'lineManagerCandidates' => ($sdmMemo->current_stage === WorkflowStage::StationManager
                 || $sdmMemo->currentWorkflowStep?->stage === WorkflowStepType::StationManager)
                 && $request->user()->can('act', $sdmMemo)
@@ -118,6 +126,21 @@ class ServiceDeficiencyMemoController extends Controller
         $this->memos->updateDraft($sdmMemo, $request->user(), $request->validated());
 
         return back()->with('status', $wasSubmitted ? 'SDM updated.' : 'Draft saved.');
+    }
+
+    public function updateStationManager(UpdateMemoStationManagerRequest $request, ServiceDeficiencyMemo $sdmMemo): RedirectResponse
+    {
+        $this->memos->reassignStationManager(
+            $sdmMemo,
+            $request->user(),
+            $request->string('station_manager_employee_number')->toString(),
+        );
+
+        $message = $request->user()->hasRole(UserRole::StationManager->value)
+            ? 'Pending SDM handed over successfully.'
+            : 'Forwarded Station Manager changed.';
+
+        return redirect()->route('sdm-memos.show', $sdmMemo)->with('status', $message);
     }
 
     public function submit(SubmitMemoRequest $request, ServiceDeficiencyMemo $sdmMemo): RedirectResponse

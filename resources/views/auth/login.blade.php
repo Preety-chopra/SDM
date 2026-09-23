@@ -101,8 +101,8 @@
                         </div>
 
                         <div>
-                            <label for="station_id" class="mb-2 block text-sm font-semibold text-slate-700">Station <span data-required-marker aria-hidden="true" class="font-bold !text-red-600">*</span><span class="sr-only"> (required)</span></label>
-                            <select id="station_id" name="station_id" class="block h-[52px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-[15px] text-slate-900 shadow-sm outline-none transition hover:border-slate-300 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" required>
+                            <label for="station_id" class="mb-2 block text-sm font-semibold text-slate-700">Station <span class="font-normal text-slate-500">(required for Station Controller and Station Manager)</span></label>
+                            <select id="station_id" name="station_id" class="block h-[52px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-[15px] text-slate-900 shadow-sm outline-none transition hover:border-slate-300 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100">
                                 <option value="">Select station</option>
                                 @foreach($stations as $station)
                                     <option value="{{ $station->id }}" @selected((string) old('station_id') === (string) $station->id)>{{ $station->name }}</option>
@@ -149,7 +149,7 @@
                     </div>
 
                     <h2 id="forgot-password-title" class="mt-5 text-xl font-bold text-slate-950">Password assistance</h2>
-                    <p class="mt-3 text-sm leading-6 text-slate-600">Please contact Ops IT Cell - 110426 or send an email to itcellops@dmrc.org</p>
+                    <p class="mt-3 text-sm leading-6 text-slate-600">Please contact Ops IT Cell - 113755 or send an email to itcell.ops@dmrc.org</p>
 
                     <button type="button" class="mt-6 flex w-full items-center justify-center rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#115e59] focus:outline-none focus:ring-4 focus:ring-emerald-200" @click="forgotPasswordOpen = false">Close</button>
                 </div>

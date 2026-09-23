@@ -9,16 +9,19 @@ use App\Enums\WorkflowStepType;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 
 final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepositoryInterface
 {
     /** @param array<string, int|string> $filters */
-    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null): LengthAwarePaginator
+    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null, ?string $category = null): LengthAwarePaginator
     {
         return ServiceDeficiencyMemo::query()
-            ->select(['id', 'service_type', 'serial_number', 'station_name', 'line_name', 'incident_date', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'cmc_staff_id', 'created_by', 'submitted_at', 'created_at'])
+            ->select(['id', 'service_type', 'serial_number', 'station_name', 'line_name', 'incident_date', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'cmc_staff_id', 'created_by', 'submitted_at', 'created_at', 'updated_at'])
             ->with([
                 'currentWorkflowStep:id,stage,assigned_name',
+                'latestActedApproval',
+                'latestActedWorkflowStep',
                 'cmcStaff:id,name',
                 'cancellationApproval' => fn ($query) => $query->select(['memo_approvals.id', 'memo_approvals.memo_id', 'memo_approvals.role', 'memo_approvals.decision', 'memo_approvals.acted_at']),
                 'cancellationWorkflowStep' => fn ($query) => $query->select(['memo_workflow_steps.id', 'memo_workflow_steps.memo_id', 'memo_workflow_steps.stage', 'memo_workflow_steps.decision', 'memo_workflow_steps.acted_at']),
@@ -35,9 +38,33 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
                 ->whereHas('approvals', fn ($query) => $query
                     ->where('role', $pendingStage->value)
                     ->where('decision', 'pending')))
+            ->when($category, fn (Builder $query, string $category) => $this->scopeToInboxCategory($query, $user, $category))
             ->latest()
             ->paginate(15)
             ->withQueryString();
+    }
+
+    private function scopeToInboxCategory(Builder $query, User $user, string $category): Builder
+    {
+        $assignmentSource = $category === 'transferred' ? 'handover' : 'workflow';
+
+        return $query->where(function (Builder $query) use ($user, $assignmentSource): void {
+            $query->where(function (Builder $query) use ($user, $assignmentSource): void {
+                $query->where('workflow_version', '<', 2)
+                    ->whereIn('status', [MemoStatus::Submitted->value, MemoStatus::UnderReview->value])
+                    ->whereHas('approvals', fn (Builder $query) => $query
+                        ->where('assigned_to', $user->id)
+                        ->where('decision', 'pending')
+                        ->where('assignment_source', $assignmentSource)
+                        ->whereColumn('memo_approvals.role', 'service_deficiency_memos.current_stage'));
+            })->orWhere(function (Builder $query) use ($user, $assignmentSource): void {
+                $query->where('workflow_version', '>=', 2)
+                    ->whereHas('currentWorkflowStep', fn (Builder $query) => $query
+                        ->where('assigned_to', $user->id)
+                        ->where('decision', 'pending')
+                        ->where('assignment_source', $assignmentSource));
+            });
+        });
     }
 
     public function pendingByStage(int $limit = 5): array

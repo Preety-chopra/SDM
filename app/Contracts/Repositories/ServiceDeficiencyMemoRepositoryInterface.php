@@ -11,7 +11,7 @@ use Illuminate\Support\Collection;
 interface ServiceDeficiencyMemoRepositoryInterface
 {
     /** @param array<string, int|string> $filters */
-    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null): LengthAwarePaginator;
+    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null, ?string $category = null): LengthAwarePaginator;
 
     /** @return array<string, array{memos: Collection, total: int}> */
     public function pendingByStage(int $limit = 5): array;

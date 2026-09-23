@@ -8,9 +8,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['memo_id', 'role', 'sequence', 'assigned_to', 'assigned_name', 'assigned_employee_number', 'signer_name', 'signer_employee_number', 'decision', 'acted_by', 'acted_at', 'remarks'])]
+#[Fillable(['memo_id', 'role', 'sequence', 'assigned_to', 'assigned_name', 'assigned_employee_number', 'assignment_source', 'signer_name', 'signer_employee_number', 'decision', 'acted_by', 'acted_at', 'remarks'])]
 class MemoApproval extends Model
 {
+    protected $attributes = ['assignment_source' => 'workflow'];
+
     public function memo(): BelongsTo
     {
         return $this->belongsTo(ServiceDeficiencyMemo::class, 'memo_id');

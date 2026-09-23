@@ -8,6 +8,7 @@ use App\Models\Station;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class AuthenticationTest extends TestCase
@@ -56,9 +57,10 @@ class AuthenticationTest extends TestCase
             ->assertSee('action="'.route('login').'"', false);
     }
 
-    public function test_users_can_authenticate_using_the_login_screen(): void
+    public function test_station_controller_can_authenticate_using_the_login_screen_with_a_station(): void
     {
         $user = User::factory()->create(['name' => 'Central Station']);
+        $user->assignRole(UserRole::Station->value);
         $station = Station::query()->create([
             'code' => 'CENTRAL',
             'name' => 'Central Station',
@@ -77,42 +79,72 @@ class AuthenticationTest extends TestCase
             ->assertSessionHas('auth.station_id', $station->id);
     }
 
-    public function test_login_lists_active_stations_and_requires_every_user_to_select_one(): void
+    public function test_login_lists_only_active_stations(): void
     {
         $line = Line::query()->create(['code' => 'BLUE', 'name' => 'Blue Line', 'is_active' => true]);
         $zulu = Station::query()->create(['code' => 'ZULU', 'name' => 'Zulu Station', 'line_id' => $line->id, 'is_active' => true]);
         $alpha = Station::query()->create(['code' => 'ALPHA', 'name' => 'Alpha Station', 'line_id' => $line->id, 'is_active' => true]);
         $disabled = Station::query()->create(['code' => 'DISABLED', 'name' => 'Disabled Station', 'line_id' => $line->id, 'is_active' => false]);
-        $user = User::factory()->create(['name' => 'Operations User']);
-        $user->assignRole(UserRole::AssistantManager->value);
-
         $this->get(route('login'))
             ->assertOk()
             ->assertSeeInOrder(['Alpha Station', 'Zulu Station'])
             ->assertDontSee('Disabled Station')
             ->assertSee('name="station_id"', false)
-            ->assertSee('id="station_id" name="station_id"', false);
+            ->assertSee('id="station_id" name="station_id"', false)
+            ->assertDontSee('name="station_id" required', false);
+    }
 
-        $this->post(route('login'), [
-            'username' => $user->name,
-            'password' => 'password',
-        ])->assertSessionHasErrors('station_id');
-        $this->assertGuest();
+    public function test_station_controller_and_station_manager_must_select_an_active_station(): void
+    {
+        $disabled = Station::query()->create([
+            'code' => 'DISABLED',
+            'name' => 'Disabled Station',
+            'is_active' => false,
+        ]);
 
-        $this->post(route('login'), [
-            'username' => $user->name,
-            'password' => 'password',
-            'station_id' => $disabled->id,
-        ])->assertSessionHasErrors('station_id');
-        $this->assertGuest();
+        Role::findOrCreate('station_controller');
 
-        $this->post(route('login'), [
-            'username' => $user->name,
-            'password' => 'password',
-            'station_id' => $zulu->id,
-        ])->assertRedirect(route('dashboard', absolute: false))
-            ->assertSessionHas('auth.station_id', $zulu->id);
-        $this->assertAuthenticatedAs($user);
+        foreach ([UserRole::Station->value, UserRole::StationManager->value, 'station_controller'] as $role) {
+            $user = User::factory()->create();
+            $user->assignRole($role);
+
+            $this->post(route('login'), [
+                'username' => $user->name,
+                'password' => 'password',
+            ])->assertSessionHasErrors('station_id');
+            $this->assertGuest();
+
+            $this->post(route('login'), [
+                'username' => $user->name,
+                'password' => 'password',
+                'station_id' => $disabled->id,
+            ])->assertSessionHasErrors('station_id');
+            $this->assertGuest();
+        }
+    }
+
+    public function test_non_station_roles_can_login_without_selecting_a_station(): void
+    {
+        foreach ([
+            UserRole::Administrator,
+            UserRole::AssistantManager,
+            UserRole::ManagerOperations,
+            UserRole::CmcTeamLead,
+            UserRole::CmcStaff,
+            UserRole::DeputyGeneralManager,
+        ] as $role) {
+            $user = User::factory()->create();
+            $user->assignRole($role->value);
+
+            $this->post(route('login'), [
+                'username' => $user->name,
+                'password' => 'password',
+            ])->assertRedirect(route('dashboard', absolute: false))
+                ->assertSessionMissing('auth.station_id');
+            $this->assertAuthenticatedAs($user);
+
+            $this->post(route('logout'));
+        }
     }
 
     public function test_users_can_not_authenticate_with_invalid_password(): void

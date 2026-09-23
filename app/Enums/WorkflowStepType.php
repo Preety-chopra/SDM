@@ -15,8 +15,8 @@ enum WorkflowStepType: string
     public function label(): string
     {
         return match ($this) {
-            self::StationManager => 'Station Manager sign-off',
-            self::LineReview => 'Manager/Assistant Manager-Line review',
+            self::StationManager => 'Station Manager review',
+            self::LineReview => 'Assistant Manager/Manager(Line) review',
             self::AmCmcToScrutiny => 'AM/CMC forwarding for scrutiny',
             self::CmcAssignment => 'CMC Team Lead staff assignment',
             self::CmcAssessment => 'CMC Staff scrutiny and assessment',

@@ -16,6 +16,31 @@
             @can('update', $memo)
                 <div class="flex justify-end"><a href="{{ route('sdm-memos.edit', $memo) }}" class="rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">Edit SDM</a></div>
             @endcan
+            @can('reassignStationManager', $memo)
+                @php($isStationManagerHandover = auth()->user()->hasRole(\App\Enums\UserRole::StationManager->value))
+                <section class="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
+                    <h3 class="font-semibold text-amber-950 dark:text-amber-100">{{ $isStationManagerHandover ? 'Handover pending SDM' : 'Change forwarded SM' }}</h3>
+                    <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                        {{ $isStationManagerHandover
+                            ? 'Select another active Station Manager to take over this pending SDM.'
+                            : 'You can change the Station Manager until '.$memo->submitted_at->addDays(2)->format('d-m-Y H:i').', provided the current SM has not acted.' }}
+                    </p>
+                    <form method="POST" action="{{ route('sdm-memos.station-manager.update', $memo) }}" class="mt-5 flex flex-col gap-4">
+                        @csrf
+                        @method('PATCH')
+                        <x-employee-autocomplete
+                            name="station_manager_employee_number"
+                            :label="$isStationManagerHandover ? 'Handover to SM employee number' : 'New SM employee number'"
+                            :candidates="$stationManagerCandidates"
+                            :value="old('station_manager_employee_number')"
+                        />
+                        <x-input-error :messages="$errors->get('station_manager_employee_number')"/>
+                        <div class="flex justify-end">
+                            <button type="submit" class="rounded-lg bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">{{ $isStationManagerHandover ? 'Handover SDM' : 'Change SM' }}</button>
+                        </div>
+                    </form>
+                </section>
+            @endcan
             <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                 <dl class="grid gap-5 md:grid-cols-3">
                     @foreach([
@@ -30,7 +55,7 @@
                         'Employee number'=>$memo->employee_number,
                         // 'Staff mobile'=>$memo->staffAcknowledgement?->mobile_number,
                         'Created by'=>$memo->creator->name,
-                        'Submitted'=>$memo->submitted_at?->format('d-m-Y H:i')
+                        'Submitted At'=>$memo->submitted_at?->format('d-m-Y H:i')
                         ] as $label=>$value)
                         <div>
                             <dt class="text-xs font-semibold uppercase text-gray-500">{{ $label }}</dt>

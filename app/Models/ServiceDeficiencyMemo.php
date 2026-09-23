@@ -6,6 +6,7 @@ use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\WorkflowStage;
 use App\Enums\WorkflowStepType;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -131,6 +132,33 @@ class ServiceDeficiencyMemo extends Model
         return $this->hasOne(MemoWorkflowStep::class, 'memo_id')
             ->where('decision', 'cancelled')
             ->latestOfMany('acted_at');
+    }
+
+    public function latestActedApproval(): HasOne
+    {
+        return $this->hasOne(MemoApproval::class, 'memo_id')
+            ->whereNotNull('acted_at')
+            ->latestOfMany('acted_at');
+    }
+
+    public function latestActedWorkflowStep(): HasOne
+    {
+        return $this->hasOne(MemoWorkflowStep::class, 'memo_id')
+            ->whereNotNull('acted_at')
+            ->latestOfMany('acted_at');
+    }
+
+    public function statusUpdatedAt(): ?DateTimeInterface
+    {
+        if ($this->status === MemoStatus::Draft) {
+            return $this->updated_at;
+        }
+
+        $latestActionAt = $this->workflow_version >= 2
+            ? $this->latestActedWorkflowStep?->acted_at
+            : $this->latestActedApproval?->acted_at;
+
+        return $latestActionAt ?? $this->submitted_at ?? $this->updated_at;
     }
 
     public function cancellationLabel(): ?string

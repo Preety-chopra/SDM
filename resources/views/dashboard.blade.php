@@ -1,5 +1,5 @@
 <x-app-layout title="Dashboard">
-    <x-slot name="header">
+    {{-- <x-slot name="header"> --}}
         {{-- <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
             <div>
                 <p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-400">SDM Workspace</p>
@@ -7,11 +7,11 @@
             </div>
             <p class="text-sm text-gray-500 dark:text-gray-400">Choose an action and get straight to work.</p>
         </div> --}}
-    </x-slot>
+    {{-- </x-slot> --}}
 
     <div class="py-8 sm:py-10">
         <div class="mx-auto flex max-w-7xl flex-col gap-8 px-4 sm:px-6 lg:px-8">
-            @unless ($isStationController)
+            @unless ($isStationController || $isStationManager)
             <section aria-labelledby="quick-actions-heading">
                 <div class="mb-4 flex items-center justify-between gap-4">
                     <div>
@@ -69,6 +69,10 @@
 
             @if ($isStationController)
                 <x-station-controller-dashboard :dashboard="$stationControllerDashboard" />
+            @endif
+
+            @if ($isStationManager)
+                <x-station-manager-dashboard :dashboard="$stationManagerDashboard" />
             @endif
 
             @if (!empty($workflowStepTypes))

@@ -4,6 +4,69 @@ Chart.register(...registerables);
 
 const palette = ['#047857', '#0891b2', '#d97706', '#4f46e5', '#be123c', '#0f766e', '#7c3aed', '#0369a1'];
 
+function centerTotalPlugin(id) {
+    return {
+        id: `centerTotal-${id}`,
+        beforeDraw(chart) {
+            const { ctx, chartArea } = chart;
+            if (!chartArea) return;
+
+            const dataset = chart.data.datasets[0];
+            const total = dataset.data.reduce((sum, value) => sum + Number(value || 0), 0);
+            const centerX = (chartArea.left + chartArea.right) / 2;
+            const centerY = (chartArea.top + chartArea.bottom) / 2;
+            const darkMode = document.documentElement.classList.contains('dark');
+
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = darkMode ? '#f9fafb' : '#111827';
+            ctx.font = '700 23px sans-serif';
+            ctx.fillText(String(total), centerX, centerY - 7);
+            ctx.fillStyle = darkMode ? '#d1d5db' : '#6b7280';
+            ctx.font = '500 11px sans-serif';
+            ctx.fillText('TOTAL', centerX, centerY + 15);
+            ctx.restore();
+        },
+    };
+}
+
+function segmentPercentageLabelsPlugin(id) {
+    return {
+        id: `segmentPercentageLabels-${id}`,
+        afterDatasetsDraw(chart) {
+            const { ctx } = chart;
+            const dataset = chart.data.datasets[0];
+            const total = dataset.data.reduce((sum, value) => sum + Number(value || 0), 0);
+            if (!total) return;
+
+            chart.getDatasetMeta(0).data.forEach((arc, index) => {
+                const value = Number(dataset.data[index] || 0);
+                if (!value) return;
+
+                const angle = (arc.startAngle + arc.endAngle) / 2;
+                const radius = (arc.innerRadius + arc.outerRadius) / 2;
+                const x = arc.x + (Math.cos(angle) * radius);
+                const y = arc.y + (Math.sin(angle) * radius);
+                const percentage = (value / total) * 100;
+                const label = `${Number.isInteger(percentage) ? percentage : percentage.toFixed(1)}%`;
+
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#ffffff';
+                ctx.strokeStyle = 'rgba(17, 24, 39, 0.55)';
+                ctx.lineWidth = 3;
+                ctx.lineJoin = 'round';
+                ctx.font = '700 12px sans-serif';
+                ctx.strokeText(label, x, y);
+                ctx.fillText(label, x, y);
+                ctx.restore();
+            });
+        },
+    };
+}
+
 export function createDashboardCharts(config) {
     return {
         charts: [],
@@ -64,28 +127,12 @@ export function createDashboardCharts(config) {
             }));
         },
         renderServiceDistribution() {
-            const total = config.serviceDistribution.counts.reduce((sum, count) => sum + count, 0);
-            const centerTotal = {
-                id: 'centerTotal',
-                beforeDraw(chart) {
-                    const { ctx, chartArea } = chart;
-                    if (!chartArea) return;
-                    ctx.save();
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillStyle = '#111827';
-                    ctx.font = '700 24px sans-serif';
-                    ctx.fillText(String(total), (chartArea.left + chartArea.right) / 2, (chartArea.top + chartArea.bottom) / 2 - 7);
-                    ctx.fillStyle = '#6b7280';
-                    ctx.font = '500 11px sans-serif';
-                    ctx.fillText('TOTAL', (chartArea.left + chartArea.right) / 2, (chartArea.top + chartArea.bottom) / 2 + 15);
-                    ctx.restore();
-                },
-            };
-
             this.charts.push(new Chart(this.$refs.service, {
                 type: 'doughnut',
-                plugins: [centerTotal],
+                plugins: [
+                    centerTotalPlugin('station-controller-service'),
+                    segmentPercentageLabelsPlugin('station-controller-service'),
+                ],
                 data: {
                     labels: config.serviceDistribution.labels,
                     datasets: [{
@@ -207,6 +254,90 @@ export function createDashboardCharts(config) {
                     grid: { display: false },
                 },
             };
+        },
+    };
+}
+
+export function createStationManagerDashboardCharts(config) {
+    const doughnutOptions = () => ({
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, padding: 14 },
+            },
+        },
+    });
+
+    return {
+        charts: [],
+        init() {
+            this.$nextTick(() => {
+                this.charts.push(new Chart(this.$refs.managerTrend, {
+                    type: 'line',
+                    data: {
+                        labels: config.monthlyTrend.labels,
+                        datasets: config.monthlyTrend.datasets.map((dataset, index) => ({
+                            label: dataset.label,
+                            data: dataset.data,
+                            borderColor: palette[index % palette.length],
+                            backgroundColor: palette[index % palette.length],
+                            fill: false,
+                            borderWidth: 2.5,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            tension: 0.3,
+                        })),
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { intersect: false, mode: 'index' },
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, padding: 16 },
+                            },
+                            tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${context.parsed.y} SDMs` } },
+                        },
+                        scales: {
+                            x: { grid: { display: false } },
+                            y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#e5e7eb' } },
+                        },
+                    },
+                }));
+
+                this.charts.push(new Chart(this.$refs.managerStations, {
+                    type: 'doughnut',
+                    plugins: [
+                        centerTotalPlugin('station-manager-stations'),
+                        segmentPercentageLabelsPlugin('station-manager-stations'),
+                    ],
+                    data: {
+                        labels: config.stationDistribution.labels,
+                        datasets: [{ data: config.stationDistribution.counts, backgroundColor: palette, borderColor: '#ffffff', borderWidth: 3 }],
+                    },
+                    options: doughnutOptions(),
+                }));
+
+                this.charts.push(new Chart(this.$refs.managerServices, {
+                    type: 'doughnut',
+                    plugins: [
+                        centerTotalPlugin('station-manager-services'),
+                        segmentPercentageLabelsPlugin('station-manager-services'),
+                    ],
+                    data: {
+                        labels: config.serviceDistribution.labels,
+                        datasets: [{ data: config.serviceDistribution.counts, backgroundColor: palette, borderColor: '#ffffff', borderWidth: 3 }],
+                    },
+                    options: doughnutOptions(),
+                }));
+            });
+        },
+        destroy() {
+            this.charts.forEach((chart) => chart.destroy());
         },
     };
 }

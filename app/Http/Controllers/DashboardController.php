@@ -11,6 +11,7 @@ use App\Models\ServiceDeficiencyMemo;
 use App\Services\RoleService;
 use App\Services\ServiceDeficiencyMemoService;
 use App\Services\StationControllerDashboardService;
+use App\Services\StationManagerDashboardService;
 use App\Services\UserService;
 use Illuminate\View\View;
 
@@ -21,6 +22,7 @@ class DashboardController extends Controller
         private RoleService $roles,
         private ServiceDeficiencyMemoService $memos,
         private StationControllerDashboardService $stationControllerDashboard,
+        private StationManagerDashboardService $stationManagerDashboard,
     ) {}
 
     public function __invoke(DashboardRequest $request): View
@@ -33,6 +35,7 @@ class DashboardController extends Controller
         $isStationController = $request->user()->getRoleNames()->contains(
             fn (string $role): bool => in_array($role, [UserRole::Station->value, 'station_controller'], true),
         );
+        $isStationManager = $request->user()->hasRole(UserRole::StationManager->value);
 
         return view('dashboard', [
             'canManageUsers' => $canManageUsers,
@@ -44,6 +47,7 @@ class DashboardController extends Controller
             'pendingWorkflowSteps' => $isAdministrator ? $this->memos->pendingByWorkflowStep() : [],
             'workflowStepTypes' => $isAdministrator ? WorkflowStepType::cases() : [],
             'isStationController' => $isStationController,
+            'isStationManager' => $isStationManager,
             'stationControllerDashboard' => $isStationController
                 ? $this->stationControllerDashboard->for(
                     $request->user(),
@@ -52,6 +56,15 @@ class DashboardController extends Controller
                     $request->serviceType(),
                     $request->status(),
                     $request->aging(),
+                )
+                : null,
+            'stationManagerDashboard' => $isStationManager
+                ? $this->stationManagerDashboard->for(
+                    $request->user(),
+                    $request->dateFrom(),
+                    $request->dateTo(),
+                    $request->serviceType(),
+                    $request->status(),
                 )
                 : null,
         ]);

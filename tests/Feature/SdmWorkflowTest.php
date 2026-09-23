@@ -5,8 +5,11 @@ namespace Tests\Feature;
 use App\Enums\DeficiencyType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
+use App\Enums\UserPermission;
 use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
+use App\Enums\WorkflowStepType;
+use App\Models\AuditLog;
 use App\Models\Contractor;
 use App\Models\Line;
 use App\Models\ReportingRelationship;
@@ -18,6 +21,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class SdmWorkflowTest extends TestCase
@@ -139,6 +143,32 @@ class SdmWorkflowTest extends TestCase
         }
     }
 
+    public function test_memo_table_displays_when_the_current_status_was_last_updated(): void
+    {
+        Carbon::setTestNow('2026-09-01 10:15:00');
+        [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
+
+        $this->actingAs($stationUser)
+            ->post(route('sdm-memos.store-and-submit'), $this->validMemoData('CFS-STATUS-TIMESTAMP'))
+            ->assertRedirect();
+
+        $memo = ServiceDeficiencyMemo::query()->where('serial_number', 'CFS-STATUS-TIMESTAMP')->sole();
+        $this->actingAs($stationManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('Last Updated on')
+            ->assertSee('01-09-2026 10:15');
+
+        Carbon::setTestNow('2026-09-01 11:20:00');
+        $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'forward',
+            'forward_to_employee_number' => $lineManager->employee_number,
+        ])->assertRedirect();
+
+        $this->actingAs($lineManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('01-09-2026 11:20');
+    }
+
     public function test_submission_requires_the_station_managers_employee_number(): void
     {
         [$stationUser, $stationManager] = $this->workflowUsers();
@@ -176,7 +206,10 @@ class SdmWorkflowTest extends TestCase
     {
         Carbon::setTestNow('2026-09-01 10:00:00');
         [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
-        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), $this->validMemoData());
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), [
+            ...$this->validMemoData(),
+            'station_manager_employee_number' => $stationManager->employee_number,
+        ]);
         $memo = ServiceDeficiencyMemo::query()->sole();
         $this->assertSame('2026-09-01 10:00:00', $memo->submitted_at?->format('Y-m-d H:i:s'));
 
@@ -188,7 +221,7 @@ class SdmWorkflowTest extends TestCase
         ])->assertRedirect();
         $memo->refresh();
         $this->assertSame('Corrected Staff Name', $memo->staff_name);
-        $this->assertSame('2026-09-01 11:00:00', $memo->submitted_at?->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-09-01 10:00:00', $memo->submitted_at?->format('Y-m-d H:i:s'));
 
         Carbon::setTestNow('2026-09-03 11:00:01');
         $this->actingAs($stationUser)->get(route('sdm-memos.edit', $memo))->assertForbidden();
@@ -199,6 +232,287 @@ class SdmWorkflowTest extends TestCase
             'forward_to_employee_number' => $lineManager->employee_number,
         ])->assertRedirect();
         $this->actingAs($stationUser)->get(route('sdm-memos.edit', $memo))->assertForbidden();
+    }
+
+    public function test_station_controller_can_change_the_forwarded_station_manager_within_two_days_and_the_change_is_audited(): void
+    {
+        Carbon::setTestNow('2026-09-01 10:00:00');
+        [$stationUser, $originalStationManager] = $this->workflowUsers();
+        $replacementStationManager = $this->user(UserRole::StationManager, [
+            'employee_number' => 'SM-REPLACEMENT',
+        ]);
+
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), [
+            ...$this->validMemoData(),
+            'station_manager_employee_number' => $originalStationManager->employee_number,
+        ]);
+        $memo = ServiceDeficiencyMemo::query()->sole();
+
+        $this->actingAs($stationUser)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('Change forwarded SM')
+            ->assertSee('name="station_manager_employee_number"', false)
+            ->assertSee($replacementStationManager->employee_number.' - '.$replacementStationManager->name);
+
+        Carbon::setTestNow('2026-09-03 09:59:59');
+        $this->actingAs($stationUser)->patch(route('sdm-memos.station-manager.update', $memo), [
+            'station_manager_employee_number' => $replacementStationManager->employee_number,
+        ])->assertRedirect(route('sdm-memos.show', $memo));
+
+        $assignment = $memo->approvals()->where('role', WorkflowStage::StationManager->value)->sole();
+        $this->assertSame($replacementStationManager->id, $assignment->assigned_to);
+        $this->assertSame($replacementStationManager->name, $assignment->assigned_name);
+        $this->assertSame($replacementStationManager->employee_number, $assignment->assigned_employee_number);
+        $this->assertSame('2026-09-01 10:00:00', $memo->fresh()->submitted_at?->format('Y-m-d H:i:s'));
+
+        $audit = AuditLog::query()->where('event', 'memo.station_manager.reassigned')->sole();
+        $this->assertSame($stationUser->id, $audit->actor_id);
+        $this->assertSame([
+            'station_manager_id' => $originalStationManager->id,
+            'station_manager_name' => $originalStationManager->name,
+            'station_manager_employee_number' => $originalStationManager->employee_number,
+        ], $audit->before_values);
+        $this->assertSame([
+            'station_manager_id' => $replacementStationManager->id,
+            'station_manager_name' => $replacementStationManager->name,
+            'station_manager_employee_number' => $replacementStationManager->employee_number,
+        ], $audit->after_values);
+    }
+
+    public function test_station_controller_cannot_change_the_forwarded_station_manager_after_two_days_or_after_sm_action(): void
+    {
+        Carbon::setTestNow('2026-09-01 10:00:00');
+        [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
+        $replacementStationManager = $this->user(UserRole::StationManager, [
+            'employee_number' => 'SM-REPLACEMENT',
+        ]);
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), [
+            ...$this->validMemoData(),
+            'station_manager_employee_number' => $stationManager->employee_number,
+        ]);
+        $memo = ServiceDeficiencyMemo::query()->sole();
+
+        Carbon::setTestNow('2026-09-03 10:00:01');
+        $this->actingAs($stationUser)->patch(route('sdm-memos.station-manager.update', $memo), [
+            'station_manager_employee_number' => $replacementStationManager->employee_number,
+        ])->assertForbidden();
+
+        Carbon::setTestNow('2026-09-01 11:00:00');
+        $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'forward',
+            'forward_to_employee_number' => $lineManager->employee_number,
+        ])->assertRedirect();
+
+        $this->actingAs($stationUser)->patch(route('sdm-memos.station-manager.update', $memo), [
+            'station_manager_employee_number' => $replacementStationManager->employee_number,
+        ])->assertForbidden();
+
+        $this->assertSame($stationManager->id, $memo->approvals()->where('role', WorkflowStage::StationManager->value)->value('assigned_to'));
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'memo.station_manager.reassigned']);
+    }
+
+    public function test_station_controller_can_change_the_forwarded_station_manager_for_contract_workflow_memos(): void
+    {
+        Carbon::setTestNow('2026-09-01 10:00:00');
+        [$stationUser, $originalStationManager, , , , $station] = $this->workflowUsers();
+        $replacementStationManager = $this->user(UserRole::StationManager, [
+            'employee_number' => 'SM-CONTRACT-REPLACEMENT',
+        ]);
+
+        $memo = ServiceDeficiencyMemo::query()->create([
+            'service_type' => SdmType::Cfs->value,
+            'serial_number' => 'CFS-CONTRACT-REASSIGN',
+            'station_id' => $station->id,
+            'station_name' => $station->name,
+            'line_name' => $station->metroLine->name,
+            'line_code' => $station->metroLine->code,
+            'status' => MemoStatus::AwaitingStationManager->value,
+            'workflow_version' => 2,
+            'created_by' => $stationUser->id,
+            'updated_by' => $stationUser->id,
+            'submitted_at' => now(),
+        ]);
+        $stationManagerStep = $memo->workflowSteps()->create([
+            'round' => 1,
+            'sequence' => 1,
+            'stage' => WorkflowStepType::StationManager->value,
+            'role' => UserRole::StationManager->value,
+            'assigned_to' => $originalStationManager->id,
+            'assigned_name' => $originalStationManager->name,
+            'assigned_employee_number' => $originalStationManager->employee_number,
+            'decision' => 'pending',
+        ]);
+        $memo->update(['current_workflow_step_id' => $stationManagerStep->id]);
+
+        $this->actingAs($stationUser)->patch(route('sdm-memos.station-manager.update', $memo), [
+            'station_manager_employee_number' => $replacementStationManager->employee_number,
+        ])->assertRedirect(route('sdm-memos.show', $memo));
+
+        $stationManagerStep->refresh();
+        $this->assertSame($replacementStationManager->id, $stationManagerStep->assigned_to);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $stationUser->id,
+            'event' => 'memo.station_manager.reassigned',
+            'auditable_id' => $memo->id,
+        ]);
+    }
+
+    public function test_station_manager_can_handover_their_pending_sdm_to_another_active_station_manager(): void
+    {
+        Carbon::setTestNow('2026-09-01 10:00:00');
+        [$stationUser, $stationManager] = $this->workflowUsers();
+        $replacementStationManager = $this->user(UserRole::StationManager, [
+            'employee_number' => 'SM-HANDOVER',
+            'name' => 'Handover Manager',
+        ]);
+        $inactiveStationManager = $this->user(UserRole::StationManager, [
+            'employee_number' => 'SM-INACTIVE-HANDOVER',
+            'is_enabled' => false,
+        ]);
+
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), [
+            ...$this->validMemoData(),
+            'station_manager_employee_number' => $stationManager->employee_number,
+        ]);
+        $memo = ServiceDeficiencyMemo::query()->sole();
+
+        $this->actingAs($stationManager)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('Handover pending SDM')
+            ->assertSee('name="station_manager_employee_number"', false)
+            ->assertSee($replacementStationManager->employee_number.' - '.$replacementStationManager->name)
+            ->assertDontSee($stationManager->employee_number.' - '.$stationManager->name)
+            ->assertDontSee($inactiveStationManager->employee_number.' - '.$inactiveStationManager->name);
+
+        Carbon::setTestNow('2026-09-10 10:00:00');
+        $this->actingAs($stationManager)->patch(route('sdm-memos.station-manager.update', $memo), [
+            'station_manager_employee_number' => $replacementStationManager->employee_number,
+        ])->assertRedirect(route('sdm-memos.show', $memo));
+
+        $assignment = $memo->approvals()->where('role', WorkflowStage::StationManager->value)->sole();
+        $this->assertSame($replacementStationManager->id, $assignment->assigned_to);
+        $this->assertSame($replacementStationManager->name, $assignment->assigned_name);
+        $this->assertSame($replacementStationManager->employee_number, $assignment->assigned_employee_number);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $stationManager->id,
+            'event' => 'memo.station_manager.handed_over',
+            'auditable_id' => $memo->id,
+        ]);
+    }
+
+    public function test_memo_tabs_separate_pending_assignments_from_sdms_transferred_to_the_station_manager(): void
+    {
+        [$stationUser, $sourceStationManager, $lineManager] = $this->workflowUsers();
+        $recipientStationManager = $this->user(UserRole::StationManager, [
+            'employee_number' => 'SM-INBOX-RECIPIENT',
+        ]);
+        ReportingRelationship::query()->create([
+            'subordinate_id' => $recipientStationManager->id,
+            'supervisor_id' => $lineManager->id,
+        ]);
+
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), [
+            ...$this->validMemoData('CFS-TRANSFERRED-INBOX'),
+            'station_manager_employee_number' => $sourceStationManager->employee_number,
+        ]);
+        $transferredMemo = ServiceDeficiencyMemo::query()->where('serial_number', 'CFS-TRANSFERRED-INBOX')->sole();
+        $this->actingAs($sourceStationManager)->patch(route('sdm-memos.station-manager.update', $transferredMemo), [
+            'station_manager_employee_number' => $recipientStationManager->employee_number,
+        ])->assertRedirect();
+
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), [
+            ...$this->validMemoData('CFS-PENDING-INBOX'),
+            'station_manager_employee_number' => $recipientStationManager->employee_number,
+        ]);
+
+        $this->actingAs($recipientStationManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('All Memos')
+            ->assertSee('Pending Memos')
+            ->assertSee('Transferred Memos')
+            ->assertSee(route('sdm-memos.index', ['category' => 'pending']), false)
+            ->assertSee(route('sdm-memos.index', ['category' => 'transferred']), false);
+
+        $this->actingAs($recipientStationManager)->get(route('sdm-memos.index', ['category' => 'pending']))
+            ->assertOk()
+            ->assertSee('CFS-PENDING-INBOX')
+            ->assertDontSee('CFS-TRANSFERRED-INBOX');
+
+        $this->actingAs($recipientStationManager)->get(route('sdm-memos.index', ['category' => 'transferred']))
+            ->assertOk()
+            ->assertSee('CFS-TRANSFERRED-INBOX')
+            ->assertDontSee('CFS-PENDING-INBOX');
+    }
+
+    public function test_pending_memos_tab_shows_the_current_non_sm_workflow_assignee(): void
+    {
+        [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), $this->validMemoData('CFS-AM-PENDING-INBOX'));
+        $memo = ServiceDeficiencyMemo::query()->where('serial_number', 'CFS-AM-PENDING-INBOX')->sole();
+        $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'forward',
+            'forward_to_employee_number' => $lineManager->employee_number,
+        ])->assertRedirect();
+
+        $this->actingAs($lineManager)->get(route('sdm-memos.index', ['category' => 'pending']))
+            ->assertOk()
+            ->assertSee('CFS-AM-PENDING-INBOX');
+
+        $this->actingAs($stationManager)->get(route('sdm-memos.index', ['category' => 'pending']))
+            ->assertOk()
+            ->assertDontSee('CFS-AM-PENDING-INBOX');
+    }
+
+    public function test_station_manager_cannot_handover_an_sdm_that_is_not_pending_with_them(): void
+    {
+        [$stationUser, $assignedStationManager] = $this->workflowUsers();
+        $otherStationManager = $this->user(UserRole::StationManager, [
+            'employee_number' => 'SM-OTHER-HANDOVER',
+        ]);
+        $replacementStationManager = $this->user(UserRole::StationManager, [
+            'employee_number' => 'SM-HANDOVER-TARGET',
+        ]);
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), [
+            ...$this->validMemoData(),
+            'station_manager_employee_number' => $assignedStationManager->employee_number,
+        ]);
+        $memo = ServiceDeficiencyMemo::query()->sole();
+
+        $this->actingAs($otherStationManager)->patch(route('sdm-memos.station-manager.update', $memo), [
+            'station_manager_employee_number' => $replacementStationManager->employee_number,
+        ])->assertForbidden();
+
+        $this->assertSame(
+            $assignedStationManager->id,
+            $memo->approvals()->where('role', WorkflowStage::StationManager->value)->value('assigned_to'),
+        );
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'memo.station_manager.handed_over']);
+    }
+
+    public function test_custom_station_controller_role_can_see_the_change_forwarded_sm_action(): void
+    {
+        [$stationUser, $stationManager, , , , $station] = $this->workflowUsers();
+        $role = Role::findOrCreate('station_controller');
+        $role->givePermissionTo([
+            UserPermission::CreateMemos->value,
+            UserPermission::ViewOwnMemos->value,
+            UserPermission::UpdateOwnDraftMemos->value,
+            UserPermission::SubmitOwnDraftMemos->value,
+        ]);
+        $customController = User::factory()->create(['station_id' => $station->id]);
+        $customController->assignRole($role->name);
+
+        $this->actingAs($customController)->post(route('sdm-memos.store-and-submit'), [
+            ...$this->validMemoData('CFS-CUSTOM-CONTROLLER'),
+            'station_manager_employee_number' => $stationManager->employee_number,
+        ])->assertRedirect();
+
+        $memo = ServiceDeficiencyMemo::query()->where('created_by', $customController->id)->sole();
+        $this->actingAs($customController)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('Change forwarded SM');
+
+        $this->assertNotSame($stationUser->id, $customController->id);
     }
 
     public function test_station_manager_must_enter_an_enabled_am_employee_number_when_forwarding(): void

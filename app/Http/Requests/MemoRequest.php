@@ -73,7 +73,7 @@ abstract class MemoRequest extends FormRequest
 
         $rules = [
             'service_type' => ['required', Rule::enum(SdmType::class)],
-            'serial_number' => ['required', 'string', 'max:50', $uniqueSerial],
+            'serial_number' => ['nullable', 'string', 'max:50', $uniqueSerial],
             'contractor_id' => [$strict ? 'required' : 'nullable', Rule::exists(Contractor::class, 'id')->where(fn (Builder $query) => $query->where('is_active', true))],
             'station_id' => ['required', 'integer', Rule::exists(Station::class, 'id')->where('is_active', true)],
             'incident_date' => [$strict ? 'required' : 'nullable', 'date_format:Y-m-d'],

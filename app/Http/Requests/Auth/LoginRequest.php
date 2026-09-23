@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Enums\UserRole;
 use App\Models\Station;
+use App\Models\User;
 use App\Rules\Username;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -33,7 +35,7 @@ class LoginRequest extends FormRequest
         return [
             'username' => ['required', 'string', 'max:255', new Username],
             'password' => ['required', 'string'],
-            'station_id' => ['required', 'integer', Rule::exists(Station::class, 'id')->where('is_active', true)],
+            'station_id' => ['nullable', 'integer', Rule::exists(Station::class, 'id')->where('is_active', true)],
         ];
     }
 
@@ -46,15 +48,34 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt([
+        if (! Auth::attemptWhen([
             'name' => $this->string('username')->toString(),
             'password' => $this->string('password')->toString(),
             'is_enabled' => true,
-        ], $this->boolean('remember'))) {
+        ], function (User $user): bool {
+            $this->ensureStationIsSelectedWhenRequired($user);
+
+            return true;
+        }, $this->boolean('remember'))) {
             $this->failAuthentication();
         }
 
         RateLimiter::clear($this->throttleKey());
+    }
+
+    private function ensureStationIsSelectedWhenRequired(User $user): void
+    {
+        if ($this->filled('station_id') || ! $user->hasAnyRole([
+            UserRole::Station->value,
+            UserRole::StationManager->value,
+            'station_controller',
+        ])) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'station_id' => 'Select a station to sign in as a Station Controller or Station Manager.',
+        ]);
     }
 
     private function failAuthentication(): never

@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Enums\MemoStatus;
 use App\Enums\UserPermission;
+use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
 use App\Enums\WorkflowStepType;
 use App\Models\ServiceDeficiencyMemo;
@@ -71,6 +72,26 @@ class ServiceDeficiencyMemoPolicy
             && ! in_array($memo->status, [MemoStatus::Closed, MemoStatus::Cancelled], true);
     }
 
+    public function reassignStationManager(User $user, ServiceDeficiencyMemo $memo): bool
+    {
+        if (! $user->is_enabled) {
+            return false;
+        }
+
+        if ($this->isPendingWithStationManager($memo, $user)) {
+            return $user->hasRole(UserRole::StationManager->value)
+                && $user->can(UserPermission::ActOnRoutedMemos->value);
+        }
+
+        return $user->can(UserPermission::UpdateOwnDraftMemos->value)
+            && $user->can(UserPermission::SubmitOwnDraftMemos->value)
+            && ! $user->hasRole(UserRole::StationManager->value)
+            && ! $user->hasRole(UserRole::Administrator->value)
+            && $user->station_id !== null
+            && $memo->created_by === $user->id
+            && $this->isEditableSubmittedMemo($memo);
+    }
+
     public function manageCmcLifecycle(User $user, ServiceDeficiencyMemo $memo): bool
     {
         return $user->is_enabled
@@ -92,5 +113,23 @@ class ServiceDeficiencyMemoPolicy
         return $memo->status === MemoStatus::Submitted
             && $memo->current_stage === WorkflowStage::StationManager
             && $memo->approvals()->where('role', WorkflowStage::StationManager->value)->where('decision', 'pending')->exists();
+    }
+
+    private function isPendingWithStationManager(ServiceDeficiencyMemo $memo, User $user): bool
+    {
+        if ($memo->workflow_version >= 2) {
+            return $memo->status === MemoStatus::AwaitingStationManager
+                && $memo->currentWorkflowStep?->stage === WorkflowStepType::StationManager
+                && $memo->currentWorkflowStep?->decision === 'pending'
+                && $memo->currentWorkflowStep?->assigned_to === $user->id;
+        }
+
+        return $memo->status === MemoStatus::Submitted
+            && $memo->current_stage === WorkflowStage::StationManager
+            && $memo->approvals()
+                ->where('role', WorkflowStage::StationManager->value)
+                ->where('assigned_to', $user->id)
+                ->where('decision', 'pending')
+                ->exists();
     }
 }

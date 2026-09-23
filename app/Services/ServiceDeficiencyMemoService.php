@@ -36,9 +36,9 @@ final class ServiceDeficiencyMemoService
     ) {}
 
     /** @param array<string, int|string> $filters */
-    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null): LengthAwarePaginator
+    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null, ?string $category = null): LengthAwarePaginator
     {
-        return $this->memos->paginateFor($user, $filters, $pendingStage);
+        return $this->memos->paginateFor($user, $filters, $pendingStage, $category);
     }
 
     /** @return array<string, array{memos: Collection, total: int}> */
@@ -141,8 +141,6 @@ final class ServiceDeficiencyMemoService
                     $attributes['workflow_version'] = $contract ? 2 : 1;
                     $attributes['current_stage'] = $contract ? null : WorkflowStage::StationManager->value;
                     $attributes['submitted_at'] = now();
-                } elseif ($memo?->submitted_at !== null && $user->hasRole(UserRole::Station->value)) {
-                    $attributes['submitted_at'] = now();
                 }
 
                 if ($memo === null) {
@@ -225,6 +223,83 @@ final class ServiceDeficiencyMemoService
                 'current_stage' => WorkflowStage::LineManager->value,
             ]);
         }
+    }
+
+    public function reassignStationManager(ServiceDeficiencyMemo $memo, User $actor, string $employeeNumber): ServiceDeficiencyMemo
+    {
+        return DB::transaction(function () use ($memo, $actor, $employeeNumber): ServiceDeficiencyMemo {
+            $lockedMemo = ServiceDeficiencyMemo::query()->whereKey($memo->id)->lockForUpdate()->firstOrFail();
+            $stationManager = $this->users->findEnabledForRoleByEmployeeNumber(
+                UserRole::StationManager->value,
+                $employeeNumber,
+            );
+
+            if (! $stationManager) {
+                throw ValidationException::withMessages([
+                    'station_manager_employee_number' => 'Enter the employee number of an enabled Station Manager.',
+                ]);
+            }
+
+            $assignment = $lockedMemo->workflow_version >= 2
+                ? $lockedMemo->workflowSteps()
+                    ->whereKey($lockedMemo->current_workflow_step_id)
+                    ->where('stage', WorkflowStepType::StationManager->value)
+                    ->where('decision', 'pending')
+                    ->lockForUpdate()
+                    ->first()
+                : $lockedMemo->approvals()
+                    ->where('role', WorkflowStage::StationManager->value)
+                    ->where('decision', 'pending')
+                    ->lockForUpdate()
+                    ->first();
+
+            $isAwaitingStationManager = $lockedMemo->workflow_version >= 2
+                ? $lockedMemo->status === MemoStatus::AwaitingStationManager
+                : $lockedMemo->status === MemoStatus::Submitted
+                    && $lockedMemo->current_stage === WorkflowStage::StationManager;
+
+            $isAssignedStationManager = $actor->is_enabled
+                && $actor->hasRole(UserRole::StationManager->value)
+                && $assignment?->assigned_to === $actor->id;
+
+            if (! $lockedMemo->submitted_at
+                || ! $isAwaitingStationManager
+                || ! $assignment
+                || (! $isAssignedStationManager && $lockedMemo->submitted_at->lt(now()->subDays(2)))) {
+                throw ValidationException::withMessages([
+                    'station_manager_employee_number' => 'The Station Manager can no longer be changed for this SDM.',
+                ]);
+            }
+
+            if ($assignment->assigned_to === $stationManager->id) {
+                throw ValidationException::withMessages([
+                    'station_manager_employee_number' => 'Select a different Station Manager.',
+                ]);
+            }
+
+            $before = [
+                'station_manager_id' => $assignment->assigned_to,
+                'station_manager_name' => $assignment->assigned_name,
+                'station_manager_employee_number' => $assignment->assigned_employee_number,
+            ];
+
+            $assignment->update([
+                'assigned_to' => $stationManager->id,
+                'assigned_name' => $stationManager->name,
+                'assigned_employee_number' => $stationManager->employee_number,
+                'assignment_source' => $isAssignedStationManager ? 'handover' : 'workflow',
+            ]);
+
+            $this->audit->record($lockedMemo, $actor, $isAssignedStationManager
+                ? 'memo.station_manager.handed_over'
+                : 'memo.station_manager.reassigned', $before, [
+                    'station_manager_id' => $stationManager->id,
+                    'station_manager_name' => $stationManager->name,
+                    'station_manager_employee_number' => $stationManager->employee_number,
+                ]);
+
+            return $lockedMemo->refresh();
+        });
     }
 
     private function resolveContract(array $data, bool $submit, int $stationId): ?ServiceContract
