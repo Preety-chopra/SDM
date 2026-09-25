@@ -120,9 +120,9 @@ class SdmWorkflowTest extends TestCase
             WorkflowStage::OperationsManager,
             WorkflowStage::DeputyGeneralManager,
         ], $memo->approvals()->orderBy('sequence')->get()->pluck('role')->all());
-        $this->actingAs($stationManager)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
-        $this->actingAs($lineManager)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
-        $this->actingAs($operationsManager)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
+        $this->actingAs($stationManager)->get(route('sdm-memos.index'))->assertOk()->assertDontSee($memo->serial_number);
+        $this->actingAs($lineManager)->get(route('sdm-memos.index'))->assertOk()->assertDontSee($memo->serial_number);
+        $this->actingAs($operationsManager)->get(route('sdm-memos.index'))->assertOk()->assertDontSee($memo->serial_number);
 
         foreach ([
             [$stationManager, 'forward', WorkflowStage::LineManager, MemoStatus::UnderReview, $lineManager->employee_number],
@@ -424,6 +424,7 @@ class SdmWorkflowTest extends TestCase
             ...$this->validMemoData('CFS-PENDING-INBOX'),
             'station_manager_employee_number' => $recipientStationManager->employee_number,
         ]);
+        $pendingMemo = ServiceDeficiencyMemo::query()->where('serial_number', 'CFS-PENDING-INBOX')->sole();
 
         $this->actingAs($recipientStationManager)->get(route('sdm-memos.index'))
             ->assertOk()
@@ -435,12 +436,14 @@ class SdmWorkflowTest extends TestCase
 
         $this->actingAs($recipientStationManager)->get(route('sdm-memos.index', ['category' => 'pending']))
             ->assertOk()
-            ->assertSee('CFS-PENDING-INBOX')
+            ->assertViewHas('memos', fn ($memos): bool => collect($memos->items())->pluck('id')->all() === [$pendingMemo->id])
+            ->assertDontSee('CFS-PENDING-INBOX')
             ->assertDontSee('CFS-TRANSFERRED-INBOX');
 
         $this->actingAs($recipientStationManager)->get(route('sdm-memos.index', ['category' => 'transferred']))
             ->assertOk()
-            ->assertSee('CFS-TRANSFERRED-INBOX')
+            ->assertViewHas('memos', fn ($memos): bool => collect($memos->items())->pluck('id')->all() === [$transferredMemo->id])
+            ->assertDontSee('CFS-TRANSFERRED-INBOX')
             ->assertDontSee('CFS-PENDING-INBOX');
     }
 
@@ -456,11 +459,124 @@ class SdmWorkflowTest extends TestCase
 
         $this->actingAs($lineManager)->get(route('sdm-memos.index', ['category' => 'pending']))
             ->assertOk()
-            ->assertSee('CFS-AM-PENDING-INBOX');
+            ->assertViewHas('memos', fn ($memos): bool => collect($memos->items())->pluck('id')->all() === [$memo->id])
+            ->assertDontSee('CFS-AM-PENDING-INBOX');
 
         $this->actingAs($stationManager)->get(route('sdm-memos.index', ['category' => 'pending']))
             ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => collect($memos->items())->isEmpty())
             ->assertDontSee('CFS-AM-PENDING-INBOX');
+    }
+
+    public function test_line_manager_can_handover_their_pending_sdm_to_another_active_line_manager(): void
+    {
+        [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
+        $replacementLineManager = $this->user(UserRole::AssistantManager, [
+            'employee_number' => 'AM-HANDOVER',
+            'name' => 'Replacement Line Manager',
+        ]);
+        $inactiveLineManager = $this->user(UserRole::AssistantManager, [
+            'employee_number' => 'AM-INACTIVE-HANDOVER',
+            'is_enabled' => false,
+        ]);
+
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), $this->validMemoData('CFS-AM-HANDOVER'));
+        $memo = ServiceDeficiencyMemo::query()->where('serial_number', 'CFS-AM-HANDOVER')->sole();
+        $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'forward',
+            'forward_to_employee_number' => $lineManager->employee_number,
+        ])->assertRedirect();
+
+        $this->actingAs($lineManager)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('Handover pending SDM to another AM/Manager (Line)')
+            ->assertSee('name="line_manager_employee_number"', false)
+            ->assertSee($replacementLineManager->employee_number.' - '.$replacementLineManager->name)
+            ->assertDontSee($inactiveLineManager->employee_number.' - '.$inactiveLineManager->name);
+
+        $this->actingAs($lineManager)->patch(route('sdm-memos.line-manager.update', $memo), [
+            'line_manager_employee_number' => $inactiveLineManager->employee_number,
+        ])->assertSessionHasErrors('line_manager_employee_number');
+
+        $this->actingAs($lineManager)->patch(route('sdm-memos.line-manager.update', $memo), [
+            'line_manager_employee_number' => $replacementLineManager->employee_number,
+        ])->assertRedirect(route('sdm-memos.show', $memo));
+
+        $assignment = $memo->approvals()->where('role', WorkflowStage::LineManager->value)->sole();
+        $this->assertSame($replacementLineManager->id, $assignment->assigned_to);
+        $this->assertSame($replacementLineManager->name, $assignment->assigned_name);
+        $this->assertSame($replacementLineManager->employee_number, $assignment->assigned_employee_number);
+        $this->assertSame('handover', $assignment->assignment_source);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $lineManager->id,
+            'event' => 'memo.line_manager.handed_over',
+            'auditable_id' => $memo->id,
+        ]);
+
+        $this->actingAs($replacementLineManager)->get(route('sdm-memos.index', ['category' => 'transferred']))
+            ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => $memos->contains('id', $memo->id));
+    }
+
+    public function test_line_manager_cannot_handover_an_sdm_that_is_not_pending_with_them(): void
+    {
+        [$stationUser, $stationManager, $assignedLineManager] = $this->workflowUsers();
+        $otherLineManager = $this->user(UserRole::AssistantManager, ['employee_number' => 'AM-OTHER-HANDOVER']);
+        $replacementLineManager = $this->user(UserRole::AssistantManager, ['employee_number' => 'AM-HANDOVER-TARGET']);
+
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), $this->validMemoData('CFS-AM-UNAUTHORIZED'));
+        $memo = ServiceDeficiencyMemo::query()->where('serial_number', 'CFS-AM-UNAUTHORIZED')->sole();
+        $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'forward',
+            'forward_to_employee_number' => $assignedLineManager->employee_number,
+        ])->assertRedirect();
+
+        $this->actingAs($otherLineManager)->patch(route('sdm-memos.line-manager.update', $memo), [
+            'line_manager_employee_number' => $replacementLineManager->employee_number,
+        ])->assertForbidden();
+
+        $this->assertSame(
+            $assignedLineManager->id,
+            $memo->approvals()->where('role', WorkflowStage::LineManager->value)->value('assigned_to'),
+        );
+    }
+
+    public function test_line_manager_can_handover_a_version_two_workflow_sdm(): void
+    {
+        [, , $lineManager, , , $station] = $this->workflowUsers();
+        $replacementLineManager = $this->user(UserRole::AssistantManager, ['employee_number' => 'AM-V2-HANDOVER']);
+        $memo = ServiceDeficiencyMemo::query()->create([
+            'service_type' => SdmType::Cfs->value,
+            'serial_number' => 'CFS-AM-V2-HANDOVER',
+            'station_id' => $station->id,
+            'station_name' => $station->name,
+            'line_name' => 'Red Line',
+            'line_code' => 'RED',
+            'status' => MemoStatus::LineReview->value,
+            'workflow_version' => 2,
+            'created_by' => $lineManager->id,
+            'updated_by' => $lineManager->id,
+            'submitted_at' => now(),
+        ]);
+        $lineReviewStep = $memo->workflowSteps()->create([
+            'round' => 1,
+            'sequence' => 2,
+            'stage' => WorkflowStepType::LineReview->value,
+            'role' => UserRole::AssistantManager->value,
+            'assigned_to' => $lineManager->id,
+            'assigned_name' => $lineManager->name,
+            'assigned_employee_number' => $lineManager->employee_number,
+            'decision' => 'pending',
+        ]);
+        $memo->update(['current_workflow_step_id' => $lineReviewStep->id]);
+
+        $this->actingAs($lineManager)->patch(route('sdm-memos.line-manager.update', $memo), [
+            'line_manager_employee_number' => $replacementLineManager->employee_number,
+        ])->assertRedirect(route('sdm-memos.show', $memo));
+
+        $lineReviewStep->refresh();
+        $this->assertSame($replacementLineManager->id, $lineReviewStep->assigned_to);
+        $this->assertSame('handover', $lineReviewStep->assignment_source);
     }
 
     public function test_station_manager_cannot_handover_an_sdm_that_is_not_pending_with_them(): void

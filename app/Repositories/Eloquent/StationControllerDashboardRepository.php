@@ -124,8 +124,9 @@ final class StationControllerDashboardRepository implements StationControllerDas
             ->select([
                 "{$memoTable}.id",
                 "{$memoTable}.service_type",
-                "{$memoTable}.serial_number",
+                "{$memoTable}.station_name",
                 "{$memoTable}.status",
+                "{$memoTable}.submitted_at",
                 "{$memoTable}.created_at",
                 "{$memoTable}.created_by",
             ]);
@@ -166,7 +167,23 @@ final class StationControllerDashboardRepository implements StationControllerDas
             ->where($prefix.'created_by', $creator->id)
             ->whereBetween($prefix.'created_at', [$from, $to])
             ->when($serviceType, fn (Builder $query) => $query->where($prefix.'service_type', $serviceType->value))
-            ->when($status, fn (Builder $query) => $query->where($prefix.'status', $status->value));
+            ->when($status, fn (Builder $query) => $this->applyVisibleStatusFilter($query, $prefix, $status));
+    }
+
+    private function applyVisibleStatusFilter(Builder $query, string $prefix, MemoStatus $status): void
+    {
+        match ($status) {
+            MemoStatus::AwaitingStationManager => $query->whereIn($prefix.'status', [
+                MemoStatus::Submitted->value,
+                MemoStatus::AwaitingStationManager->value,
+            ]),
+            MemoStatus::LineReview => $query->whereNotIn($prefix.'status', [
+                MemoStatus::Draft->value,
+                MemoStatus::Submitted->value,
+                MemoStatus::AwaitingStationManager->value,
+            ]),
+            default => $query->where($prefix.'status', $status->value),
+        };
     }
 
     private function ageInDaysExpression(string $dateExpression): string

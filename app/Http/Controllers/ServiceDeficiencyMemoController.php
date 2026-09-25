@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\DeficiencyType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\UserPermission;
@@ -13,6 +12,7 @@ use App\Http\Requests\ListMemosRequest;
 use App\Http\Requests\StoreAndSubmitMemoRequest;
 use App\Http\Requests\StoreMemoRequest;
 use App\Http\Requests\SubmitMemoRequest;
+use App\Http\Requests\UpdateMemoLineManagerRequest;
 use App\Http\Requests\UpdateMemoRequest;
 use App\Http\Requests\UpdateMemoStationManagerRequest;
 use App\Models\ServiceDeficiencyMemo;
@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Services\MasterDataService;
 use App\Services\ServiceDeficiencyMemoService;
 use App\Services\UserService;
+use App\Support\DeficiencyCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -99,6 +100,11 @@ class ServiceDeficiencyMemoController extends Controller
                         ->filter(fn (User $user): bool => filled($user->employee_number))
                         ->values()
                     : collect(),
+            'lineManagerHandoverCandidates' => $request->user()->can('handoverLineManager', $sdmMemo)
+                ? $this->users->enabledForRole(UserRole::AssistantManager)
+                    ->filter(fn (User $user): bool => filled($user->employee_number) && $user->id !== $request->user()->id)
+                    ->values()
+                : collect(),
             'cmcStaffUsers' => ($sdmMemo->currentWorkflowStep?->stage === WorkflowStepType::CmcAssignment
                 && $request->user()->can('act', $sdmMemo)) || $request->user()->can('assignCmcStaff', $sdmMemo)
                 ? $this->users->enabledForRole(UserRole::CmcStaff)
@@ -143,6 +149,17 @@ class ServiceDeficiencyMemoController extends Controller
         return redirect()->route('sdm-memos.show', $sdmMemo)->with('status', $message);
     }
 
+    public function updateLineManager(UpdateMemoLineManagerRequest $request, ServiceDeficiencyMemo $sdmMemo): RedirectResponse
+    {
+        $this->memos->handoverLineManager(
+            $sdmMemo,
+            $request->user(),
+            $request->string('line_manager_employee_number')->toString(),
+        );
+
+        return redirect()->route('sdm-memos.show', $sdmMemo)->with('status', 'Pending SDM handed over successfully.');
+    }
+
     public function submit(SubmitMemoRequest $request, ServiceDeficiencyMemo $sdmMemo): RedirectResponse
     {
         $memo = $this->memos->submit($sdmMemo, $request->user(), $request->validated());
@@ -180,7 +197,7 @@ class ServiceDeficiencyMemoController extends Controller
             'stations' => $stations,
             'issuanceStations' => collect(),
             'sdmTypes' => SdmType::cases(),
-            'deficiencyTypes' => DeficiencyType::cases(),
+            'deficiencyOptionsByType' => DeficiencyCatalog::grouped(),
             'forwardingRole' => $forwardingRole,
             'forwardingCandidates' => $forwardingRole
                 ? $this->users->enabledForRole($forwardingRole)->filter(fn (User $user): bool => filled($user->employee_number))->values()

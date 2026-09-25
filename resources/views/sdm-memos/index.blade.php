@@ -50,11 +50,6 @@
                 </div>
 
                 <div>
-                    <x-input-label for="serial_number" value="Serial number" />
-                    <x-text-input id="serial_number" name="serial_number" type="search" :value="$filters['serial_number'] ?? ''" placeholder="Search serial number" class="mt-1 block w-full" />
-                </div>
-
-                <div>
                     <x-input-label for="station_id" value="Station" />
                     <select id="station_id" name="station_id" class="mt-1 block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
                         <option value="">All stations</option>
@@ -99,7 +94,6 @@
             <div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700"><thead class="bg-gray-50 dark:bg-gray-900"><tr>@foreach(['Type','Station / Line','Incident date','Status','Last Updated on',''] as $heading)<th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{{ $heading }}</th>@endforeach</tr></thead><tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                 @forelse($memos as $memo)
                     <tr>
-                        {{-- <td class="px-5 py-4 font-semibold text-gray-900 dark:text-white">{{ $memo->serial_number }}</td> --}}
                         <td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $memo->service_type->code() }}</td>
                         <td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $memo->station_name }}
                             <span class="block text-xs text-gray-400">{{ $memo->line_name }}</span>

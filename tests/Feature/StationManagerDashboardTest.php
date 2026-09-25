@@ -62,8 +62,8 @@ class StationManagerDashboardTest extends TestCase
             ->assertSee('Pending with me')
             ->assertSee('Forwarded to AM/Line')
             ->assertSee('Station-wise SDMs')
-            ->assertSee('SM-PENDING')
-            ->assertSee('SM-FORWARDED-2')
+            ->assertDontSee('SM-PENDING')
+            ->assertDontSee('SM-FORWARDED-2')
             ->assertDontSee('OTHER-MANAGER');
     }
 
@@ -84,7 +84,7 @@ class StationManagerDashboardTest extends TestCase
                     && $dashboard['forwarded_count'] === 0
                     && $dashboard['filters']['service_type'] === SdmType::Cfs->value;
             })
-            ->assertSee('CFS-PENDING')
+            ->assertDontSee('CFS-PENDING')
             ->assertDontSee('TVS-FORWARDED');
     }
 

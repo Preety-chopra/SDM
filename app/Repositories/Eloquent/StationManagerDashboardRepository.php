@@ -64,7 +64,7 @@ final class StationManagerDashboardRepository implements StationManagerDashboard
     public function recentMemos(User $manager, CarbonInterface $from, CarbonInterface $to, ?SdmType $serviceType, ?MemoStatus $status, int $limit = 10): Collection
     {
         return $this->filteredQuery($manager, $from, $to, $serviceType, $status)
-            ->select(['id', 'service_type', 'serial_number', 'station_name', 'status', 'submitted_at', 'created_at'])
+            ->select(['id', 'service_type', 'station_name', 'status', 'submitted_at', 'created_at'])
             ->latest('submitted_at')
             ->latest('id')
             ->limit($limit)

@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
+use App\Enums\UserRole;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -22,7 +23,13 @@ class DashboardRequest extends FormRequest
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
             'service_type' => ['nullable', Rule::enum(SdmType::class)],
-            'status' => ['nullable', Rule::enum(MemoStatus::class)],
+            'status' => ['nullable', $this->isStationController()
+                ? Rule::in([
+                    MemoStatus::Draft->value,
+                    MemoStatus::AwaitingStationManager->value,
+                    MemoStatus::LineReview->value,
+                ])
+                : Rule::enum(MemoStatus::class)],
             'aging' => ['nullable', Rule::in(['0_2', '3_7', '8_15', 'over_15'])],
         ];
     }
@@ -60,5 +67,12 @@ class DashboardRequest extends FormRequest
         $aging = $this->string('aging')->toString();
 
         return $aging !== '' ? $aging : null;
+    }
+
+    private function isStationController(): bool
+    {
+        return $this->user()?->getRoleNames()->contains(
+            fn (string $role): bool => in_array($role, [UserRole::Station->value, 'station_controller'], true),
+        ) ?? false;
     }
 }

@@ -171,6 +171,26 @@ class UserManagementTest extends TestCase
             ->assertDontSee('Users menu');
     }
 
+    public function test_station_controllers_do_not_see_the_dashboard_sidebar_link(): void
+    {
+        $stationController = $this->userWithRole(UserRole::Station);
+        $legacyStationController = User::factory()->create();
+        $legacyStationController->assignRole(Role::findOrCreate('station_controller'));
+        $administrator = $this->userWithRole(UserRole::Administrator);
+
+        foreach ([$stationController, $legacyStationController] as $user) {
+            $this->actingAs($user)
+                ->get(route('profile.edit'))
+                ->assertOk()
+                ->assertDontSee('title="Dashboard"', false);
+        }
+
+        $this->actingAs($administrator)
+            ->get(route('profile.edit'))
+            ->assertOk()
+            ->assertSee('title="Dashboard"', false);
+    }
+
     public function test_administrator_can_create_a_station_manager(): void
     {
         $administrator = $this->userWithRole(UserRole::Administrator);

@@ -52,19 +52,25 @@ class StationControllerDashboardTest extends TestCase
             ->assertViewHas('stationControllerDashboard', function (array $dashboard): bool {
                 return $dashboard['total_sdms'] === 3
                     && $dashboard['status_counts'][MemoStatus::AwaitingStationManager->value] === 1
-                    && $dashboard['status_counts'][MemoStatus::LineReview->value] === 1
-                    && $dashboard['status_counts'][MemoStatus::AmCmcReview->value] === 1
+                    && $dashboard['status_counts'][MemoStatus::LineReview->value] === 2
+                    && $dashboard['status_counts'][MemoStatus::AmCmcReview->value] === 0
                     && $dashboard['service_counts'][SdmType::Cfs->value] === 2
                     && $dashboard['service_counts'][SdmType::Ticketing->value] === 1
+                    && collect($dashboard['workflow_by_service']['datasets'])->pluck('label')->all() === ['Pending with SM', 'Processed by SM']
                     && count($dashboard['monthly_trend']['labels']) === 6
-                    && count($dashboard['recent_sdms']) === 3;
+                    && count($dashboard['recent_sdms']) === 3
+                    && $dashboard['recent_sdms']->firstWhere('status', MemoStatus::AmCmcReview)?->dashboard_status === MemoStatus::LineReview->value;
             })
             ->assertSee('My SDM Dashboard')
             ->assertSee('SDMs filed over time')
-            ->assertSee('Workflow status by service')
+            ->assertSee('SM-level status by service')
             ->assertSee('Pending aging')
-            ->assertSee('AM CMC Review')
-            ->assertSee('OWN-CFA')
+            ->assertSee('Select a bar to view its SDMs.')
+            ->assertSee('chartMemosUrl', false)
+            ->assertSee('Select an SDM below to open its full details.')
+            ->assertSee('Processed by SM')
+            ->assertDontSee('AM CMC Review')
+            ->assertDontSee('OWN-CFA')
             ->assertDontSee('PREVIOUS-MONTH')
             ->assertDontSee('SOMEONE-ELSE');
     }
@@ -82,8 +88,8 @@ class StationControllerDashboardTest extends TestCase
             ->get(route('dashboard', ['date_from' => '2026-09-10', 'date_to' => '2026-09-20']))
             ->assertOk()
             ->assertViewHas('stationControllerDashboard', fn (array $dashboard): bool => $dashboard['total_sdms'] === 2)
-            ->assertSee('START-BOUNDARY')
-            ->assertSee('END-BOUNDARY')
+            ->assertDontSee('START-BOUNDARY')
+            ->assertDontSee('END-BOUNDARY')
             ->assertDontSee('OUTSIDE-RANGE')
             ->assertDontSee('PREVIOUS-MONTH')
             ->assertSee('value="2026-09-10"', false)
@@ -105,7 +111,7 @@ class StationControllerDashboardTest extends TestCase
                     && $dashboard['service_counts'][SdmType::Cfs->value] === 1
                     && $dashboard['filters']['service_type'] === SdmType::Cfs->value;
             })
-            ->assertSee('CFA-ONLY')
+            ->assertDontSee('CFA-ONLY')
             ->assertDontSee('TVS-HIDDEN')
             ->assertSee('value="'.SdmType::Cfs->value.'" selected', false);
     }
@@ -126,7 +132,7 @@ class StationControllerDashboardTest extends TestCase
                     && $dashboard['status_counts'][MemoStatus::LineReview->value] === 0
                     && $dashboard['filters']['status'] === MemoStatus::AwaitingStationManager->value;
             })
-            ->assertSee('AWAITING-ONLY')
+            ->assertDontSee('AWAITING-ONLY')
             ->assertDontSee('LINE-HIDDEN')
             ->assertSee('value="'.MemoStatus::AwaitingStationManager->value.'" selected', false);
     }
@@ -148,22 +154,34 @@ class StationControllerDashboardTest extends TestCase
             ->assertViewHas('stationControllerDashboard', fn (array $dashboard): bool => $dashboard['aging_buckets']['counts'] === [2, 2, 2, 1]);
     }
 
+    public function test_pending_aging_only_includes_cases_currently_waiting_for_station_manager(): void
+    {
+        [$controller, $station] = $this->stationController();
+
+        $this->memo($controller, $station, 'WITH-SM', SdmType::Cfs, MemoStatus::AwaitingStationManager, '2026-09-10 10:00:00', '2026-09-10 10:00:00');
+        $this->memo($controller, $station, 'PAST-SM', SdmType::Cfs, MemoStatus::AmCmcReview, '2026-09-10 10:00:00', '2026-09-10 10:00:00');
+
+        $this->actingAs($controller)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertViewHas('stationControllerDashboard', fn (array $dashboard): bool => array_sum($dashboard['aging_buckets']['counts']) === 1);
+    }
+
     public function test_aging_filter_limits_recent_records_without_changing_global_totals(): void
     {
         [$controller, $station] = $this->stationController();
 
-        $this->memo($controller, $station, 'RECENT-PENDING', SdmType::Cfs, MemoStatus::LineReview, '2026-09-20 10:00:00', '2026-09-20 10:00:00');
-        $this->memo($controller, $station, 'OLD-PENDING', SdmType::Cfs, MemoStatus::LineReview, '2026-09-01 10:00:00', '2026-09-01 10:00:00');
+        $this->memo($controller, $station, 'RECENT-PENDING', SdmType::Cfs, MemoStatus::AwaitingStationManager, '2026-09-20 10:00:00', '2026-09-20 10:00:00');
+        $this->memo($controller, $station, 'OLD-PENDING', SdmType::Cfs, MemoStatus::AwaitingStationManager, '2026-09-01 10:00:00', '2026-09-01 10:00:00');
 
         $this->actingAs($controller)
             ->get(route('dashboard', ['aging' => 'over_15']))
             ->assertOk()
             ->assertViewHas('stationControllerDashboard', function (array $dashboard): bool {
                 return $dashboard['total_sdms'] === 2
-                    && count($dashboard['recent_sdms']) === 1
-                    && $dashboard['recent_sdms']->first()->serial_number === 'OLD-PENDING';
+                    && count($dashboard['recent_sdms']) === 1;
             })
-            ->assertSee('OLD-PENDING')
+            ->assertDontSee('OLD-PENDING')
             ->assertDontSee('RECENT-PENDING');
     }
 
@@ -180,6 +198,54 @@ class StationControllerDashboardTest extends TestCase
                 'aging' => 'not-a-bucket',
             ]))
             ->assertSessionHasErrors(['date_to', 'service_type', 'status', 'aging']);
+    }
+
+    public function test_station_controller_can_load_only_their_sdms_for_a_selected_chart_bar(): void
+    {
+        [$controller, $station] = $this->stationController();
+        $otherController = User::factory()->create(['station_id' => $station->id]);
+        $otherController->assignRole(UserRole::Station->value);
+
+        $selected = $this->memo($controller, $station, 'SELECTED-CFA', SdmType::Cfs, MemoStatus::AwaitingStationManager, '2026-09-10 10:00:00');
+        $this->memo($controller, $station, 'OTHER-SERVICE', SdmType::Ticketing, MemoStatus::AwaitingStationManager, '2026-09-11 10:00:00');
+        $this->memo($otherController, $station, 'OTHER-USER', SdmType::Cfs, MemoStatus::AwaitingStationManager, '2026-09-12 10:00:00');
+
+        $this->actingAs($controller)
+            ->getJson(route('dashboard.chart-sdms', [
+                'date_from' => '2026-09-01',
+                'date_to' => '2026-09-30',
+                'service_type' => SdmType::Cfs->value,
+                'status' => MemoStatus::AwaitingStationManager->value,
+            ]))
+            ->assertOk()
+            ->assertJsonCount(1, 'memos')
+            ->assertJsonPath('memos.0.id', $selected->id)
+            ->assertJsonMissingPath('memos.0.serial_number')
+            ->assertJsonPath('memos.0.url', route('sdm-memos.show', $selected));
+    }
+
+    public function test_station_controller_chart_drill_down_masks_statuses_after_station_manager(): void
+    {
+        [$controller, $station] = $this->stationController();
+
+        $processed = $this->memo($controller, $station, 'PAST-SM', SdmType::Cfs, MemoStatus::CmcScrutiny, '2026-09-10 10:00:00');
+
+        $this->actingAs($controller)
+            ->getJson(route('dashboard.chart-sdms', [
+                'date_from' => '2026-09-01',
+                'date_to' => '2026-09-30',
+                'status' => MemoStatus::LineReview->value,
+            ]))
+            ->assertOk()
+            ->assertJsonCount(1, 'memos')
+            ->assertJsonPath('memos.0.id', $processed->id)
+            ->assertJsonPath('memos.0.status', 'Processed by SM');
+
+        $this->actingAs($controller)
+            ->get(route('dashboard.chart-sdms', [
+                'status' => MemoStatus::CmcScrutiny->value,
+            ]))
+            ->assertSessionHasErrors('status');
     }
 
     public function test_non_station_user_does_not_receive_the_station_user_dashboard(): void

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Contracts\Repositories\StationRepositoryInterface;
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use Illuminate\Http\RedirectResponse;
@@ -37,7 +38,11 @@ class AuthenticatedSessionController extends Controller
             $request->session()->forget('auth.station_id');
         }
 
-        return redirect()->intended(route('dashboard', absolute: false));
+        $defaultDestination = $request->user()->hasAnyRole([UserRole::Station->value, 'station_controller'])
+            ? route('sdm-memos.create', absolute: false)
+            : route('dashboard', absolute: false);
+
+        return redirect()->intended($defaultDestination);
     }
 
     /**

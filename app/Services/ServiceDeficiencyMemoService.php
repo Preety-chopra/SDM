@@ -121,7 +121,7 @@ final class ServiceDeficiencyMemoService
 
                 $attributes = [
                     'service_type' => $data['service_type'],
-                    'serial_number' => $data['serial_number'],
+                    'serial_number' => $data['serial_number'] ?? null,
                     'station_id' => $station->id,
                     'station_name' => $station->name,
                     'line_name' => $station->metroLine->name,
@@ -297,6 +297,78 @@ final class ServiceDeficiencyMemoService
                     'station_manager_name' => $stationManager->name,
                     'station_manager_employee_number' => $stationManager->employee_number,
                 ]);
+
+            return $lockedMemo->refresh();
+        });
+    }
+
+    public function handoverLineManager(ServiceDeficiencyMemo $memo, User $actor, string $employeeNumber): ServiceDeficiencyMemo
+    {
+        return DB::transaction(function () use ($memo, $actor, $employeeNumber): ServiceDeficiencyMemo {
+            $lockedMemo = ServiceDeficiencyMemo::query()->whereKey($memo->id)->lockForUpdate()->firstOrFail();
+            $lineManager = $this->users->findEnabledForRoleByEmployeeNumber(
+                UserRole::AssistantManager->value,
+                $employeeNumber,
+            );
+
+            if (! $lineManager) {
+                throw ValidationException::withMessages([
+                    'line_manager_employee_number' => 'Enter the employee number of an enabled AM/Manager (Line).',
+                ]);
+            }
+
+            $assignment = $lockedMemo->workflow_version >= 2
+                ? $lockedMemo->workflowSteps()
+                    ->whereKey($lockedMemo->current_workflow_step_id)
+                    ->where('stage', WorkflowStepType::LineReview->value)
+                    ->where('decision', 'pending')
+                    ->lockForUpdate()
+                    ->first()
+                : $lockedMemo->approvals()
+                    ->where('role', WorkflowStage::LineManager->value)
+                    ->where('decision', 'pending')
+                    ->lockForUpdate()
+                    ->first();
+
+            $isAwaitingLineManager = $lockedMemo->workflow_version >= 2
+                ? $lockedMemo->status === MemoStatus::LineReview
+                : $lockedMemo->status === MemoStatus::UnderReview
+                    && $lockedMemo->current_stage === WorkflowStage::LineManager;
+
+            $isAssignedLineManager = $actor->is_enabled
+                && $actor->hasRole(UserRole::AssistantManager->value)
+                && $assignment?->assigned_to === $actor->id;
+
+            if (! $isAwaitingLineManager || ! $assignment || ! $isAssignedLineManager) {
+                throw ValidationException::withMessages([
+                    'line_manager_employee_number' => 'This SDM can no longer be handed over by this AM/Manager (Line).',
+                ]);
+            }
+
+            if ($assignment->assigned_to === $lineManager->id) {
+                throw ValidationException::withMessages([
+                    'line_manager_employee_number' => 'Select a different AM/Manager (Line).',
+                ]);
+            }
+
+            $before = [
+                'line_manager_id' => $assignment->assigned_to,
+                'line_manager_name' => $assignment->assigned_name,
+                'line_manager_employee_number' => $assignment->assigned_employee_number,
+            ];
+
+            $assignment->update([
+                'assigned_to' => $lineManager->id,
+                'assigned_name' => $lineManager->name,
+                'assigned_employee_number' => $lineManager->employee_number,
+                'assignment_source' => 'handover',
+            ]);
+
+            $this->audit->record($lockedMemo, $actor, 'memo.line_manager.handed_over', $before, [
+                'line_manager_id' => $lineManager->id,
+                'line_manager_name' => $lineManager->name,
+                'line_manager_employee_number' => $lineManager->employee_number,
+            ]);
 
             return $lockedMemo->refresh();
         });

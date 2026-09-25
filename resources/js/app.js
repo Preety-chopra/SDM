@@ -1,7 +1,7 @@
 
 
 import Alpine from 'alpinejs';
-import { createDashboardCharts, createStationManagerDashboardCharts } from './dashboard-charts';
+import { createDashboardCharts, createLineManagerDashboardCharts, createStationManagerDashboardCharts, createWorkflowRoleDashboardCharts } from './dashboard-charts';
 import { createSdmConfirmation } from './sdm-confirmation';
 
 window.Alpine = Alpine;
@@ -78,7 +78,7 @@ Alpine.data('employeeAutocomplete', () => ({
 Alpine.data('memoForm', () => ({
     ...createSdmConfirmation(),
     selected: [],
-    labels: {},
+    optionsByType: {},
     serviceType: '',
     deficiencyOpen: false,
     bookedShiftFrom: '',
@@ -86,7 +86,7 @@ Alpine.data('memoForm', () => ({
     actualReportingTime: '',
     init() {
         this.selected = JSON.parse(this.$el.dataset.selectedDeficiencies || '[]');
-        this.labels = JSON.parse(this.$el.dataset.deficiencyLabels || '{}');
+        this.optionsByType = JSON.parse(this.$el.dataset.deficiencyOptions || '{}');
         this.serviceType = this.$el.dataset.serviceType || '';
         this.bookedShiftFrom = this.$el.dataset.bookedShiftFrom || '';
         this.bookedShiftTo = this.$el.dataset.bookedShiftTo || '';
@@ -95,8 +95,21 @@ Alpine.data('memoForm', () => ({
     has(type) {
         return this.selected.includes(type);
     },
+    get availableDeficiencies() {
+        return this.optionsByType[this.serviceType] || [];
+    },
+    syncSelectedDeficiencies() {
+        const availableValues = this.availableDeficiencies.map((option) => option.value);
+        this.selected = this.selected.filter((type) => availableValues.includes(type));
+        this.deficiencyOpen = false;
+    },
     labelFor(type) {
-        return this.labels[type] || type;
+        const option = this.availableDeficiencies.find((candidate) => candidate.value === type)
+            || Object.values(this.optionsByType)
+                .flat()
+                .find((candidate) => candidate.value === type);
+
+        return option?.label || type;
     },
     get delayLabel() {
         if (!this.bookedShiftFrom || !this.actualReportingTime) {
@@ -122,5 +135,7 @@ Alpine.data('memoForm', () => ({
 Alpine.data('sdmActionForm', () => createSdmConfirmation());
 Alpine.data('dashboardCharts', (config) => createDashboardCharts(config));
 Alpine.data('stationManagerDashboardCharts', (config) => createStationManagerDashboardCharts(config));
+Alpine.data('lineManagerDashboardCharts', (config) => createLineManagerDashboardCharts(config));
+Alpine.data('workflowRoleDashboardCharts', (config) => createWorkflowRoleDashboardCharts(config));
 
 Alpine.start();

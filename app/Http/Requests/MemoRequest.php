@@ -11,6 +11,7 @@ use App\Models\ServiceContract;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
 use App\Models\User;
+use App\Support\DeficiencyCatalog;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -83,8 +84,9 @@ abstract class MemoRequest extends FormRequest
             'station_manager_employee_number' => [Rule::requiredIf($strict && $isStationController), 'nullable', 'string', 'max:100'],
             'line_manager_employee_number' => [Rule::requiredIf($strict && $isStationManager), 'nullable', 'string', 'max:100'],
             'deficiencies' => [$strict ? 'required' : 'nullable', 'array', $strict ? 'min:1' : 'max:5'],
-            'deficiencies.*' => [Rule::enum(DeficiencyType::class), 'distinct'],
+            'deficiencies.*' => [Rule::in(DeficiencyCatalog::valuesFor($serviceType)), 'distinct'],
             'deficiency_remarks' => ['nullable', 'array'],
+            'deficiency_remarks.*' => ['nullable', 'string', 'max:5000'],
             'deficiency_remarks.dress_code_or_instructions' => [Rule::requiredIf($strict && in_array(DeficiencyType::DressCode->value, $types, true)), 'nullable', 'string', 'max:5000'],
             'deficiency_remarks.misbehavior' => [Rule::requiredIf($strict && in_array(DeficiencyType::Misbehavior->value, $types, true)), 'nullable', 'string', 'max:5000'],
             'deficiency_remarks.other' => [Rule::requiredIf($strict && in_array(DeficiencyType::Other->value, $types, true)), 'nullable', 'string', 'max:5000'],

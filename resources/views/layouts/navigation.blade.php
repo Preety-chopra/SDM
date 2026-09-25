@@ -1,6 +1,7 @@
-<div x-cloak x-show="mobileOpen" x-transition.opacity class="fixed inset-0 z-40 bg-gray-950/50 md:hidden" @click="mobileOpen = false" aria-hidden="true"></div>
+@if ($showSidebar)
+    <div x-cloak x-show="mobileOpen" x-transition.opacity class="fixed inset-0 z-40 bg-gray-950/50 md:hidden" @click="mobileOpen = false" aria-hidden="true"></div>
 
-<aside
+    <aside
     data-app-sidebar
     x-cloak
     :class="{
@@ -35,10 +36,12 @@
             $idleClasses = 'text-gray-600 hover:bg-gray-100 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white';
         @endphp
 
-        <a href="{{ route('dashboard') }}" title="Dashboard" class="{{ $baseClasses }} {{ request()->routeIs('dashboard') ? $activeClasses : $idleClasses }}">
-            <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 11.5 12 4l9 7.5M5.5 10v10h13V10M9 20v-6h6v6" /></svg>
-            <span x-show="! collapsed || mobileOpen" x-transition.opacity>Dashboard</span>
-        </a>
+        @unless (Auth::user()->hasAnyRole([\App\Enums\UserRole::Station->value, 'station_controller']))
+            <a href="{{ route('dashboard') }}" title="Dashboard" class="{{ $baseClasses }} {{ request()->routeIs('dashboard') ? $activeClasses : $idleClasses }}">
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 11.5 12 4l9 7.5M5.5 10v10h13V10M9 20v-6h6v6" /></svg>
+                <span x-show="! collapsed || mobileOpen" x-transition.opacity>Dashboard</span>
+            </a>
+        @endunless
 
         @can('viewAny', \App\Models\ServiceDeficiencyMemo::class)
             <a href="{{ route('sdm-memos.index') }}" title="Service Deficiency Memos" class="relative {{ $baseClasses }} {{ request()->routeIs('sdm-memos.*') ? $activeClasses : $idleClasses }}">
@@ -57,7 +60,7 @@
         @can('create', \App\Models\ServiceDeficiencyMemo::class)
             <a href="{{ route('sdm-memos.create') }}" title="Create SDM memo" class="{{ $baseClasses }} bg-emerald-700 text-white hover:bg-emerald-800">
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M12 5v14M5 12h14" /></svg>
-                <span x-show="! collapsed || mobileOpen" x-transition.opacity>New memo</span>
+                <span x-show="! collapsed || mobileOpen" x-transition.opacity>Create New SDM</span>
             </a>
         @endcan
 
@@ -97,13 +100,21 @@
         @endforeach
     </nav>
 
-</aside>
+    </aside>
+@endif
 
-<header class="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-gray-200 bg-white/95 px-4 shadow-sm backdrop-blur sm:px-6 dark:border-gray-700 dark:bg-gray-800/95">
-    <button type="button" @click="mobileOpen = true" class="inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 md:hidden dark:text-gray-300 dark:hover:bg-gray-700">
-        <span class="sr-only">Open sidebar</span>
-        <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-    </button>
+<header data-account-header class="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-gray-200 bg-white/95 px-4 shadow-sm backdrop-blur sm:px-6 dark:border-gray-700 dark:bg-gray-800/95">
+    @if ($showSidebar)
+        <button type="button" @click="mobileOpen = true" class="inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 md:hidden dark:text-gray-300 dark:hover:bg-gray-700">
+            <span class="sr-only">Open sidebar</span>
+            <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+    @else
+        <a href="{{ route('dashboard') }}" class="group flex min-w-0 items-center gap-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            <x-application-logo class="h-10 w-12 shrink-0 transition-transform group-hover:scale-105" />
+            <span class="hidden truncate text-sm font-black tracking-tight text-gray-950 sm:block dark:text-white">SDM Workspace</span>
+        </a>
+    @endif
 
     <div class="ml-auto">
         <x-dropdown align="right" width="48">

@@ -14,6 +14,7 @@ use App\Models\ReportingRelationship;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
 use App\Models\User;
+use App\Support\PenaltyClauseTemplates;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -126,7 +127,7 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertSessionHasErrors('station_id');
 
         $this->post(route('login'), ['username' => $user->name, 'password' => 'password', 'station_id' => $station->id])
-            ->assertRedirect(route('dashboard', absolute: false))
+            ->assertRedirect(route('sdm-memos.create', absolute: false))
             ->assertSessionHas('auth.station_id', $station->id);
         $this->assertAuthenticatedAs($user);
 
@@ -134,6 +135,62 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertOk()
             ->assertSee($line->code.' · '.$line->name)
             ->assertSee($station->code.' · '.$station->name);
+    }
+
+    public function test_create_form_displays_the_line_code_and_station_name_beside_memo_details(): void
+    {
+        [$user, $line, $station] = $this->stationUserWithLine();
+
+        $this->actingAs($user)
+            ->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertSeeInOrder([
+                'Memo details',
+                'data-memo-location',
+                '['.$line->code.' · '.$station->name.']',
+            ], false);
+    }
+
+    public function test_create_form_provides_every_ssc_penalty_clause_for_each_sdm_type(): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)
+            ->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertSee('data-deficiency-options=', false)
+            ->assertViewHas('deficiencyOptionsByType', function (array $optionsByType): bool {
+                foreach (SdmType::cases() as $type) {
+                    $expectedDescriptions = collect(PenaltyClauseTemplates::for($type))
+                        ->pluck('description')
+                        ->push(DeficiencyType::Other->label())
+                        ->all();
+                    $options = collect($optionsByType[$type->value] ?? []);
+
+                    if ($options->pluck('label')->all() !== $expectedDescriptions) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+    }
+
+    public function test_a_deficiency_must_belong_to_the_selected_sdm_type(): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Cfs->value,
+            'deficiencies' => ['undervalued_tickets'],
+        ])->assertSessionHasErrors('deficiencies.0');
+
+        $this->actingAs($user)->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => ['undervalued_tickets'],
+        ])->assertRedirect();
+
+        $this->assertSame('undervalued_tickets', ServiceDeficiencyMemo::query()->sole()->deficiencies()->sole()->type->value);
     }
 
     public function test_station_user_can_save_partial_draft_but_submission_is_strict(): void
@@ -152,6 +209,20 @@ class ServiceDeficiencyMemoTest extends TestCase
             'service_type' => SdmType::Cfs->value,
             'serial_number' => 'CFS-100',
         ])->assertSessionHasErrors(['contractor_id', 'incident_date', 'incident_time', 'staff_name', 'employee_number', 'deficiencies']);
+    }
+
+    public function test_station_controller_can_create_a_draft_without_a_serial_number(): void
+    {
+        [$stationController] = $this->stationUserWithLine();
+
+        $response = $this->actingAs($stationController)->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Cfs->value,
+        ]);
+
+        $memo = ServiceDeficiencyMemo::query()->sole();
+
+        $response->assertRedirect(route('sdm-memos.edit', $memo));
+        $this->assertNull($memo->serial_number);
     }
 
     public function test_creator_can_delete_a_draft_and_its_stored_attachments(): void
@@ -182,6 +253,33 @@ class ServiceDeficiencyMemoTest extends TestCase
         Storage::disk('local')->assertMissing($attachmentPath);
     }
 
+    public function test_station_manager_can_delete_their_own_draft(): void
+    {
+        [, , $station] = $this->stationUserWithLine();
+        $stationManager = User::query()->role(UserRole::StationManager->value)->firstOrFail();
+        $memo = ServiceDeficiencyMemo::query()->create([
+            'service_type' => SdmType::Cfs->value,
+            'station_id' => $station->id,
+            'station_name' => $station->name,
+            'status' => MemoStatus::Draft->value,
+            'created_by' => $stationManager->id,
+        ]);
+
+        $this->withSession(['auth.station_id' => $station->id])
+            ->actingAs($stationManager)
+            ->get(route('sdm-memos.index', ['status' => MemoStatus::Draft->value]))
+            ->assertOk()
+            ->assertSee(route('sdm-memos.destroy', $memo), false)
+            ->assertSee('Delete');
+
+        $this->actingAs($stationManager)
+            ->delete(route('sdm-memos.destroy', $memo))
+            ->assertRedirect(route('sdm-memos.index'))
+            ->assertSessionHas('status', 'Draft deleted.');
+
+        $this->assertNull(ServiceDeficiencyMemo::withTrashed()->find($memo->id));
+    }
+
     public function test_another_user_and_the_creator_after_submission_cannot_delete_the_memo(): void
     {
         [$owner] = $this->stationUserWithLine('RED');
@@ -204,7 +302,6 @@ class ServiceDeficiencyMemoTest extends TestCase
 
         $response = $this->actingAs($user)->post(route('sdm-memos.store-and-submit'), [
             'service_type' => SdmType::Cfs->value,
-            'serial_number' => 'CFS-101',
             'contractor_id' => $contractor->id,
             'incident_date' => '18-08-2026',
             'incident_time' => '14:25',
@@ -221,6 +318,7 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->assertNotNull($memo->submitted_at);
         $this->assertSame($user->id, $memo->created_by);
         $this->assertSame('14:25', $memo->incident_time);
+        $this->assertNull($memo->serial_number);
 
         $this->actingAs($user)->get(route('sdm-memos.show', $memo))
             ->assertOk()
@@ -393,7 +491,8 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertSee('Submit memo')
             ->assertSee('data-sdm-confirm', false)
             ->assertSee('Are you sure you want to proceed?')
-            ->assertSee('SDM number')
+            ->assertDontSee('SDM number')
+            ->assertDontSee('name="serial_number"', false)
             ->assertSee('Proceed')
             ->assertSee('id="incident_date" type="date" name="incident_date"', false)
             ->assertSee('Time of incident (HH:MM, IST)')
@@ -495,7 +594,7 @@ class ServiceDeficiencyMemoTest extends TestCase
         ]);
     }
 
-    public function test_serial_number_is_unique_per_sdm_type_and_every_user_can_view_every_memo(): void
+    public function test_serial_number_is_unique_per_sdm_type_but_is_not_displayed_to_users(): void
     {
         [$owner] = $this->stationUserWithLine('RED');
         [$other] = $this->stationUserWithLine('GREEN');
@@ -506,15 +605,15 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertSessionHasErrors('serial_number');
         $this->actingAs($owner)->post(route('sdm-memos.store'), ['service_type' => SdmType::Ticketing->value, 'serial_number' => 'SAME-1'])
             ->assertRedirect();
-        $this->actingAs($other)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
-        $this->actingAs($other)->get(route('sdm-memos.show', $memo))->assertOk()->assertSee($memo->serial_number);
+        $this->actingAs($other)->get(route('sdm-memos.index'))->assertOk()->assertDontSee($memo->serial_number);
+        $this->actingAs($other)->get(route('sdm-memos.show', $memo))->assertOk()->assertDontSee($memo->serial_number);
         $this->actingAs($other)->get(route('sdm-memos.edit', $memo))->assertForbidden();
         $this->actingAs($viewerWithoutMemoPermissions)->get(route('dashboard'))->assertOk()->assertSee('All memos');
-        $this->actingAs($viewerWithoutMemoPermissions)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
-        $this->actingAs($viewerWithoutMemoPermissions)->get(route('sdm-memos.show', $memo))->assertOk()->assertSee($memo->serial_number);
+        $this->actingAs($viewerWithoutMemoPermissions)->get(route('sdm-memos.index'))->assertOk()->assertDontSee($memo->serial_number);
+        $this->actingAs($viewerWithoutMemoPermissions)->get(route('sdm-memos.show', $memo))->assertOk()->assertDontSee($memo->serial_number);
     }
 
-    public function test_memo_index_can_filter_by_type_serial_station_line_incident_date_and_status(): void
+    public function test_memo_index_can_filter_by_type_station_line_incident_date_and_status(): void
     {
         [$user, $targetLine, $targetStation] = $this->stationUserWithLine('FILTER-RED');
         [$otherUser] = $this->stationUserWithLine('FILTER-GREEN');
@@ -529,7 +628,7 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->actingAs($user)->get(route('sdm-memos.index'))
             ->assertOk()
             ->assertSee('name="service_type"', false)
-            ->assertSee('name="serial_number"', false)
+            ->assertDontSee('name="serial_number"', false)
             ->assertSee('name="station_id"', false)
             ->assertSee('name="line_code"', false)
             ->assertSee('name="incident_date"', false)
@@ -537,7 +636,6 @@ class ServiceDeficiencyMemoTest extends TestCase
 
         $filters = [
             ['service_type' => SdmType::Cfs->value],
-            ['serial_number' => 'TARGET-101'],
             ['station_id' => $targetStation->id],
             ['line_code' => $targetLine->code],
             ['incident_date' => '2026-09-10'],
@@ -547,7 +645,8 @@ class ServiceDeficiencyMemoTest extends TestCase
         foreach ($filters as $filter) {
             $this->actingAs($user)->get(route('sdm-memos.index', $filter))
                 ->assertOk()
-                ->assertSee($target->serial_number)
+                ->assertViewHas('memos', fn ($memos): bool => collect($memos->items())->pluck('id')->all() === [$target->id])
+                ->assertDontSee($target->serial_number)
                 ->assertDontSee($other->serial_number);
         }
     }

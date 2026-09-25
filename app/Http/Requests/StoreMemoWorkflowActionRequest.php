@@ -74,7 +74,7 @@ class StoreMemoWorkflowActionRequest extends FormRequest
             'items' => [Rule::requiredIf($requiresAssessment), 'nullable', 'array', 'min:1'],
             'items.*.contract_penalty_clause_id' => ['required', 'integer', 'exists:contract_penalty_clauses,id'],
             'items.*.proposed_amount' => ['required', 'numeric', 'min:0'],
-            'items.*.justification' => ['required', 'string', 'max:5000'],
+            'items.*.justification' => ['nullable', 'string', 'max:5000'],
             'items.*.calculation_inputs' => ['nullable', 'array'],
             'items.*.calculation_inputs.days' => ['nullable', 'integer', 'min:0'],
             'items.*.calculation_inputs.workers' => ['nullable', 'integer', 'min:0'],

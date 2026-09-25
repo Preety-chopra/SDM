@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\Repositories\LineManagerDashboardRepositoryInterface;
 use App\Contracts\Repositories\MasterDataRepositoryInterface;
 use App\Contracts\Repositories\RoleRepositoryInterface;
 use App\Contracts\Repositories\ServiceContractRepositoryInterface;
@@ -11,6 +12,7 @@ use App\Contracts\Repositories\StationHierarchyRepositoryInterface;
 use App\Contracts\Repositories\StationManagerDashboardRepositoryInterface;
 use App\Contracts\Repositories\StationRepositoryInterface;
 use App\Contracts\Repositories\UserRepositoryInterface;
+use App\Contracts\Repositories\WorkflowRoleDashboardRepositoryInterface;
 use App\Models\ServiceContract;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
@@ -18,6 +20,7 @@ use App\Policies\RolePolicy;
 use App\Policies\ServiceContractPolicy;
 use App\Policies\ServiceDeficiencyMemoPolicy;
 use App\Policies\UserPolicy;
+use App\Repositories\Eloquent\LineManagerDashboardRepository;
 use App\Repositories\Eloquent\MasterDataRepository;
 use App\Repositories\Eloquent\RoleRepository;
 use App\Repositories\Eloquent\ServiceContractRepository;
@@ -27,6 +30,7 @@ use App\Repositories\Eloquent\StationHierarchyRepository;
 use App\Repositories\Eloquent\StationManagerDashboardRepository;
 use App\Repositories\Eloquent\StationRepository;
 use App\Repositories\Eloquent\UserRepository;
+use App\Repositories\Eloquent\WorkflowRoleDashboardRepository;
 use App\View\Composers\NavigationComposer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -42,6 +46,8 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(UserRepositoryInterface::class, UserRepository::class);
+        $this->app->bind(LineManagerDashboardRepositoryInterface::class, LineManagerDashboardRepository::class);
+        $this->app->bind(WorkflowRoleDashboardRepositoryInterface::class, WorkflowRoleDashboardRepository::class);
         $this->app->bind(StationRepositoryInterface::class, StationRepository::class);
         $this->app->bind(StationHierarchyRepositoryInterface::class, StationHierarchyRepository::class);
         $this->app->bind(ServiceDeficiencyMemoRepositoryInterface::class, ServiceDeficiencyMemoRepository::class);

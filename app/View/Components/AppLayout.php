@@ -2,6 +2,7 @@
 
 namespace App\View\Components;
 
+use App\Enums\UserRole;
 use Illuminate\Support\Str;
 use Illuminate\View\Component;
 use Illuminate\View\View;
@@ -15,7 +16,27 @@ class AppLayout extends Component
      */
     public function render(): View
     {
-        return view('layouts.app', ['backUrl' => $this->backUrl()]);
+        return view('layouts.app', [
+            'backUrl' => $this->backUrl(),
+            'showBackButton' => $this->showBackButton(),
+            'showSidebar' => $this->showSidebar(),
+        ]);
+    }
+
+    private function showBackButton(): bool
+    {
+        return ! request()->routeIs('dashboard')
+            && ! (request()->routeIs('sdm-memos.create') && $this->isStationController());
+    }
+
+    private function showSidebar(): bool
+    {
+        return ! $this->isStationController();
+    }
+
+    private function isStationController(): bool
+    {
+        return request()->user()?->hasAnyRole([UserRole::Station->value, 'station_controller']) ?? false;
     }
 
     private function backUrl(): string

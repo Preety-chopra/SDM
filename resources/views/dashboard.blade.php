@@ -11,7 +11,7 @@
 
     <div class="py-8 sm:py-10">
         <div class="mx-auto flex max-w-7xl flex-col gap-8 px-4 sm:px-6 lg:px-8">
-            @unless ($isStationController || $isStationManager)
+            @unless ($isStationController || $isStationManager || $isLineManager || $isWorkflowDashboardUser)
             <section aria-labelledby="quick-actions-heading">
                 <div class="mb-4 flex items-center justify-between gap-4">
                     <div>
@@ -73,6 +73,14 @@
 
             @if ($isStationManager)
                 <x-station-manager-dashboard :dashboard="$stationManagerDashboard" />
+            @endif
+
+            @if ($isLineManager)
+                <x-line-manager-dashboard :dashboard="$lineManagerDashboard" />
+            @endif
+
+            @if ($isWorkflowDashboardUser)
+                <x-workflow-role-dashboard :dashboard="$workflowRoleDashboard" />
             @endif
 
             @if (!empty($workflowStepTypes))
@@ -140,7 +148,6 @@
                                     @forelse($queue['memos'] as $queuedMemo)
                                         <a href="{{ route('sdm-memos.show', $queuedMemo) }}" class="group/memo flex items-center justify-between gap-3 rounded-xl border border-transparent bg-gray-50 px-4 py-3 transition hover:border-emerald-200 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 dark:bg-gray-800/70 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/50 dark:focus:ring-offset-gray-900">
                                             <span class="min-w-0">
-                                                <span class="block truncate text-sm font-black text-gray-950 group-hover/memo:text-emerald-800 dark:text-white dark:group-hover/memo:text-emerald-300">{{ $queuedMemo->serial_number }}</span>
                                                 <span class="mt-1 block truncate text-xs font-medium text-gray-600 dark:text-gray-300">{{ $queuedMemo->station_name ?: 'Station not recorded' }}</span>
                                                 <span class="mt-0.5 block truncate text-xs text-gray-400">Assigned to {{ $queuedMemo->currentWorkflowStep?->assigned_name ?: 'Unassigned' }}</span>
                                             </span>

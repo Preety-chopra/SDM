@@ -2,8 +2,10 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ContractorController;
+use App\Http\Controllers\DashboardChartMemosController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\LineController;
+use App\Http\Controllers\LineManagerDashboardMemosController;
 use App\Http\Controllers\MemoApprovalAttachmentController;
 use App\Http\Controllers\MemoAttachmentController;
 use App\Http\Controllers\MemoPenaltyLifecycleController;
@@ -25,6 +27,14 @@ Route::get('/dashboard', DashboardController::class)
     ->middleware(['auth', 'enabled', 'verified'])
     ->name('dashboard');
 
+Route::get('/dashboard/line-sdms', LineManagerDashboardMemosController::class)
+    ->middleware(['auth', 'enabled', 'verified'])
+    ->name('dashboard.line-sdms');
+
+Route::get('/dashboard/chart-sdms', DashboardChartMemosController::class)
+    ->middleware(['auth', 'enabled', 'verified'])
+    ->name('dashboard.chart-sdms');
+
 Route::middleware(['auth', 'enabled'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
 
@@ -36,7 +46,7 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::get('/users/create', [UserController::class, 'createAny'])->name('users.create_any');
     Route::get('/users/{role}/create', [UserController::class, 'create'])->name('users.create');
     Route::get('/users/{role}', [UserController::class, 'index'])->name('users.index');
-    Route::post('/users', [UserController::class, 'store'])->name('users.store');   
+    Route::post('/users', [UserController::class, 'store'])->name('users.store');
     Route::get('/users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
     Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
     Route::patch('/users/{user}/status', [UserController::class, 'status'])->name('users.status');
@@ -45,6 +55,7 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::resource('sdm-memos', ServiceDeficiencyMemoController::class)->except('update');
     Route::post('/sdm-memos/{sdm_memo}', [ServiceDeficiencyMemoController::class, 'update'])->name('sdm-memos.update');
     Route::patch('/sdm-memos/{sdm_memo}/station-manager', [ServiceDeficiencyMemoController::class, 'updateStationManager'])->name('sdm-memos.station-manager.update');
+    Route::patch('/sdm-memos/{sdm_memo}/line-manager', [ServiceDeficiencyMemoController::class, 'updateLineManager'])->name('sdm-memos.line-manager.update');
     Route::post('/sdm-memos/{sdm_memo}/submit', [ServiceDeficiencyMemoController::class, 'submit'])->name('sdm-memos.submit');
     Route::post('/sdm-memos/{sdm_memo}/workflow', [MemoWorkflowController::class, 'store'])->name('sdm-memos.workflow.store');
     Route::patch('/sdm-memos/{sdm_memo}/cmc-assignment', [MemoWorkflowController::class, 'reassign'])->name('sdm-memos.cmc-assignment.update');

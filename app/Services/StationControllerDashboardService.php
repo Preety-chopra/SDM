@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Contracts\Repositories\StationControllerDashboardRepositoryInterface;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
+use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -13,9 +14,9 @@ use Illuminate\Support\Collection;
 final class StationControllerDashboardService
 {
     private const KPI_STATUSES = [
+        MemoStatus::Draft,
         MemoStatus::AwaitingStationManager,
         MemoStatus::LineReview,
-        MemoStatus::AmCmcReview,
     ];
 
     public function __construct(
@@ -32,7 +33,7 @@ final class StationControllerDashboardService
         ?string $aging = null,
     ): array {
         $summary = $this->dashboard->summary($creator, $dateFrom, $dateTo, $serviceType, $status);
-        $statusCounts = $this->withZeroCounts(MemoStatus::cases(), $summary['statuses']);
+        $statusCounts = $this->visibleStatusCounts($summary['statuses']);
         $serviceCounts = $this->withZeroCounts(SdmType::cases(), $summary['services']);
         $total = array_sum($statusCounts);
         $pendingStatuses = $this->pendingStatuses();
@@ -46,7 +47,7 @@ final class StationControllerDashboardService
             $dateTo,
             $serviceType,
             $status,
-            $pendingStatuses,
+            $this->workflowStatuses(),
         );
         $agingCounts = $this->dashboard->agingCounts(
             $creator,
@@ -67,7 +68,7 @@ final class StationControllerDashboardService
             'service_distribution' => $this->serviceDistribution($serviceCounts, $total),
             'workflow_by_service' => $this->workflowByService($workflowRows, $serviceType, $status),
             'aging_buckets' => $this->agingBuckets($agingCounts),
-            'recent_sdms' => $this->dashboard->recentMemos(
+            'recent_sdms' => $this->withVisibleStatusLabels($this->dashboard->recentMemos(
                 $creator,
                 $dateFrom,
                 $dateTo,
@@ -76,7 +77,7 @@ final class StationControllerDashboardService
                 $aging,
                 $pendingStatuses,
                 $asOf,
-            ),
+            )),
             'filters' => [
                 'date_from' => $dateFrom->toDateString(),
                 'date_to' => $dateTo->toDateString(),
@@ -85,8 +86,34 @@ final class StationControllerDashboardService
                 'aging' => $aging ?? '',
             ],
             'services' => SdmType::cases(),
-            'statuses' => MemoStatus::cases(),
+            'statuses' => collect(self::KPI_STATUSES)->map(fn (MemoStatus $status): array => [
+                'value' => $status->value,
+                'label' => $this->visibleStatusLabel($status),
+            ])->all(),
         ];
+    }
+
+    /** @return Collection<int, ServiceDeficiencyMemo> */
+    public function memosForBar(
+        User $creator,
+        CarbonInterface $dateFrom,
+        CarbonInterface $dateTo,
+        ?SdmType $serviceType,
+        ?MemoStatus $status,
+        ?string $aging,
+        int $limit,
+    ): Collection {
+        return $this->withVisibleStatusLabels($this->dashboard->recentMemos(
+            $creator,
+            $dateFrom,
+            $dateTo,
+            $serviceType,
+            $status,
+            $aging,
+            $this->pendingStatuses(),
+            CarbonImmutable::now(),
+            $limit,
+        ));
     }
 
     /**
@@ -111,7 +138,7 @@ final class StationControllerDashboardService
     private function kpis(array $counts, int $total): array
     {
         return array_map(fn (MemoStatus $status): array => [
-            'label' => $status->label(),
+            'label' => $this->visibleStatusLabel($status),
             'status' => $status->value,
             'count' => $counts[$status->value],
             'percentage' => $this->percentage($counts[$status->value], $total),
@@ -177,14 +204,26 @@ final class StationControllerDashboardService
      */
     private function workflowByService(Collection $rows, ?SdmType $selectedService, ?MemoStatus $selectedStatus): array
     {
+        $rows = $rows
+            ->groupBy(fn (object $row): string => $row->service_type.'|'.$this->visibleStatus($row->status)->value)
+            ->map(function (Collection $group): object {
+                $first = $group->first();
+
+                return (object) [
+                    'service_type' => $first->service_type,
+                    'status' => $this->visibleStatus($first->status)->value,
+                    'aggregate' => $group->sum(fn (object $row): int => (int) $row->aggregate),
+                ];
+            })
+            ->values();
         $services = $selectedService
             ? collect([$selectedService])
             : collect(SdmType::cases())->filter(
                 fn (SdmType $service): bool => $rows->contains('service_type', $service->value),
             )->values();
-        $statuses = $selectedStatus && in_array($selectedStatus->value, $this->pendingStatuses(), true)
+        $statuses = $selectedStatus && in_array($selectedStatus, self::KPI_STATUSES, true) && $selectedStatus !== MemoStatus::Draft
             ? collect([$selectedStatus])
-            : collect(MemoStatus::cases())->filter(
+            : collect([MemoStatus::AwaitingStationManager, MemoStatus::LineReview])->filter(
                 fn (MemoStatus $status): bool => $rows->contains('status', $status->value),
             )->values();
         $counts = $rows->mapWithKeys(fn (object $row): array => [
@@ -195,7 +234,7 @@ final class StationControllerDashboardService
             'labels' => $services->map(fn (SdmType $service): string => $service->code())->all(),
             'service_types' => $services->map(fn (SdmType $service): string => $service->value)->all(),
             'datasets' => $statuses->map(fn (MemoStatus $status): array => [
-                'label' => $status->label(),
+                'label' => $this->visibleStatusLabel($status),
                 'status' => $status->value,
                 'data' => $services->map(
                     fn (SdmType $service): int => $counts[$service->value.'|'.$status->value] ?? 0,
@@ -224,10 +263,62 @@ final class StationControllerDashboardService
     /** @return list<string> */
     private function pendingStatuses(): array
     {
+        return [MemoStatus::Submitted->value, MemoStatus::AwaitingStationManager->value];
+    }
+
+    /** @return list<string> */
+    private function workflowStatuses(): array
+    {
         return collect(MemoStatus::cases())
-            ->reject(fn (MemoStatus $status): bool => in_array($status, [MemoStatus::Draft, MemoStatus::Closed, MemoStatus::Cancelled], true))
+            ->reject(fn (MemoStatus $status): bool => $status === MemoStatus::Draft)
             ->map(fn (MemoStatus $status): string => $status->value)
             ->all();
+    }
+
+    /** @param array<string, int> $counts
+     * @return array<string, int>
+     */
+    private function visibleStatusCounts(array $counts): array
+    {
+        $visibleCounts = $this->withZeroCounts(MemoStatus::cases(), []);
+
+        foreach ($counts as $status => $count) {
+            $visibleCounts[$this->visibleStatus($status)->value] += $count;
+        }
+
+        return $visibleCounts;
+    }
+
+    public function visibleStatusLabel(MemoStatus $status): string
+    {
+        return match ($this->visibleStatus($status)) {
+            MemoStatus::Draft => 'Draft',
+            MemoStatus::AwaitingStationManager => 'Pending with SM',
+            MemoStatus::LineReview => 'Processed by SM',
+            default => 'Processed by SM',
+        };
+    }
+
+    private function visibleStatus(MemoStatus|string $status): MemoStatus
+    {
+        $status = is_string($status) ? MemoStatus::from($status) : $status;
+
+        return match ($status) {
+            MemoStatus::Draft => MemoStatus::Draft,
+            MemoStatus::Submitted, MemoStatus::AwaitingStationManager => MemoStatus::AwaitingStationManager,
+            default => MemoStatus::LineReview,
+        };
+    }
+
+    /** @param Collection<int, ServiceDeficiencyMemo> $memos
+     * @return Collection<int, ServiceDeficiencyMemo>
+     */
+    private function withVisibleStatusLabels(Collection $memos): Collection
+    {
+        return $memos->each(function (ServiceDeficiencyMemo $memo): void {
+            $memo->setAttribute('dashboard_status', $this->visibleStatus($memo->status)->value);
+            $memo->setAttribute('dashboard_status_label', $this->visibleStatusLabel($memo->status));
+        });
     }
 
     private function percentage(int $count, int $total): float

@@ -257,9 +257,9 @@ class ContractPenaltyWorkflowTest extends TestCase
             'items' => [[
                 'contract_penalty_clause_id' => $clause->id,
                 'proposed_amount' => '150.00',
-                'justification' => 'Penalty proposed within the contractual ceiling.',
             ]],
-        ])->assertRedirect();
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertNull($memo->assessments()->latest('version')->firstOrFail()->items()->sole()->justification);
         $this->actingAs($operationsManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'forward'])->assertRedirect();
         $this->actingAs($cmcTeamLead)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'assign',
@@ -267,6 +267,9 @@ class ContractPenaltyWorkflowTest extends TestCase
         ])->assertRedirect()->assertSessionHasNoErrors();
         $this->actingAs($cmcStaff)->get(route('sdm-memos.show', $memo))
             ->assertOk()
+            ->assertSee("x-data='{ selectedClauses: [\"{$clause->id}\"] }'", false)
+            ->assertSee('name="items[0][proposed_amount]"', false)
+            ->assertSee('value="150.00"', false)
             ->assertDontSee('Points justification')
             ->assertDontSee('Staff-action justification')
             ->assertDontSee('name="points_justification"', false)
@@ -276,13 +279,19 @@ class ContractPenaltyWorkflowTest extends TestCase
             'items' => [[
                 'contract_penalty_clause_id' => $clause->id,
                 'proposed_amount' => '200.00',
-                'justification' => 'Confirmed against CFA clause 1.',
             ]],
             'negative_points' => 2,
             'staff_action' => 'warning',
             'bill_month' => '2026-08',
             'monthly_bill_value' => '10000.00',
         ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertNull($memo->assessments()->latest('version')->firstOrFail()->items()->sole()->justification);
+        $this->actingAs($cmcStaff)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('AM/Manager (Line) Review 1')
+            ->assertSee('CMC Review 1')
+            ->assertDontSee('Proposal v1')
+            ->assertDontSee('round 1');
         $this->actingAs($operationsManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'forward'])->assertRedirect()->assertSessionHasNoErrors();
         $this->actingAs($dgm)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'approve'])->assertRedirect()->assertSessionHasNoErrors();
 
@@ -331,6 +340,11 @@ class ContractPenaltyWorkflowTest extends TestCase
             'bill_month' => '2026-08',
             'monthly_bill_value' => '10000.00',
         ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->actingAs($cmcStaff)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('CMC Review 2')
+            ->assertDontSee('Proposal v3')
+            ->assertDontSee('round 2');
         $this->actingAs($operationsManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'forward'])->assertRedirect()->assertSessionHasNoErrors();
         $this->actingAs($dgm)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'approve'])->assertRedirect()->assertSessionHasNoErrors();
         $this->assertSame(MemoStatus::PendingPenaltyLetter, $memo->fresh()->status);
@@ -515,7 +529,7 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->assertSame($assignedStaff->id, $memo->cmc_staff_id);
         $this->assertSame(WorkflowStepType::CmcAssessment, $memo->currentWorkflowStep->stage);
         $this->assertSame($assignedStaff->id, $memo->currentWorkflowStep->assigned_to);
-        $this->actingAs($replacementStaff)->get(route('sdm-memos.show', $memo))->assertOk()->assertSee($memo->serial_number);
+        $this->actingAs($replacementStaff)->get(route('sdm-memos.show', $memo))->assertOk()->assertDontSee($memo->serial_number);
 
         $this->actingAs($cmcTeamLead)->patch(route('sdm-memos.cmc-assignment.update', $memo), [
             'cmc_staff_id' => $replacementStaff->id,

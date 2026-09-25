@@ -69,7 +69,7 @@ final class MemoAssessmentService
                 'calculation_inputs' => $inputs === [] ? null : $inputs,
                 'suggested_amount' => $suggested,
                 'proposed_amount' => $proposed,
-                'justification' => $item['justification'],
+                'justification' => $item['justification'] ?? null,
             ];
         });
 

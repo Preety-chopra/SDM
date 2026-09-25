@@ -22,7 +22,6 @@ class ListMemosRequest extends FormRequest
             'pending_stage' => ['nullable', Rule::enum(WorkflowStage::class)],
             'category' => ['nullable', Rule::in(['pending', 'transferred'])],
             'service_type' => ['nullable', Rule::enum(SdmType::class)],
-            'serial_number' => ['nullable', 'string', 'max:50'],
             'station_id' => ['nullable', 'integer', Rule::exists('stations', 'id')],
             'line_code' => ['nullable', 'string', Rule::exists('lines', 'code')],
             'incident_date' => ['nullable', 'date_format:Y-m-d'],
@@ -46,7 +45,7 @@ class ListMemosRequest extends FormRequest
     public function filters(): array
     {
         return array_filter(
-            $this->safe()->only(['service_type', 'serial_number', 'station_id', 'line_code', 'incident_date', 'status']),
+            $this->safe()->only(['service_type', 'station_id', 'line_code', 'incident_date', 'status']),
             fn (mixed $value): bool => filled($value),
         );
     }

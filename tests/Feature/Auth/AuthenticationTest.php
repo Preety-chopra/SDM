@@ -75,8 +75,47 @@ class AuthenticationTest extends TestCase
 
         $this->assertAuthenticated();
         $response
-            ->assertRedirect(route('dashboard', absolute: false))
+            ->assertRedirect(route('sdm-memos.create', absolute: false))
             ->assertSessionHas('auth.station_id', $station->id);
+    }
+
+    public function test_legacy_station_controller_role_is_redirected_to_the_create_memo_page_after_login(): void
+    {
+        $role = Role::findOrCreate('station_controller');
+        $user = User::factory()->create();
+        $user->assignRole($role);
+        $station = Station::query()->create([
+            'code' => 'LEGACY',
+            'name' => 'Legacy Station',
+            'is_active' => true,
+        ]);
+
+        $this->post(route('login'), [
+            'username' => $user->name,
+            'password' => 'password',
+            'station_id' => $station->id,
+        ])->assertRedirect(route('sdm-memos.create', absolute: false));
+
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_station_manager_still_redirects_to_the_dashboard_after_login(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole(UserRole::StationManager->value);
+        $station = Station::query()->create([
+            'code' => 'SM-STATION',
+            'name' => 'SM Station',
+            'is_active' => true,
+        ]);
+
+        $this->post(route('login'), [
+            'username' => $user->name,
+            'password' => 'password',
+            'station_id' => $station->id,
+        ])->assertRedirect(route('dashboard', absolute: false));
+
+        $this->assertAuthenticatedAs($user);
     }
 
     public function test_login_lists_only_active_stations(): void

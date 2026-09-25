@@ -77,7 +77,7 @@ test('invalid forms show validation instead of the preview', () => {
 
 test('preview combines safe fixed values with current form values', () => {
     const fields = new Map([
-        ['serial_number', { value: 'SDM-42', type: 'text' }],
+        ['incident_date', { value: '2026-09-23', type: 'date' }],
         ['service_type', {
             value: 'cfs',
             type: 'select-one',
@@ -89,7 +89,7 @@ test('preview combines safe fixed values with current form values', () => {
         dataset: {
             confirmationPreview: JSON.stringify([{ label: 'From', value: 'Station Controller' }]),
             confirmationFields: JSON.stringify([
-                { label: 'SDM number', name: 'serial_number' },
+                { label: 'Incident date', name: 'incident_date' },
                 { label: 'Type', name: 'service_type' },
             ]),
         },
@@ -99,7 +99,7 @@ test('preview combines safe fixed values with current form values', () => {
     assert.deepEqual(state.buildSdmPreview(form, { dataset: { confirmationAction: 'Submit SDM' } }), [
         { label: 'Action', value: 'Submit SDM' },
         { label: 'From', value: 'Station Controller' },
-        { label: 'SDM number', value: 'SDM-42' },
+        { label: 'Incident date', value: '2026-09-23' },
         { label: 'Type', value: 'CFA · Customer Facilitation' },
     ]);
 });

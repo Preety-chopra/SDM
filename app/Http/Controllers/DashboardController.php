@@ -8,11 +8,13 @@ use App\Enums\WorkflowStage;
 use App\Enums\WorkflowStepType;
 use App\Http\Requests\DashboardRequest;
 use App\Models\ServiceDeficiencyMemo;
+use App\Services\LineManagerDashboardService;
 use App\Services\RoleService;
 use App\Services\ServiceDeficiencyMemoService;
 use App\Services\StationControllerDashboardService;
 use App\Services\StationManagerDashboardService;
 use App\Services\UserService;
+use App\Services\WorkflowRoleDashboardService;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
@@ -23,6 +25,8 @@ class DashboardController extends Controller
         private ServiceDeficiencyMemoService $memos,
         private StationControllerDashboardService $stationControllerDashboard,
         private StationManagerDashboardService $stationManagerDashboard,
+        private LineManagerDashboardService $lineManagerDashboard,
+        private WorkflowRoleDashboardService $workflowRoleDashboard,
     ) {}
 
     public function __invoke(DashboardRequest $request): View
@@ -36,6 +40,13 @@ class DashboardController extends Controller
             fn (string $role): bool => in_array($role, [UserRole::Station->value, 'station_controller'], true),
         );
         $isStationManager = $request->user()->hasRole(UserRole::StationManager->value);
+        $isLineManager = $request->user()->hasRole(UserRole::AssistantManager->value);
+        $workflowDashboardRole = collect([
+            UserRole::ManagerOperations,
+            UserRole::CmcTeamLead,
+            UserRole::CmcStaff,
+            UserRole::DeputyGeneralManager,
+        ])->first(fn (UserRole $role): bool => $request->user()->hasRole($role->value));
 
         return view('dashboard', [
             'canManageUsers' => $canManageUsers,
@@ -48,6 +59,8 @@ class DashboardController extends Controller
             'workflowStepTypes' => $isAdministrator ? WorkflowStepType::cases() : [],
             'isStationController' => $isStationController,
             'isStationManager' => $isStationManager,
+            'isLineManager' => $isLineManager,
+            'isWorkflowDashboardUser' => $workflowDashboardRole !== null,
             'stationControllerDashboard' => $isStationController
                 ? $this->stationControllerDashboard->for(
                     $request->user(),
@@ -61,6 +74,25 @@ class DashboardController extends Controller
             'stationManagerDashboard' => $isStationManager
                 ? $this->stationManagerDashboard->for(
                     $request->user(),
+                    $request->dateFrom(),
+                    $request->dateTo(),
+                    $request->serviceType(),
+                    $request->status(),
+                )
+                : null,
+            'lineManagerDashboard' => $isLineManager
+                ? $this->lineManagerDashboard->for(
+                    $request->user(),
+                    $request->dateFrom(),
+                    $request->dateTo(),
+                    $request->serviceType(),
+                    $request->status(),
+                )
+                : null,
+            'workflowRoleDashboard' => $workflowDashboardRole
+                ? $this->workflowRoleDashboard->for(
+                    $request->user(),
+                    $workflowDashboardRole,
                     $request->dateFrom(),
                     $request->dateTo(),
                     $request->serviceType(),

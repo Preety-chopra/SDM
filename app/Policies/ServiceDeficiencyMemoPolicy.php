@@ -92,6 +92,14 @@ class ServiceDeficiencyMemoPolicy
             && $this->isEditableSubmittedMemo($memo);
     }
 
+    public function handoverLineManager(User $user, ServiceDeficiencyMemo $memo): bool
+    {
+        return $user->is_enabled
+            && $user->hasRole(UserRole::AssistantManager->value)
+            && $user->can(UserPermission::ActOnRoutedMemos->value)
+            && $this->isPendingWithLineManager($memo, $user);
+    }
+
     public function manageCmcLifecycle(User $user, ServiceDeficiencyMemo $memo): bool
     {
         return $user->is_enabled
@@ -128,6 +136,24 @@ class ServiceDeficiencyMemoPolicy
             && $memo->current_stage === WorkflowStage::StationManager
             && $memo->approvals()
                 ->where('role', WorkflowStage::StationManager->value)
+                ->where('assigned_to', $user->id)
+                ->where('decision', 'pending')
+                ->exists();
+    }
+
+    private function isPendingWithLineManager(ServiceDeficiencyMemo $memo, User $user): bool
+    {
+        if ($memo->workflow_version >= 2) {
+            return $memo->status === MemoStatus::LineReview
+                && $memo->currentWorkflowStep?->stage === WorkflowStepType::LineReview
+                && $memo->currentWorkflowStep?->decision === 'pending'
+                && $memo->currentWorkflowStep?->assigned_to === $user->id;
+        }
+
+        return $memo->status === MemoStatus::UnderReview
+            && $memo->current_stage === WorkflowStage::LineManager
+            && $memo->approvals()
+                ->where('role', WorkflowStage::LineManager->value)
                 ->where('assigned_to', $user->id)
                 ->where('decision', 'pending')
                 ->exists();

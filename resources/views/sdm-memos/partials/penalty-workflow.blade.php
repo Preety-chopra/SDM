@@ -6,6 +6,13 @@
     $dgmStage = $currentStep?->stage === \App\Enums\WorkflowStepType::DgmApproval;
     $latestAssessment = $memo->assessments->last();
     $approvedAssessment = $memo->assessments->last(fn ($assessment) => $assessment->status === 'approved');
+    $oldAssessmentItems = old('items');
+    $prefillAssessmentItems = $cmcStage && ! is_array($oldAssessmentItems)
+        ? ($latestAssessment?->items->keyBy('contract_penalty_clause_id') ?? collect())
+        : collect();
+    $selectedClauseIds = is_array($oldAssessmentItems)
+        ? collect($oldAssessmentItems)->pluck('contract_penalty_clause_id')->filter()->map(fn ($id) => (string) $id)->values()
+        : $prefillAssessmentItems->keys()->map(fn ($id) => (string) $id)->values();
     $inputClass = 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100';
 @endphp
 
@@ -17,8 +24,15 @@
     @if($memo->assessments->isNotEmpty())
         <div class="mt-5 flex flex-col gap-4">
             @foreach($memo->assessments as $assessment)
+                @php
+                    $reviewLabel = match ($assessment->source_stage) {
+                        \App\Enums\WorkflowStepType::LineReview->value => "AM/Manager (Line) Review {$assessment->round}",
+                        \App\Enums\WorkflowStepType::CmcAssessment->value => "CMC Review {$assessment->round}",
+                        default => "Review {$assessment->round}",
+                    };
+                @endphp
                 <article class="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-                    <div class="flex flex-wrap justify-between gap-2"><p class="font-semibold">Proposal v{{ $assessment->version }} · round {{ $assessment->round }}</p><span class="text-sm font-semibold {{ $assessment->cap_warning ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300' }}">₹{{ number_format((float) $assessment->proposed_total, 2) }} · {{ str($assessment->status)->headline() }}</span></div>
+                    <div class="flex flex-wrap justify-between gap-2"><p class="font-semibold">{{ $reviewLabel }}</p><span class="text-sm font-semibold {{ $assessment->cap_warning ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300' }}">₹{{ number_format((float) $assessment->proposed_total, 2) }} · {{ str($assessment->status)->headline() }}</span></div>
                     <div class="mt-3 overflow-x-auto"><table class="min-w-full text-sm"><thead class="text-left text-xs uppercase text-gray-500"><tr><th class="py-2 pr-4">Clause</th><th class="py-2 pr-4">Calculation</th><th class="py-2 text-right">Proposed</th></tr></thead><tbody>@foreach($assessment->items as $item)<tr class="border-t border-gray-100 dark:border-gray-700"><td class="py-2 pr-4">{{ $item->clause_serial_number }}. {{ $item->clause_description }}<p class="text-xs text-gray-500">{{ $item->justification }}</p></td><td class="py-2 pr-4">{{ $item->calculation_type->label() }}@if($item->suggested_amount !== null)<br><span class="text-xs text-gray-500">Calculated ₹{{ number_format((float) $item->suggested_amount, 2) }}</span>@endif</td><td class="py-2 text-right font-semibold">₹{{ number_format((float) $item->proposed_amount, 2) }}</td></tr>@endforeach</tbody></table></div>
                     @if($assessment->negative_points !== null)<p class="mt-3 text-sm"><strong>{{ $assessment->negative_points }} negative points</strong> · {{ str($assessment->staff_action)->headline() }}</p>@endif
                     @if($assessment->cap_warning)<p class="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">Advisory cap warning: applicable clauses total {{ number_format((float) $assessment->cap_percentage, 3) }}% of the monthly bill. DGM acknowledgement is required.</p>@endif
@@ -119,11 +133,11 @@
 </section>
 
 @if($priorApprovedCases->isNotEmpty())
-    <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"><h3 class="font-semibold">Previous approved cases for this staff member</h3><div class="mt-3 flex flex-col gap-2">@foreach($priorApprovedCases as $prior)<a href="{{ route('sdm-memos.show', $prior) }}" class="rounded-lg bg-gray-50 p-3 text-sm hover:bg-emerald-50 dark:bg-gray-900 dark:hover:bg-emerald-950">{{ $prior->serial_number }} · {{ $prior->incident_date?->format('d-m-Y') }} · {{ $prior->assessments->first()?->negative_points ?? 0 }} points</a>@endforeach</div></section>
+    <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"><h3 class="font-semibold">Previous approved cases for this staff member</h3><div class="mt-3 flex flex-col gap-2">@foreach($priorApprovedCases as $prior)<a href="{{ route('sdm-memos.show', $prior) }}" class="rounded-lg bg-gray-50 p-3 text-sm hover:bg-emerald-50 dark:bg-gray-900 dark:hover:bg-emerald-950">{{ $prior->service_type->code() }} · {{ $prior->incident_date?->format('d-m-Y') }} · {{ $prior->assessments->first()?->negative_points ?? 0 }} points</a>@endforeach</div></section>
 @endif
 
 @can('act', $memo)
-    <section class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 dark:border-emerald-900 dark:bg-emerald-950/40" @if($assessmentStage) x-data="{ selectedClauses: [] }" @endif>
+    <section class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 dark:border-emerald-900 dark:bg-emerald-950/40" @if($assessmentStage) x-data='{ selectedClauses: @json($selectedClauseIds) }' @endif>
         <h3 class="font-semibold text-emerald-950 dark:text-emerald-100">Action required: {{ $currentStep->stage->label() }}</h3>
         <form
             method="POST"
@@ -132,7 +146,6 @@
             x-data="sdmActionForm"
             @submit="requestSdmConfirmation($event)"
             data-confirmation-preview="{{ json_encode([
-                ['label' => 'SDM number', 'value' => $memo->serial_number],
                 ['label' => 'SDM type', 'value' => $memo->service_type->label()],
                 ['label' => 'From', 'value' => collect([auth()->user()->name, auth()->user()->employee_number])->filter()->join(' · ')],
                 ['label' => 'Staff', 'value' => collect([$memo->staff_name, $memo->employee_number])->filter()->join(' · ')],
@@ -165,18 +178,19 @@
                 <div class="flex flex-col gap-3">
                     <x-input-label value="Select and assess contractual clauses" required/>
                     @foreach($memo->serviceContract->penaltyClauses as $index => $clause)
+                        @php($prefillItem = $prefillAssessmentItems->get($clause->id))
                         <article class="rounded-xl border border-emerald-200 bg-white p-4 dark:border-emerald-900 dark:bg-gray-900">
                             <label class="flex items-start gap-3"><input type="checkbox" value="{{ $clause->id }}" x-model="selectedClauses" class="mt-1 rounded border-gray-300 text-emerald-700"><span><strong>{{ $clause->serial_number }}. {{ $clause->description }}</strong><span class="mt-1 block text-xs text-gray-500">{{ $clause->calculation_type->label() }}@if($clause->maximum_amount) · maximum ₹{{ number_format((float) $clause->maximum_amount, 2) }}@elseif($clause->base_amount) · base ₹{{ number_format((float) $clause->base_amount, 2) }}@endif</span></span></label>
                             <div class="mt-3 grid gap-3 md:grid-cols-3" x-show="selectedClauses.includes('{{ $clause->id }}')">
                                 <input type="hidden" name="items[{{ $index }}][contract_penalty_clause_id]" value="{{ $clause->id }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')">
                                 @if($clause->calculation_type === \App\Enums\PenaltyCalculationType::PerDayPerWorker)
-                                    <div><x-input-label value="Days"/><input name="items[{{ $index }}][calculation_inputs][days]" type="number" min="0" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
-                                    <div><x-input-label value="Workmen"/><input name="items[{{ $index }}][calculation_inputs][workers]" type="number" min="0" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
+                                    <div><x-input-label value="Days"/><input name="items[{{ $index }}][calculation_inputs][days]" type="number" min="0" value="{{ old("items.$index.calculation_inputs.days", data_get($prefillItem?->calculation_inputs, 'days')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
+                                    <div><x-input-label value="Workmen"/><input name="items[{{ $index }}][calculation_inputs][workers]" type="number" min="0" value="{{ old("items.$index.calculation_inputs.workers", data_get($prefillItem?->calculation_inputs, 'workers')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
                                 @elseif($clause->calculation_type === \App\Enums\PenaltyCalculationType::FixedPlusCost)
-                                    <div><x-input-label value="Loss/damage cost"/><input name="items[{{ $index }}][calculation_inputs][additional_cost]" type="number" min="0" step="0.01" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
+                                    <div><x-input-label value="Loss/damage cost"/><input name="items[{{ $index }}][calculation_inputs][additional_cost]" type="number" min="0" step="0.01" value="{{ old("items.$index.calculation_inputs.additional_cost", data_get($prefillItem?->calculation_inputs, 'additional_cost')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
                                 @endif
-                                <div><x-input-label value="Proposed amount" required/><input name="items[{{ $index }}][proposed_amount]" type="number" min="0" step="0.01" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')" :required="selectedClauses.includes('{{ $clause->id }}')"></div>
-                                <div class="md:col-span-3"><x-input-label value="Justification" required/><textarea name="items[{{ $index }}][justification]" rows="2" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')" :required="selectedClauses.includes('{{ $clause->id }}')"></textarea></div>
+                                <div><x-input-label value="Proposed amount" required/><input name="items[{{ $index }}][proposed_amount]" type="number" min="0" step="0.01" value="{{ old("items.$index.proposed_amount", $prefillItem?->proposed_amount) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')" :required="selectedClauses.includes('{{ $clause->id }}')"></div>
+                                <div class="md:col-span-3"><x-input-label value="Justification (optional)"/><textarea name="items[{{ $index }}][justification]" rows="2" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')">{{ old("items.$index.justification", $prefillItem?->justification) }}</textarea></div>
                             </div>
                         </article>
                     @endforeach
@@ -209,16 +223,80 @@
 @if($approvedAssessment)
     <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <h3 class="font-semibold">Penalty letter, objection, and deduction</h3>
-        @if($memo->penaltyLetters->isNotEmpty())<div class="mt-4 flex flex-col gap-2">@foreach($memo->penaltyLetters as $letter)<a href="{{ route('sdm-memos.penalty-letter.download', [$memo, $letter]) }}" class="rounded-lg bg-gray-50 p-3 text-sm hover:bg-emerald-50 dark:bg-gray-900 dark:hover:bg-emerald-950">Letter revision {{ $letter->revision }} issued {{ $letter->issued_at->format('d-m-Y') }} · objection due {{ $letter->objection_due_at->format('d-m-Y') }} · {{ $letter->is_current ? 'Current' : 'Superseded' }}</a>@endforeach</div>@endif
+        @if($memo->penaltyLetters->isNotEmpty())
+            <div class="mt-4 flex flex-col gap-2">
+                @foreach($memo->penaltyLetters as $letter)
+                    <a href="{{ route('sdm-memos.penalty-letter.download', [$memo, $letter]) }}" class="rounded-lg bg-gray-50 p-3 text-sm hover:bg-emerald-50 dark:bg-gray-900 dark:hover:bg-emerald-950">Letter revision {{ $letter->revision }} issued {{ $letter->issued_at->format('d-m-Y') }} · objection due {{ $letter->objection_due_at->format('d-m-Y') }} · {{ $letter->is_current ? 'Current' : 'Superseded' }}</a>
+                @endforeach
+            </div>
+        @endif
         @if($memo->status === \App\Enums\MemoStatus::PendingPenaltyLetter && auth()->user()->can(\App\Enums\UserPermission::ManagePenaltyLetters->value) && auth()->user()->can('manageCmcLifecycle', $memo))
-            <form method="POST" enctype="multipart/form-data" action="{{ route('sdm-memos.penalty-letter.store', $memo) }}" class="mt-5 grid gap-4 md:grid-cols-2">@csrf<div><x-input-label value="Issue date" required/><input name="issued_at" type="date" class="{{ $inputClass }}" required></div><div><x-input-label value="Signed letter" required/><input name="letter" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" class="{{ $inputClass }} p-2" required></div><div class="md:col-span-2"><x-input-label value="Delivery details" required/><textarea name="delivery_details" class="{{ $inputClass }}" required></textarea></div><button class="rounded-lg bg-emerald-700 px-5 py-2.5 font-semibold text-white md:col-span-2">Issue signed letter</button></form>
+            <form method="POST" enctype="multipart/form-data" action="{{ route('sdm-memos.penalty-letter.store', $memo) }}" class="mt-5 grid gap-4 md:grid-cols-2">
+                @csrf
+                <div>
+                    <x-input-label value="Issue date" required/>
+                    <input name="issued_at" type="date" class="{{ $inputClass }}" required>
+                </div>
+                <div>
+                    <x-input-label value="Signed letter" required/>
+                    <input name="letter" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" class="{{ $inputClass }} p-2" required>
+                </div>
+                <div class="md:col-span-2">
+                    <x-input-label value="Delivery details" required/>
+                    <textarea name="delivery_details" class="{{ $inputClass }}" required></textarea>
+                </div>
+                <button class="rounded-lg bg-emerald-700 px-5 py-2.5 font-semibold text-white md:col-span-2">Issue signed letter</button>
+            </form>
         @endif
         @if($memo->status === \App\Enums\MemoStatus::ObjectionWindow && auth()->user()->can(\App\Enums\UserPermission::ManageObjections->value) && auth()->user()->can('manageCmcLifecycle', $memo))
-            <div class="mt-5 grid gap-5 lg:grid-cols-2"><form method="POST" enctype="multipart/form-data" action="{{ route('sdm-memos.objection.store', $memo) }}" class="flex flex-col gap-4 rounded-xl border border-gray-200 p-4 dark:border-gray-700">@csrf<h4 class="font-semibold">Record objection</h4><div><x-input-label value="Objection received date" required/><input name="received_at" type="date" class="{{ $inputClass }}" required></div><div><x-input-label value="Objection remarks" required/><textarea name="remarks" rows="3" class="{{ $inputClass }}" required></textarea></div><div><x-input-label value="Supporting attachment (optional)"/><input name="attachment" type="file" class="{{ $inputClass }} p-2"></div><button class="rounded-lg bg-amber-600 px-4 py-2 font-semibold text-white">Record and reassess</button></form><form method="POST" action="{{ route('sdm-memos.no-objection.store', $memo) }}" class="rounded-xl border border-gray-200 p-4 dark:border-gray-700">@csrf<h4 class="font-semibold">No objection received</h4><p class="mt-2 text-sm text-gray-500">Available after {{ $memo->currentPenaltyLetter?->objection_due_at?->format('d-m-Y') }}.</p><button class="mt-3 rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white">Confirm no objection</button></form></div>
+            <div class="mt-5 grid gap-5 lg:grid-cols-2">
+                <form method="POST" enctype="multipart/form-data" action="{{ route('sdm-memos.objection.store', $memo) }}" class="flex flex-col gap-4 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                    @csrf
+                    <h4 class="font-semibold">Record objection</h4>
+                    <div>
+                        <x-input-label value="Objection received date" required/>
+                        <input name="received_at" type="date" class="{{ $inputClass }}" required>
+                    </div>
+                    <div>
+                        <x-input-label value="Objection remarks" required/>
+                        <textarea name="remarks" rows="3" class="{{ $inputClass }}" required></textarea>
+                    </div>
+                    <div>
+                        <x-input-label value="Supporting attachment (optional)"/>
+                        <input name="attachment" type="file" class="{{ $inputClass }} p-2"></div>
+                        <button class="rounded-lg bg-amber-600 px-4 py-2 font-semibold text-white">Record and reassess</button>
+                    </form>
+                    <form method="POST" action="{{ route('sdm-memos.no-objection.store', $memo) }}" class="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                        @csrf
+                        <h4 class="font-semibold">No objection received</h4>
+                        <p class="mt-2 text-sm text-gray-500">Available after {{ $memo->currentPenaltyLetter?->objection_due_at?->format('d-m-Y') }}.</p>
+                        <button class="mt-3 rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white">Confirm no objection</button>
+                    </form>
+                </div>
         @endif
         @if($memo->status === \App\Enums\MemoStatus::PendingDeduction && auth()->user()->can(\App\Enums\UserPermission::RecordDeductions->value) && auth()->user()->can('manageCmcLifecycle', $memo))
-            <form method="POST" action="{{ route('sdm-memos.deduction.store', $memo) }}" class="mt-5 grid gap-4 md:grid-cols-2">@csrf<div><x-input-label value="Bill month" required/><input name="bill_month" type="month" class="{{ $inputClass }}" required></div><div><x-input-label value="Bill/reference number" required/><input name="bill_reference" class="{{ $inputClass }}" required></div><div><x-input-label value="Deduction date" required/><input name="deducted_at" type="date" class="{{ $inputClass }}" required></div><div><x-input-label value="Exact approved amount" required/><input name="amount" type="number" step="0.01" value="{{ $approvedAssessment->proposed_total }}" class="{{ $inputClass }}" required></div><button class="rounded-lg bg-emerald-700 px-5 py-2.5 font-semibold text-white md:col-span-2">Record deduction and close</button></form>
+            <form method="POST" action="{{ route('sdm-memos.deduction.store', $memo) }}" class="mt-5 grid gap-4 md:grid-cols-2">
+                @csrf
+                <div>
+                    <x-input-label value="Bill month" required/>
+                    <input name="bill_month" type="month" class="{{ $inputClass }}" required>
+                </div>
+                <div>
+                    <x-input-label value="Bill/reference number" required/>
+                    <input name="bill_reference" class="{{ $inputClass }}" required>
+                </div>
+                <div>
+                    <x-input-label value="Deduction date" required/>
+                    <input name="deducted_at" type="date" class="{{ $inputClass }}" required></div>
+                <div>
+                    <x-input-label value="Exact approved amount" required/>
+                    <input name="amount" type="number" step="0.01" value="{{ $approvedAssessment->proposed_total }}" class="{{ $inputClass }}" required>
+                </div>
+                <button class="rounded-lg bg-emerald-700 px-5 py-2.5 font-semibold text-white md:col-span-2">Record deduction and close</button>
+            </form>
         @endif
-        @if($memo->deduction)<p class="mt-5 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">Deducted ₹{{ number_format((float) $memo->deduction->amount, 2) }} against {{ $memo->deduction->bill_reference }} on {{ $memo->deduction->deducted_at->format('d-m-Y') }}. Case closed.</p>@endif
+        @if($memo->deduction)
+            <p class="mt-5 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">Deducted ₹{{ number_format((float) $memo->deduction->amount, 2) }} against {{ $memo->deduction->bill_reference }} on {{ $memo->deduction->deducted_at->format('d-m-Y') }}. Case closed.</p>
+        @endif
     </section>
 @endif

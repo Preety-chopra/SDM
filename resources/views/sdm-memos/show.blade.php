@@ -1,7 +1,7 @@
-<x-app-layout :title="'SDM '.$memo->serial_number">
+<x-app-layout :title="'SDM'">
     <x-slot name="header">
         <div>
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">SDM {{ $memo->serial_number }}</h2>
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">SDM</h2>
             <p class="text-sm text-gray-500">{{ $memo->service_type->code() }} · {{ $memo->cancellationLabel() ?? str($memo->status->value)->headline() }}</p>
         </div>
     </x-slot>
@@ -37,6 +37,26 @@
                         <x-input-error :messages="$errors->get('station_manager_employee_number')"/>
                         <div class="flex justify-end">
                             <button type="submit" class="rounded-lg bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">{{ $isStationManagerHandover ? 'Handover SDM' : 'Change SM' }}</button>
+                        </div>
+                    </form>
+                </section>
+            @endcan
+            @can('handoverLineManager', $memo)
+                <section class="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
+                    <h3 class="font-semibold text-amber-950 dark:text-amber-100">Handover pending SDM to another AM/Manager (Line)</h3>
+                    <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">Select another active AM/Manager (Line) to take over this pending SDM.</p>
+                    <form method="POST" action="{{ route('sdm-memos.line-manager.update', $memo) }}" class="mt-5 flex flex-col gap-4">
+                        @csrf
+                        @method('PATCH')
+                        <x-employee-autocomplete
+                            name="line_manager_employee_number"
+                            label="Handover to AM/Manager (Line) employee number"
+                            :candidates="$lineManagerHandoverCandidates"
+                            :value="old('line_manager_employee_number')"
+                        />
+                        <x-input-error :messages="$errors->get('line_manager_employee_number')"/>
+                        <div class="flex justify-end">
+                            <button type="submit" class="rounded-lg bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">Handover SDM</button>
                         </div>
                     </form>
                 </section>
@@ -170,7 +190,6 @@
                         x-data="sdmActionForm"
                         @submit="requestSdmConfirmation($event)"
                         data-confirmation-preview="{{ json_encode([
-                            ['label' => 'SDM number', 'value' => $memo->serial_number],
                             ['label' => 'SDM type', 'value' => $memo->service_type->label()],
                             ['label' => 'From', 'value' => collect([auth()->user()->name, auth()->user()->employee_number])->filter()->join(' · ')],
                             ['label' => 'Staff', 'value' => collect([$memo->staff_name, $memo->employee_number])->filter()->join(' · ')],

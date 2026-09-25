@@ -17,7 +17,7 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
     public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null, ?string $category = null): LengthAwarePaginator
     {
         return ServiceDeficiencyMemo::query()
-            ->select(['id', 'service_type', 'serial_number', 'station_name', 'line_name', 'incident_date', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'cmc_staff_id', 'created_by', 'submitted_at', 'created_at', 'updated_at'])
+            ->select(['id', 'service_type', 'station_name', 'line_name', 'incident_date', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'cmc_staff_id', 'created_by', 'submitted_at', 'created_at', 'updated_at'])
             ->with([
                 'currentWorkflowStep:id,stage,assigned_name',
                 'latestActedApproval',
@@ -27,7 +27,6 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
                 'cancellationWorkflowStep' => fn ($query) => $query->select(['memo_workflow_steps.id', 'memo_workflow_steps.memo_id', 'memo_workflow_steps.stage', 'memo_workflow_steps.decision', 'memo_workflow_steps.acted_at']),
             ])
             ->when($filters['service_type'] ?? null, fn ($query, $serviceType) => $query->where('service_type', $serviceType))
-            ->when($filters['serial_number'] ?? null, fn ($query, $serialNumber) => $query->where('serial_number', 'like', "%{$serialNumber}%"))
             ->when($filters['station_id'] ?? null, fn ($query, $stationId) => $query->where('station_id', $stationId))
             ->when($filters['line_code'] ?? null, fn ($query, $lineCode) => $query->where('line_code', $lineCode))
             ->when($filters['incident_date'] ?? null, fn ($query, $incidentDate) => $query->whereDate('incident_date', $incidentDate))
@@ -81,7 +80,7 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
 
             $pending[$stage->value] = [
                 'memos' => (clone $query)
-                    ->select(['id', 'serial_number', 'station_name', 'line_name', 'incident_date', 'current_stage', 'submitted_at'])
+                    ->select(['id', 'station_name', 'line_name', 'incident_date', 'current_stage', 'submitted_at'])
                     ->with(['approvals' => fn ($query) => $query
                         ->select(['id', 'memo_id', 'role', 'assigned_name'])
                         ->where('role', $stage->value)
