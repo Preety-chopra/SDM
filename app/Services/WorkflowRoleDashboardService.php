@@ -51,7 +51,10 @@ final class WorkflowRoleDashboardService
                 'status' => $status?->value ?? '',
             ],
             'services' => SdmType::cases(),
-            'statuses' => MemoStatus::cases(),
+            'statuses' => collect(MemoStatus::cases())
+                ->reject(fn (MemoStatus $status): bool => $status === MemoStatus::Draft)
+                ->values()
+                ->all(),
         ];
     }
 

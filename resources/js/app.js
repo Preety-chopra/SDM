@@ -3,6 +3,7 @@
 import Alpine from 'alpinejs';
 import { createDashboardCharts, createLineManagerDashboardCharts, createStationManagerDashboardCharts, createWorkflowRoleDashboardCharts } from './dashboard-charts';
 import { createSdmConfirmation } from './sdm-confirmation';
+import { createBulkMemoSelection } from './bulk-memo-selection';
 
 window.Alpine = Alpine;
 
@@ -60,6 +61,12 @@ Alpine.data('employeeAutocomplete', () => ({
             candidate.employee_number.toLowerCase().includes(query)
             || candidate.name.toLowerCase().includes(query)
         ));
+    },
+    get previewValue() {
+        const employeeNumber = this.query.trim();
+        const candidate = this.candidates.find((item) => item.employee_number === employeeNumber);
+
+        return candidate ? `${candidate.name}(${candidate.employee_number})` : employeeNumber;
     },
     matches(employeeNumber, name) {
         const query = this.query.trim().toLowerCase();
@@ -133,6 +140,7 @@ Alpine.data('memoForm', () => ({
 }));
 
 Alpine.data('sdmActionForm', () => createSdmConfirmation());
+Alpine.data('bulkMemoSelection', () => createBulkMemoSelection());
 Alpine.data('dashboardCharts', (config) => createDashboardCharts(config));
 Alpine.data('stationManagerDashboardCharts', (config) => createStationManagerDashboardCharts(config));
 Alpine.data('lineManagerDashboardCharts', (config) => createLineManagerDashboardCharts(config));

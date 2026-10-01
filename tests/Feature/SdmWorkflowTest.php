@@ -120,9 +120,33 @@ class SdmWorkflowTest extends TestCase
             WorkflowStage::OperationsManager,
             WorkflowStage::DeputyGeneralManager,
         ], $memo->approvals()->orderBy('sequence')->get()->pluck('role')->all());
-        $this->actingAs($stationManager)->get(route('sdm-memos.index'))->assertOk()->assertDontSee($memo->serial_number);
-        $this->actingAs($lineManager)->get(route('sdm-memos.index'))->assertOk()->assertDontSee($memo->serial_number);
-        $this->actingAs($operationsManager)->get(route('sdm-memos.index'))->assertOk()->assertDontSee($memo->serial_number);
+        $this->actingAs($stationUser)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee($stationManager->employee_number)
+            ->assertDontSee($lineManager->employee_number)
+            ->assertDontSee($operationsManager->employee_number)
+            ->assertDontSee($dgm->employee_number);
+        $this->actingAs($stationManager)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee($lineManager->employee_number)
+            ->assertDontSee($operationsManager->employee_number)
+            ->assertDontSee($dgm->employee_number)
+            ->assertSee('Remarks / cancellation request to AM (optional)')
+            ->assertSee('name="action" value="request_cancellation"', false)
+            ->assertSee('Request for cancellation')
+            ->assertSee('&quot;label&quot;:&quot;Line&quot;', false)
+            ->assertSee('&quot;label&quot;:&quot;Station&quot;', false)
+            ->assertSee('&quot;label&quot;:&quot;SDM type&quot;', false)
+            ->assertSee('&quot;label&quot;:&quot;Selected Deficiency&quot;', false)
+            ->assertSee('&quot;label&quot;:&quot;Incident date and time&quot;', false)
+            ->assertSee('&quot;label&quot;:&quot;Submitted on&quot;', false)
+            ->assertSee('data-confirmation-show-action="false"', false)
+            ->assertSee('data-confirmation-fields="[]"', false)
+            ->assertDontSee('value="cancel"', false)
+            ->assertDontSee('Cancel SDM');
+        $this->actingAs($stationManager)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
+        $this->actingAs($lineManager)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
+        $this->actingAs($operationsManager)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
 
         foreach ([
             [$stationManager, 'forward', WorkflowStage::LineManager, MemoStatus::UnderReview, $lineManager->employee_number],
@@ -468,6 +492,41 @@ class SdmWorkflowTest extends TestCase
             ->assertDontSee('CFS-AM-PENDING-INBOX');
     }
 
+    public function test_only_line_manager_sees_the_centered_cancellation_dialog_on_memo_lists(): void
+    {
+        [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
+        $this->actingAs($stationUser)
+            ->post(route('sdm-memos.store-and-submit'), $this->validMemoData('CFS-AM-DLG'))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+        $memo = ServiceDeficiencyMemo::query()->sole();
+
+        foreach ([[], ['category' => 'pending']] as $parameters) {
+            $this->actingAs($stationManager)->get(route('sdm-memos.index', $parameters))
+                ->assertOk()
+                ->assertDontSee('id="cancel-memo-'.$memo->id.'"', false)
+                ->assertDontSee('Cancellation remarks')
+                ->assertDontSee('name="action" value="cancel"', false);
+        }
+
+        $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'forward',
+            'forward_to_employee_number' => $lineManager->employee_number,
+        ])->assertRedirect();
+
+        foreach ([[], ['category' => 'pending']] as $parameters) {
+            $this->actingAs($lineManager)->get(route('sdm-memos.index', $parameters))
+                ->assertOk()
+                ->assertSee('@click="cancellationOpen = true"', false)
+                ->assertSee('x-teleport="body"', false)
+                ->assertSee('id="cancel-memo-'.$memo->id.'"', false)
+                ->assertSee('fixed inset-0 z-50 grid place-items-center', false)
+                ->assertSee(route('sdm-memos.workflow.store', $memo), false)
+                ->assertSee('Cancellation remarks')
+                ->assertDontSee('<details class="relative">', false);
+        }
+    }
+
     public function test_line_manager_can_handover_their_pending_sdm_to_another_active_line_manager(): void
     {
         [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
@@ -666,43 +725,34 @@ class SdmWorkflowTest extends TestCase
         $this->assertNotSame($lineManager->id, $selectedLineManager->id);
     }
 
-    public function test_sm_and_am_line_can_cancel_with_mandatory_remarks_and_all_levels_see_who_cancelled_it(): void
+    public function test_station_manager_can_only_request_cancellation_and_am_line_can_cancel_with_mandatory_remarks(): void
     {
-        [$stationUser, $stationManager, $lineManager, $operationsManager, $dgm] = $this->workflowUsers();
+        [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
         $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), $this->validMemoData());
         $memo = ServiceDeficiencyMemo::query()->sole();
 
-        $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'cancel'])
-            ->assertSessionHasErrors('remarks');
         $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'cancel',
             'remarks' => 'Cancelled after checking the station record.',
-            'evidence' => [UploadedFile::fake()->create('sm-proof.pdf', 10, 'application/pdf')],
-        ])->assertRedirect();
+        ])->assertSessionHasErrors('action');
+        $this->assertSame(MemoStatus::Submitted, $memo->fresh()->status);
+        $this->assertSame(WorkflowStage::StationManager, $memo->fresh()->current_stage);
 
-        foreach ([$stationManager, $lineManager, $operationsManager, $dgm] as $viewer) {
-            $this->actingAs($viewer)->get(route('sdm-memos.show', $memo))
-                ->assertOk()
-                ->assertSee('Cancelled by SM');
-            $this->actingAs($viewer)->get(route('sdm-memos.index'))
-                ->assertOk()
-                ->assertSee('Cancelled by SM');
-        }
-
-        [$secondStationUser, $secondStationManager, $secondLineManager] = $this->workflowUsers();
-        $this->actingAs($secondStationUser)->post(route('sdm-memos.store-and-submit'), $this->validMemoData('CFS-AM-CANCEL'));
-        $amMemo = ServiceDeficiencyMemo::query()->where('serial_number', 'CFS-AM-CANCEL')->sole();
-        $this->actingAs($secondStationManager)->post(route('sdm-memos.workflow.store', $amMemo), [
-            'action' => 'forward',
-            'forward_to_employee_number' => $secondLineManager->employee_number,
+        $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'request_cancellation',
+            'forward_to_employee_number' => $lineManager->employee_number,
+            'remarks' => 'Please cancel after reviewing the station record.',
         ])->assertRedirect();
-        $this->actingAs($secondLineManager)->post(route('sdm-memos.workflow.store', $amMemo), ['action' => 'cancel'])
+        $this->actingAs($lineManager)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM"', false);
+        $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'cancel'])
             ->assertSessionHasErrors('remarks');
-        $this->actingAs($secondLineManager)->post(route('sdm-memos.workflow.store', $amMemo), [
+        $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'cancel',
             'remarks' => 'AM/Line cancelled after review.',
         ])->assertRedirect();
-        $this->actingAs($secondStationUser)->get(route('sdm-memos.show', $amMemo))
+        $this->actingAs($stationUser)->get(route('sdm-memos.show', $memo))
             ->assertOk()
             ->assertSee('Cancelled by AM/Line');
     }
@@ -810,6 +860,52 @@ class SdmWorkflowTest extends TestCase
             ->assertSee('data-memo-notification-count="1"', false);
     }
 
+    public function test_sidebar_all_memos_acknowledges_only_the_current_sessions_notification_count(): void
+    {
+        [$firstStationUser, $firstStationManager] = $this->workflowUsers();
+        $this->actingAs($firstStationUser)->post(route('sdm-memos.store-and-submit'), [
+            ...$this->validMemoData('CFS-FIRST-SM-INBOX'),
+            'station_manager_employee_number' => $firstStationManager->employee_number,
+        ])->assertSessionHasNoErrors()->assertRedirect();
+        $firstMemo = ServiceDeficiencyMemo::query()->sole();
+
+        [$secondStationUser, $secondStationManager] = $this->workflowUsers();
+        $this->actingAs($secondStationUser)->post(route('sdm-memos.store-and-submit'), [
+            ...$this->validMemoData('CFS-SECOND-SM-INBOX'),
+            'station_manager_employee_number' => $secondStationManager->employee_number,
+        ])->assertSessionHasNoErrors()->assertRedirect();
+        $secondMemo = ServiceDeficiencyMemo::query()->whereKeyNot($firstMemo->id)->sole();
+
+        $acknowledgementUrl = route('sdm-memos.index', ['acknowledge_notifications' => 1]);
+
+        $this->actingAs($firstStationManager)->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('data-memo-notification-count="1"', false)
+            ->assertSee($acknowledgementUrl, false);
+
+        $this->get($acknowledgementUrl)
+            ->assertOk()
+            ->assertSessionHas('memo_notifications_acknowledged_by', $firstStationManager->id)
+            ->assertDontSee('data-memo-notification-count', false)
+            ->assertSee($firstMemo->serial_number)
+            ->assertSee($secondMemo->serial_number)
+            ->assertViewHas('memos', function ($memos) use ($firstMemo, $secondMemo): bool {
+                $memoIds = collect($memos->items())->pluck('id');
+
+                return $memoIds->contains($firstMemo->id) && $memoIds->contains($secondMemo->id);
+            });
+
+        $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertDontSee('data-memo-notification-count', false);
+
+        $this->flushSession();
+
+        $this->actingAs($firstStationManager)->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('data-memo-notification-count="1"', false);
+    }
+
     public function test_administrator_can_create_station_manager_without_station_mapping(): void
     {
         [, $stationManager] = $this->workflowUsers();
@@ -868,6 +964,10 @@ class SdmWorkflowTest extends TestCase
         $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'forward'])->assertRedirect();
         $this->actingAs($operationsManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'forward'])->assertRedirect();
         $memo->refresh();
+
+        $this->actingAs($dgm)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM"', false);
 
         $this->actingAs($dgm)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'cancel'])->assertSessionHasErrors('remarks');
         $this->actingAs($dgm)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'cancel', 'remarks' => 'Final authority rejected the SDM.'])->assertRedirect();
@@ -929,6 +1029,7 @@ class SdmWorkflowTest extends TestCase
             'staff_name' => 'Test Staff',
             'employee_number' => 'EMP-10',
             'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->latest('id')->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
             'deficiencies' => [DeficiencyType::Other->value],
             'deficiency_remarks' => [DeficiencyType::Other->value => 'Other service deficiency.'],
         ];

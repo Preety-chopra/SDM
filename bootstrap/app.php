@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureUserIsEnabled;
+use App\Http\Middleware\RestrictStationControllerAccess;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -13,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->appendToGroup('web', RestrictStationControllerAccess::class);
         $middleware->alias([
             'enabled' => EnsureUserIsEnabled::class,
         ]);

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Contracts\Repositories\ServiceDeficiencyMemoRepositoryInterface;
 use App\Contracts\Repositories\UserRepositoryInterface;
 use App\Enums\MemoStatus;
 use App\Enums\UserRole;
@@ -24,8 +25,42 @@ final class MemoWorkflowService
     public function __construct(
         private MemoAssessmentService $assessments,
         private AuditService $audit,
+        private ServiceDeficiencyMemoRepositoryInterface $memos,
         private UserRepositoryInterface $users,
     ) {}
+
+    /**
+     * @param  array<string, int|string>  $filters
+     * @param  list<int>  $memoIds
+     */
+    public function bulkForward(
+        User $actor,
+        WorkflowStepType $stage,
+        array $filters,
+        array $memoIds,
+        bool $selectAll,
+    ): int {
+        return DB::transaction(function () use ($actor, $stage, $filters, $memoIds, $selectAll): int {
+            $memos = $this->memos->bulkForwardableFor(
+                $actor,
+                $stage,
+                $selectAll ? $filters : [],
+                $selectAll ? [] : $memoIds,
+            );
+
+            if ($memos->isEmpty() || (! $selectAll && $memos->count() !== count($memoIds))) {
+                throw ValidationException::withMessages([
+                    'memo_ids' => 'Select only SDMs currently assigned to you at the chosen AM/CMC stage.',
+                ]);
+            }
+
+            foreach ($memos as $memo) {
+                $this->act($memo, $actor, ['action' => 'forward']);
+            }
+
+            return $memos->count();
+        });
+    }
 
     public function act(ServiceDeficiencyMemo $memo, User $actor, array $data): ServiceDeficiencyMemo
     {
@@ -41,9 +76,16 @@ final class MemoWorkflowService
                 $stage = $memo->current_stage;
                 $approval = $memo->approvals()->where('role', $stage->value)->lockForUpdate()->firstOrFail();
                 $action = $data['action'];
+                $isCancellationRequest = $action === 'request_cancellation';
 
                 if ($approval->assigned_to !== $actor->id || $approval->decision !== 'pending') {
                     abort(403);
+                }
+                if ($stage === WorkflowStage::StationManager && $action === 'cancel') {
+                    throw ValidationException::withMessages(['action' => 'Station Manager must request cancellation from AM/Line.']);
+                }
+                if ($isCancellationRequest && $stage !== WorkflowStage::StationManager) {
+                    throw ValidationException::withMessages(['action' => 'Only the Station Manager can request cancellation from AM/Line.']);
                 }
                 if ($stage === WorkflowStage::DeputyGeneralManager && $action === 'forward') {
                     throw ValidationException::withMessages(['action' => 'DGM/O must approve or cancel the SDM.']);
@@ -52,7 +94,7 @@ final class MemoWorkflowService
                     throw ValidationException::withMessages(['action' => 'This stage must forward or cancel the SDM.']);
                 }
 
-                if ($stage === WorkflowStage::StationManager && $action === 'forward') {
+                if ($stage === WorkflowStage::StationManager && in_array($action, ['forward', 'request_cancellation'], true)) {
                     $this->assignNextLegacyApproval($memo, $stage, $data['forward_to_employee_number']);
                 }
 
@@ -62,7 +104,9 @@ final class MemoWorkflowService
                     'signer_name' => $actor->name,
                     'signer_employee_number' => $actor->employee_number,
                     'acted_at' => now(),
-                    'remarks' => $data['remarks'] ?? null,
+                    'remarks' => $isCancellationRequest
+                        ? $this->cancellationRequestRemarks($data['remarks'] ?? null)
+                        : ($data['remarks'] ?? null),
                 ]);
 
                 foreach (Arr::wrap($data['evidence'] ?? []) as $file) {
@@ -102,6 +146,7 @@ final class MemoWorkflowService
     {
         $step = MemoWorkflowStep::query()->lockForUpdate()->findOrFail($memo->current_workflow_step_id);
         $action = $data['action'];
+        $isCancellationRequest = $action === 'request_cancellation';
 
         if ($step->assigned_to !== $actor->id || $step->decision !== 'pending') {
             abort(403);
@@ -109,18 +154,24 @@ final class MemoWorkflowService
 
         $isCmcAssignment = $step->stage === WorkflowStepType::CmcAssignment;
         $isDgm = $step->stage === WorkflowStepType::DgmApproval;
-        $canCancel = in_array($step->stage, [WorkflowStepType::StationManager, WorkflowStepType::LineReview], true);
+        $canCancel = $step->stage === WorkflowStepType::LineReview;
+        if ($step->stage === WorkflowStepType::StationManager && $action === 'cancel') {
+            throw ValidationException::withMessages(['action' => 'Station Manager must request cancellation from AM/Line.']);
+        }
+        if ($isCancellationRequest && $step->stage !== WorkflowStepType::StationManager) {
+            throw ValidationException::withMessages(['action' => 'Only the Station Manager can request cancellation from AM/Line.']);
+        }
         if ($isCmcAssignment && $action !== 'assign') {
             throw ValidationException::withMessages(['action' => 'The CMC Team Lead must assign the SDM to CMC Staff.']);
         }
         if (! $isCmcAssignment && $isDgm && ! in_array($action, ['approve', 'return', 'cancel'], true)) {
             throw ValidationException::withMessages(['action' => 'DGM must approve, return, or cancel the SDM.']);
         }
-        if (! $isCmcAssignment && ! $isDgm && ! ($action === 'forward' || ($canCancel && $action === 'cancel'))) {
+        if (! $isCmcAssignment && ! $isDgm && ! (in_array($action, ['forward', 'request_cancellation'], true) || ($canCancel && $action === 'cancel'))) {
             throw ValidationException::withMessages(['action' => 'This stage must forward the SDM.']);
         }
 
-        if ($step->stage === WorkflowStepType::StationManager && $action === 'forward') {
+        if ($step->stage === WorkflowStepType::StationManager && in_array($action, ['forward', 'request_cancellation'], true)) {
             $this->assignNextVersionTwoStep($memo, $step, $data['forward_to_employee_number']);
         }
 
@@ -165,7 +216,9 @@ final class MemoWorkflowService
             'acted_by' => $actor->id,
             'actor_name' => $actor->name,
             'actor_employee_number' => $actor->employee_number,
-            'remarks' => $data['remarks'] ?? null,
+            'remarks' => $isCancellationRequest
+                ? $this->cancellationRequestRemarks($data['remarks'] ?? null)
+                : ($data['remarks'] ?? null),
             'acted_at' => now(),
         ]);
 
@@ -261,6 +314,15 @@ final class MemoWorkflowService
         }
 
         return $cmcStaff;
+    }
+
+    private function cancellationRequestRemarks(?string $remarks): string
+    {
+        $requestMessage = 'Cancellation requested by Station Manager.';
+
+        return filled($remarks)
+            ? $requestMessage."\n\n".trim($remarks)
+            : $requestMessage;
     }
 
     private function resolveLineManager(string $employeeNumber): User

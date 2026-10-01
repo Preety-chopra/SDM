@@ -201,6 +201,7 @@ class ContractPenaltyWorkflowTest extends TestCase
         $contract = $this->contract($contractor, $cmcStaff, SdmType::Cfs, 'CFA/01');
         $contract->update(['status' => 'published', 'published_at' => now()]);
         $clause = $contract->penaltyClauses()->where('serial_number', 1)->sole();
+        $addedClause = $contract->penaltyClauses()->where('serial_number', 2)->sole();
 
         $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), [
             'service_type' => SdmType::Cfs->value,
@@ -211,6 +212,7 @@ class ContractPenaltyWorkflowTest extends TestCase
             'staff_name' => 'Outsourced Employee',
             'employee_number' => 'EMP-100',
             'station_manager_employee_number' => $stationManager->employee_number,
+            'outsourced_staff_acknowledged' => '1',
             'deficiencies' => [DeficiencyType::DressCode->value],
             'deficiency_remarks' => [DeficiencyType::DressCode->value => 'Uniform was incomplete.'],
         ])->assertRedirect();
@@ -235,8 +237,75 @@ class ContractPenaltyWorkflowTest extends TestCase
             'is_enabled' => false,
         ]);
 
+        $this->actingAs($stationManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('value="drafts_own"', false)
+            ->assertSee('Drafts (own)')
+            ->assertSee('value="submitted_to_me"', false)
+            ->assertSee('Submitted to me')
+            ->assertSee('value="pending_at_sm"', false)
+            ->assertSee('Pending (at SM level)')
+            ->assertSee('value="submitted_to_am"', false)
+            ->assertSee('Submitted to AM')
+            ->assertSee('value="processed_by_am"', false)
+            ->assertSee('Processed by AM')
+            ->assertSee('value="cancelled_by_am"', false)
+            ->assertSee('Cancelled by AM')
+            ->assertSee('Serial number')
+            ->assertSee('SDM serial number')
+            ->assertSee('SDM type')
+            ->assertSee('SDM deficiency')
+            ->assertSee('Line / station')
+            ->assertSee('Incident date')
+            ->assertSee('Submitted on')
+            ->assertSee('Current status')
+            ->assertSee('Last updated on')
+            ->assertSee('Action')
+            ->assertSee('Pending (at SM level)')
+            ->assertSee('Poor Dress Code / Failure to Follow Instructions')
+            ->assertSee('01-08-2026 10:00');
+        $this->actingAs($stationManager)->get(route('sdm-memos.index', ['status' => 'submitted_to_me']))
+            ->assertOk()
+            ->assertSee($memo->serial_number);
+        $this->actingAs($stationManager)->get(route('sdm-memos.index', ['status' => 'pending_at_sm']))
+            ->assertOk()
+            ->assertSee($memo->serial_number);
+
+        $this->actingAs($stationUser)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertDontSee('Contract assessment')
+            ->assertDontSee('Memo CMC Staff')
+            ->assertSee('Station Manager review')
+            ->assertDontSee('Assistant Manager/Manager(Line) review')
+            ->assertDontSee('AM/CMC forwarding for scrutiny')
+            ->assertDontSee('CMC Team Lead staff assignment')
+            ->assertDontSee('CMC Staff scrutiny and assessment')
+            ->assertDontSee('AM/CMC forwarding to DGM/CMC')
+            ->assertDontSee('DGM/CMC approval');
         $this->actingAs($stationManager)->get(route('sdm-memos.show', $memo))
             ->assertOk()
+            ->assertDontSee('Contract assessment')
+            ->assertDontSee('Memo CMC Staff')
+            ->assertSee('Station Manager review')
+            ->assertSee('Assistant Manager/Manager(Line) review')
+            ->assertDontSee('AM/CMC forwarding for scrutiny')
+            ->assertDontSee('CMC Team Lead staff assignment')
+            ->assertDontSee('CMC Staff scrutiny and assessment')
+            ->assertDontSee('AM/CMC forwarding to DGM/CMC')
+            ->assertDontSee('DGM/CMC approval')
+            ->assertSee('Remarks / cancellation request to AM (optional)')
+            ->assertDontSee('value="cancel"', false)
+            ->assertDontSee('Cancel SDM')
+            ->assertSee('&quot;label&quot;:&quot;Line&quot;', false)
+            ->assertSee('&quot;label&quot;:&quot;Station&quot;', false)
+            ->assertSee('&quot;label&quot;:&quot;SDM type&quot;', false)
+            ->assertSee('&quot;label&quot;:&quot;Selected Deficiency&quot;', false)
+            ->assertSee('&quot;label&quot;:&quot;Incident date and time&quot;', false)
+            ->assertSee('&quot;label&quot;:&quot;Submitted on&quot;', false)
+            ->assertSee('data-confirmation-show-action="false"', false)
+            ->assertSee('data-confirmation-fields="[]"', false)
+            ->assertSee('01-08-2026 15:30')
+            ->assertSee('Poor Dress Code / Failure to Follow Instructions')
             ->assertSee('name="forward_to_employee_number"', false)
             ->assertSee('x-data="employeeAutocomplete"', false)
             ->assertSee($lineManager->employee_number.' - '.$lineManager->name)
@@ -247,19 +316,65 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertSee('Are you sure you want to proceed?');
 
         $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'forward', 'forward_to_employee_number' => $lineManager->employee_number])->assertRedirect();
+        $this->actingAs($stationManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('>Forwarded to AM</span>', false);
+        $this->actingAs($stationManager)->get(route('sdm-memos.index', ['status' => 'submitted_to_am']))
+            ->assertOk()
+            ->assertSee($memo->serial_number);
+        $this->actingAs($lineManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('Serial number')
+            ->assertSee('SDM serial number')
+            ->assertSee('SDM type')
+            ->assertSee('SDM deficiency')
+            ->assertSee('Line / station')
+            ->assertSee('Incident date')
+            ->assertSee('Submitted on')
+            ->assertSee('Current status')
+            ->assertSee('Last updated on')
+            ->assertSee('Action')
+            ->assertSee('01-08-2026')
+            ->assertSee('01-08-2026 10:00')
+            ->assertSee('name="action" value="cancel"', false)
+            ->assertSee('Cancellation remarks');
         $this->actingAs($lineManager)->get(route('sdm-memos.show', $memo))
             ->assertOk()
+            ->assertSee('Contract assessment')
+            ->assertSee('Memo CMC Staff')
+            ->assertSee("x-data='{ selectedClauses: [\"{$clause->id}\"] }'", false)
+            ->assertSee('Penalties matching the recorded deficiencies are pre-selected. You may add or remove clauses before forwarding.')
+            ->assertSee('name="items[0][proposed_amount]"', false)
+            ->assertSee('value="200.00"', false)
             ->assertSee('data-timeline-state="forwarded"', false)
             ->assertSee('data-timeline-state="current"', false)
+            ->assertSee('DGM/CMC approval')
+            ->assertSee('value="cancel"', false)
+            ->assertSee('Cancel SDM')
+            ->assertSee('name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM"', false)
             ->assertDontSee('R1 ·');
         $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'forward',
             'items' => [[
-                'contract_penalty_clause_id' => $clause->id,
+                'contract_penalty_clause_id' => $addedClause->id,
                 'proposed_amount' => '150.00',
             ]],
         ])->assertRedirect()->assertSessionHasNoErrors();
-        $this->assertNull($memo->assessments()->latest('version')->firstOrFail()->items()->sole()->justification);
+        $this->actingAs($stationManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('>Processed by AM</span>', false)
+            ->assertDontSee('With AM/CMC forwarding for scrutiny');
+        $this->actingAs($stationManager)->get(route('sdm-memos.index', ['status' => 'processed_by_am']))
+            ->assertOk()
+            ->assertSee($memo->serial_number);
+        $this->actingAs($lineManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('With AM/CMC forwarding for scrutiny')
+            ->assertDontSee('>Forwarded By AM/Manager (Line)</span>', false);
+        $lineAssessmentItem = $memo->assessments()->latest('version')->firstOrFail()->items()->sole();
+        $this->assertSame($addedClause->id, $lineAssessmentItem->contract_penalty_clause_id);
+        $this->assertNotSame($clause->id, $lineAssessmentItem->contract_penalty_clause_id);
+        $this->assertNull($lineAssessmentItem->justification);
         $this->actingAs($operationsManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'forward'])->assertRedirect();
         $this->actingAs($cmcTeamLead)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'assign',
@@ -267,8 +382,8 @@ class ContractPenaltyWorkflowTest extends TestCase
         ])->assertRedirect()->assertSessionHasNoErrors();
         $this->actingAs($cmcStaff)->get(route('sdm-memos.show', $memo))
             ->assertOk()
-            ->assertSee("x-data='{ selectedClauses: [\"{$clause->id}\"] }'", false)
-            ->assertSee('name="items[0][proposed_amount]"', false)
+            ->assertSee("x-data='{ selectedClauses: [\"{$addedClause->id}\"] }'", false)
+            ->assertSee('name="items[1][proposed_amount]"', false)
             ->assertSee('value="150.00"', false)
             ->assertDontSee('Points justification')
             ->assertDontSee('Staff-action justification')
@@ -277,7 +392,7 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->actingAs($cmcStaff)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'forward',
             'items' => [[
-                'contract_penalty_clause_id' => $clause->id,
+                'contract_penalty_clause_id' => $addedClause->id,
                 'proposed_amount' => '200.00',
             ]],
             'negative_points' => 2,
@@ -331,7 +446,7 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->actingAs($cmcStaff)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'forward',
             'items' => [[
-                'contract_penalty_clause_id' => $clause->id,
+                'contract_penalty_clause_id' => $addedClause->id,
                 'proposed_amount' => '180.00',
                 'justification' => 'Revised after considering the objection.',
             ]],
@@ -428,7 +543,7 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->assertSame($cmcStaff->id, $memo->currentWorkflowStep->assigned_to);
     }
 
-    public function test_contract_workflow_station_manager_can_cancel_with_mandatory_remarks(): void
+    public function test_contract_workflow_station_manager_cannot_cancel_directly(): void
     {
         [$stationUser, $stationManager] = $this->workflowUsers();
         $cmcStaff = $this->user(UserRole::CmcStaff);
@@ -437,15 +552,58 @@ class ContractPenaltyWorkflowTest extends TestCase
         $contract->update(['status' => 'published', 'published_at' => now()]);
         $memo = $this->submittedMemo($stationUser, $contractor, $contract);
 
-        $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'cancel'])
-            ->assertSessionHasErrors('remarks');
         $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'cancel',
             'remarks' => 'Cancelled by the Station Manager.',
-        ])->assertRedirect();
+        ])->assertSessionHasErrors('action');
 
-        $this->assertSame(MemoStatus::Cancelled, $memo->fresh()->status);
-        $this->actingAs($stationUser)->get(route('sdm-memos.show', $memo))->assertOk()->assertSee('Cancelled by SM');
+        $this->assertSame(MemoStatus::AwaitingStationManager, $memo->fresh()->status);
+        $this->assertSame(WorkflowStepType::StationManager, $memo->fresh()->currentWorkflowStep->stage);
+    }
+
+    public function test_station_manager_can_request_cancellation_from_am_without_remarks(): void
+    {
+        [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
+        $cmcStaff = $this->user(UserRole::CmcStaff);
+        $contractor = Contractor::query()->create(['name' => 'Cancellation Request Partner', 'is_active' => true]);
+        $contract = $this->contract($contractor, $cmcStaff, SdmType::Cfs, 'CFA/CANCEL-REQUEST');
+        $contract->update(['status' => 'published', 'published_at' => now()]);
+        $memo = $this->submittedMemo($stationUser, $contractor, $contract);
+
+        $this->actingAs($stationManager)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('Remarks / cancellation request to AM (optional)')
+            ->assertSee('name="action" value="request_cancellation"', false)
+            ->assertSee('Request for cancellation');
+
+        $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'request_cancellation',
+            'forward_to_employee_number' => $lineManager->employee_number,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $memo->refresh();
+        $stationManagerStep = $memo->workflowSteps()->where('stage', WorkflowStepType::StationManager->value)->sole();
+
+        $this->assertSame(MemoStatus::LineReview, $memo->status);
+        $this->assertSame($lineManager->id, $memo->currentWorkflowStep->assigned_to);
+        $this->assertSame('forwarded', $stationManagerStep->decision);
+        $this->assertSame('Cancellation requested by Station Manager.', $stationManagerStep->remarks);
+        $this->assertDatabaseHas('audit_logs', [
+            'auditable_id' => $memo->id,
+            'event' => 'memo.workflow.request_cancellation',
+        ]);
+
+        $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'request_cancellation',
+        ])->assertSessionHasErrors('action');
+
+        $this->actingAs($lineManager)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('Cancellation requested by Station Manager.');
+
+        $this->actingAs($stationManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('>Cancellation requested</span>', false);
     }
 
     public function test_contract_workflow_am_line_can_cancel_with_mandatory_remarks(): void
@@ -475,6 +633,13 @@ class ContractPenaltyWorkflowTest extends TestCase
 
         $this->assertSame(MemoStatus::Cancelled, $memo->fresh()->status);
         $this->actingAs($stationUser)->get(route('sdm-memos.show', $memo))->assertOk()->assertSee('Cancelled by AM/Line');
+        $this->actingAs($stationManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('>Cancelled by AM</span>', false)
+            ->assertDontSee('Cancelled by AM/Line');
+        $this->actingAs($stationManager)->get(route('sdm-memos.index', ['status' => 'cancelled_by_am']))
+            ->assertOk()
+            ->assertSee($memo->serial_number);
     }
 
     public function test_cmc_team_lead_assigns_and_explicitly_reassigns_one_staff_member_for_the_memo_lifecycle(): void
@@ -529,7 +694,7 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->assertSame($assignedStaff->id, $memo->cmc_staff_id);
         $this->assertSame(WorkflowStepType::CmcAssessment, $memo->currentWorkflowStep->stage);
         $this->assertSame($assignedStaff->id, $memo->currentWorkflowStep->assigned_to);
-        $this->actingAs($replacementStaff)->get(route('sdm-memos.show', $memo))->assertOk()->assertDontSee($memo->serial_number);
+        $this->actingAs($replacementStaff)->get(route('sdm-memos.show', $memo))->assertOk()->assertSee($memo->serial_number);
 
         $this->actingAs($cmcTeamLead)->patch(route('sdm-memos.cmc-assignment.update', $memo), [
             'cmc_staff_id' => $replacementStaff->id,
@@ -626,6 +791,7 @@ class ContractPenaltyWorkflowTest extends TestCase
             'staff_name' => 'Outsourced Employee',
             'employee_number' => 'EMP-NO-CONTRACT',
             'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
             'deficiencies' => [DeficiencyType::DressCode->value],
             'deficiency_remarks' => [DeficiencyType::DressCode->value => 'Uniform was incomplete.'],
         ])->assertSessionHasErrors('contractor_id');
@@ -644,6 +810,7 @@ class ContractPenaltyWorkflowTest extends TestCase
             'staff_name' => 'Return Employee',
             'employee_number' => 'EMP-RETURN',
             'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
             'deficiencies' => [DeficiencyType::DressCode->value],
             'deficiency_remarks' => [DeficiencyType::DressCode->value => 'Uniform was incomplete.'],
         ])->assertRedirect();

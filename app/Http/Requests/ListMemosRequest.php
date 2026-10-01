@@ -4,6 +4,8 @@ namespace App\Http\Requests;
 
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
+use App\Enums\StationManagerMemoStatus;
+use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -25,8 +27,14 @@ class ListMemosRequest extends FormRequest
             'station_id' => ['nullable', 'integer', Rule::exists('stations', 'id')],
             'line_code' => ['nullable', 'string', Rule::exists('lines', 'code')],
             'incident_date' => ['nullable', 'date_format:Y-m-d'],
-            'status' => ['nullable', Rule::enum(MemoStatus::class)],
+            'status' => ['nullable', Rule::enum($this->isStationManager() ? StationManagerMemoStatus::class : MemoStatus::class)],
+            'acknowledge_notifications' => ['nullable', 'boolean'],
         ];
+    }
+
+    public function shouldAcknowledgeNotifications(): bool
+    {
+        return $this->boolean('acknowledge_notifications');
     }
 
     public function pendingStage(): ?WorkflowStage
@@ -48,5 +56,10 @@ class ListMemosRequest extends FormRequest
             $this->safe()->only(['service_type', 'station_id', 'line_code', 'incident_date', 'status']),
             fn (mixed $value): bool => filled($value),
         );
+    }
+
+    private function isStationManager(): bool
+    {
+        return $this->user()?->hasRole(UserRole::StationManager->value) ?? false;
     }
 }

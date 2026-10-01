@@ -29,6 +29,7 @@
         @input="open = true"
         @focus="open = true"
         @keydown.escape="close"
+        :data-preview-value="previewValue"
         autocomplete="off"
         role="combobox"
         aria-autocomplete="list"

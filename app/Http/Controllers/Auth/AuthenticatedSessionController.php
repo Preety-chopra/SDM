@@ -6,6 +6,7 @@ use App\Contracts\Repositories\StationRepositoryInterface;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Services\ServiceDeficiencyMemoService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,7 +14,10 @@ use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
 {
-    public function __construct(private StationRepositoryInterface $stations) {}
+    public function __construct(
+        private StationRepositoryInterface $stations,
+        private ServiceDeficiencyMemoService $memos,
+    ) {}
 
     /**
      * Display the login view.
@@ -36,6 +40,16 @@ class AuthenticatedSessionController extends Controller
             $request->session()->put('auth.station_id', $request->integer('station_id'));
         } else {
             $request->session()->forget('auth.station_id');
+        }
+
+        $urgentMemos = $this->memos->urgentPendingFor($request->user());
+        if ($urgentMemos->isNotEmpty()) {
+            $request->session()->flash('urgent_attention_memos', $urgentMemos->map(fn ($memo): array => [
+                'id' => $memo->id,
+                'serial_number' => $memo->serial_number,
+                'service_type' => $memo->service_type->label(),
+                'station_name' => $memo->station_name,
+            ])->all());
         }
 
         $defaultDestination = $request->user()->hasAnyRole([UserRole::Station->value, 'station_controller'])

@@ -22,8 +22,20 @@ class ServiceDeficiencyMemoPolicy
         return $user->can(UserPermission::CreateMemos->value);
     }
 
+    public function bulkForward(User $user): bool
+    {
+        return $user->is_enabled
+            && $user->hasRole(UserRole::ManagerOperations->value)
+            && $user->can(UserPermission::ActOnRoutedMemos->value);
+    }
+
     public function view(User $user, ServiceDeficiencyMemo $memo): bool
     {
+        if ($user->isStationController()) {
+            return $user->can(UserPermission::ViewOwnMemos->value)
+                && $memo->created_by === $user->id;
+        }
+
         return true;
     }
 

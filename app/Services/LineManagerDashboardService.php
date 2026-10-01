@@ -52,7 +52,10 @@ final class LineManagerDashboardService
                 'status' => $status?->value ?? '',
             ],
             'services' => SdmType::cases(),
-            'statuses' => MemoStatus::cases(),
+            'statuses' => collect(MemoStatus::lineManagerFilterCases())->map(fn (MemoStatus $status): array => [
+                'value' => $status->value,
+                'label' => $status->lineManagerFilterLabel(),
+            ])->all(),
         ];
     }
 

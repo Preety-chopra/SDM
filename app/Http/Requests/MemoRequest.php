@@ -65,31 +65,25 @@ abstract class MemoRequest extends FormRequest
         $strict = $this->isSubmission();
         $types = $this->input('deficiencies', []);
         $serviceType = SdmType::tryFrom($this->string('service_type')->toString());
-        $memo = $this->route('sdm_memo');
         $isStationController = $this->isStationControllerUser();
         $isStationManager = $this->user()?->hasRole(UserRole::StationManager->value) ?? false;
-        $uniqueSerial = Rule::unique(ServiceDeficiencyMemo::class, 'serial_number')
-            ->where(fn (Builder $query) => $query->where('service_type', $this->string('service_type')->toString()))
-            ->ignore($memo instanceof ServiceDeficiencyMemo ? $memo->id : null);
-
         $rules = [
             'service_type' => ['required', Rule::enum(SdmType::class)],
-            'serial_number' => ['nullable', 'string', 'max:50', $uniqueSerial],
+            'is_urgent' => ['sometimes', 'boolean'],
             'contractor_id' => [$strict ? 'required' : 'nullable', Rule::exists(Contractor::class, 'id')->where(fn (Builder $query) => $query->where('is_active', true))],
             'station_id' => ['required', 'integer', Rule::exists(Station::class, 'id')->where('is_active', true)],
             'incident_date' => [$strict ? 'required' : 'nullable', 'date_format:Y-m-d'],
             'incident_time' => [$strict ? 'required' : 'nullable', 'date_format:H:i'],
             'staff_name' => [$strict ? 'required' : 'nullable', 'string', 'max:255'],
             'employee_number' => [$strict ? 'required' : 'nullable', 'string', 'max:100'],
+            'station_record_brief_remarks' => ['nullable', 'string', 'max:5000'],
             'station_manager_employee_number' => [Rule::requiredIf($strict && $isStationController), 'nullable', 'string', 'max:100'],
             'line_manager_employee_number' => [Rule::requiredIf($strict && $isStationManager), 'nullable', 'string', 'max:100'],
             'deficiencies' => [$strict ? 'required' : 'nullable', 'array', $strict ? 'min:1' : 'max:5'],
             'deficiencies.*' => [Rule::in(DeficiencyCatalog::valuesFor($serviceType)), 'distinct'],
+            'outsourced_staff_acknowledged' => [$strict ? 'accepted' : 'nullable', 'boolean'],
             'deficiency_remarks' => ['nullable', 'array'],
             'deficiency_remarks.*' => ['nullable', 'string', 'max:5000'],
-            'deficiency_remarks.dress_code_or_instructions' => [Rule::requiredIf($strict && in_array(DeficiencyType::DressCode->value, $types, true)), 'nullable', 'string', 'max:5000'],
-            'deficiency_remarks.misbehavior' => [Rule::requiredIf($strict && in_array(DeficiencyType::Misbehavior->value, $types, true)), 'nullable', 'string', 'max:5000'],
-            'deficiency_remarks.other' => [Rule::requiredIf($strict && in_array(DeficiencyType::Other->value, $types, true)), 'nullable', 'string', 'max:5000'],
             'late_reporting' => ['nullable', 'array'],
             'late_reporting.booked_shift_from' => [Rule::requiredIf($strict && in_array(DeficiencyType::LateReporting->value, $types, true)), 'nullable', 'date_format:H:i'],
             'late_reporting.booked_shift_to' => [Rule::requiredIf($strict && in_array(DeficiencyType::LateReporting->value, $types, true)), 'nullable', 'date_format:H:i'],
@@ -117,6 +111,13 @@ abstract class MemoRequest extends FormRequest
         }
 
         return $rules;
+    }
+
+    public function messages(): array
+    {
+        return [
+            'outsourced_staff_acknowledged.accepted' => 'Confirm that you have received acknowledgement from outsourced staff.',
+        ];
     }
 
     public function after(): array

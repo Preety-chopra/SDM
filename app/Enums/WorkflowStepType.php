@@ -18,7 +18,7 @@ enum WorkflowStepType: string
             self::StationManager => 'Station Manager review',
             self::LineReview => 'Assistant Manager/Manager(Line) review',
             self::AmCmcToScrutiny => 'AM/CMC forwarding for scrutiny',
-            self::CmcAssignment => 'CMC Team Lead staff assignment',
+            self::CmcAssignment => 'CMC SM- staff assignment',
             self::CmcAssessment => 'CMC Staff scrutiny and assessment',
             self::AmCmcToDgm => 'AM/CMC forwarding to DGM/CMC',
             self::DgmApproval => 'DGM/CMC approval',

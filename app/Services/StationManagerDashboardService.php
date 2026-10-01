@@ -27,6 +27,7 @@ final class StationManagerDashboardService
 
         return [
             'total_submitted' => $summary['total'],
+            'generated_count' => $summary['generated'],
             'pending_count' => $summary['pending'],
             'forwarded_count' => $summary['forwarded'],
             'cancelled_count' => $summary['cancelled'],

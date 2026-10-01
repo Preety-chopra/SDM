@@ -5,7 +5,7 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "test:js": "node --test tests/JavaScript/sdm-confirmation.test.js tests/JavaScript/dashboard-chart-modal.test.js"
+        "test:js": "node --test tests/JavaScript/*.test.js"
     },
     "devDependencies": {
         "@tailwindcss/forms": "^0.5.2",

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -52,6 +53,11 @@ class User extends Authenticatable
     public function assignedMemosAsCmcStaff(): HasMany
     {
         return $this->hasMany(ServiceDeficiencyMemo::class, 'cmc_staff_id');
+    }
+
+    public function isStationController(): bool
+    {
+        return $this->hasAnyRole([UserRole::Station->value, 'station_controller']);
     }
 
     /**

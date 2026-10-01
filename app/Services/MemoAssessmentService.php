@@ -8,11 +8,39 @@ use App\Models\ContractPenaltyClause;
 use App\Models\MemoAssessment;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
+use App\Support\DeficiencyCatalog;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 final class MemoAssessmentService
 {
+    /** @return Collection<int, array{contract_penalty_clause_id: int, calculation_inputs: null, proposed_amount: string|null, justification: null}> */
+    public function lineReviewPrefill(ServiceDeficiencyMemo $memo): Collection
+    {
+        $serialNumbers = $memo->deficiencies
+            ->map(fn ($deficiency): ?int => DeficiencyCatalog::serialNumberFor($memo->service_type, $deficiency->type))
+            ->filter()
+            ->unique();
+
+        return ($memo->serviceContract?->penaltyClauses ?? collect())
+            ->whereIn('serial_number', $serialNumbers)
+            ->mapWithKeys(function (ContractPenaltyClause $clause): array {
+                $amount = match ($clause->calculation_type) {
+                    PenaltyCalculationType::Maximum => $clause->maximum_amount,
+                    PenaltyCalculationType::Fixed, PenaltyCalculationType::FixedPlusCost => $clause->suggestedAmount([]),
+                    default => null,
+                };
+
+                return [$clause->id => [
+                    'contract_penalty_clause_id' => $clause->id,
+                    'calculation_inputs' => null,
+                    'proposed_amount' => $amount === null ? null : number_format((float) $amount, 2, '.', ''),
+                    'justification' => null,
+                ]];
+            });
+    }
+
     public function create(
         ServiceDeficiencyMemo $memo,
         User $actor,

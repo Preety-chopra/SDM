@@ -152,7 +152,7 @@ class UserManagementTest extends TestCase
             ->assertDontSee('PENDING-4');
     }
 
-    public function test_non_administrator_receives_the_basic_dashboard_without_user_management(): void
+    public function test_station_controller_cannot_access_the_dashboard(): void
     {
         $station = Station::query()->create([
             'code' => 'DASH-01',
@@ -163,26 +163,24 @@ class UserManagementTest extends TestCase
 
         $this->actingAs($user)
             ->get(route('dashboard'))
-            ->assertOk()
-            ->assertSee('Create SDM memo')
-            ->assertSee('View All SDMs')
-            ->assertDontSee('User management')
-            ->assertDontSee('Pending memos by approval level')
-            ->assertDontSee('Users menu');
+            ->assertForbidden();
     }
 
     public function test_station_controllers_do_not_see_the_dashboard_sidebar_link(): void
     {
         $stationController = $this->userWithRole(UserRole::Station);
         $legacyStationController = User::factory()->create();
-        $legacyStationController->assignRole(Role::findOrCreate('station_controller'));
+        $legacyRole = Role::findOrCreate('station_controller');
+        $legacyRole->syncPermissions(Role::findByName(UserRole::Station->value)->permissions);
+        $legacyStationController->assignRole($legacyRole);
         $administrator = $this->userWithRole(UserRole::Administrator);
 
         foreach ([$stationController, $legacyStationController] as $user) {
             $this->actingAs($user)
-                ->get(route('profile.edit'))
+                ->get(route('sdm-memos.index'))
                 ->assertOk()
-                ->assertDontSee('title="Dashboard"', false);
+                ->assertDontSee('title="Dashboard"', false)
+                ->assertSee('data-station-controller-navigation', false);
         }
 
         $this->actingAs($administrator)
@@ -536,8 +534,7 @@ class UserManagementTest extends TestCase
 
         $this->actingAs($stationController)
             ->get(route('dashboard'))
-            ->assertOk()
-            ->assertSee('Create SDM memo');
+            ->assertForbidden();
     }
 
     public function test_invalid_and_administrator_role_directories_are_not_available(): void

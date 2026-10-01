@@ -24,15 +24,17 @@ class RolesAndPermissionsSeeder extends Seeder
 
         Role::findByName(UserRole::Administrator->value, 'web')->syncPermissions($permissions);
 
+        $stationControllerPermissions = [
+            UserPermission::CreateMemos->value,
+            UserPermission::ViewOwnMemos->value,
+            UserPermission::UpdateOwnDraftMemos->value,
+            UserPermission::SubmitOwnDraftMemos->value,
+        ];
+
         foreach (UserRole::managed() as $role) {
             Role::findByName($role->value, 'web')->syncPermissions(
                 match ($role) {
-                    UserRole::Station => [
-                        UserPermission::CreateMemos->value,
-                        UserPermission::ViewOwnMemos->value,
-                        UserPermission::UpdateOwnDraftMemos->value,
-                        UserPermission::SubmitOwnDraftMemos->value,
-                    ],
+                    UserRole::Station => $stationControllerPermissions,
                     UserRole::StationManager => [
                         UserPermission::CreateMemos->value,
                         UserPermission::ViewOwnMemos->value,
@@ -62,6 +64,12 @@ class RolesAndPermissionsSeeder extends Seeder
                 },
             );
         }
+
+        Role::query()
+            ->where('name', 'station_controller')
+            ->where('guard_name', 'web')
+            ->first()
+            ?->syncPermissions($stationControllerPermissions);
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }

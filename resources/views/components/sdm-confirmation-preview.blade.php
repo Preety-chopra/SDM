@@ -15,7 +15,7 @@
                 </svg>
             </span>
             <div>
-                <h2 id="sdm-confirmation-title" class="text-xl font-semibold text-gray-950 dark:text-white">Review SDM action</h2>
+                {{-- <h2 id="sdm-confirmation-title" class="text-xl font-semibold text-gray-950 dark:text-white">Review SDM action</h2> --}}
                 <p id="sdm-confirmation-question" class="mt-1 text-sm font-semibold text-gray-700 dark:text-gray-200">Are you sure you want to proceed?</p>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Check the details below before continuing.</p>
             </div>

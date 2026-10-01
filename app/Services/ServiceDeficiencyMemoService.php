@@ -41,6 +41,17 @@ final class ServiceDeficiencyMemoService
         return $this->memos->paginateFor($user, $filters, $pendingStage, $category);
     }
 
+    /** @return Collection<int, ServiceDeficiencyMemo> */
+    public function recentSubmittedBy(User $user, int $limit = 10): Collection
+    {
+        return $this->memos->recentSubmittedBy($user, $limit);
+    }
+
+    public function paginateDraftsBy(User $user): LengthAwarePaginator
+    {
+        return $this->memos->paginateDraftsBy($user);
+    }
+
     /** @return array<string, array{memos: Collection, total: int}> */
     public function pendingByStage(int $limit = 5): array
     {
@@ -56,6 +67,12 @@ final class ServiceDeficiencyMemoService
     public function pendingActionCount(User $user): int
     {
         return $this->memos->pendingActionCount($user);
+    }
+
+    /** @return Collection<int, ServiceDeficiencyMemo> */
+    public function urgentPendingFor(User $user, int $limit = 10): Collection
+    {
+        return $this->memos->urgentPendingFor($user, $limit);
     }
 
     public function createDraft(User $user, array $data): ServiceDeficiencyMemo
@@ -118,10 +135,14 @@ final class ServiceDeficiencyMemoService
                 abort_unless($station->metroLine?->is_active, 422, 'Your station must be assigned to an active line.');
                 $contractor = filled($data['contractor_id'] ?? null) ? Contractor::query()->whereKey($data['contractor_id'])->firstOrFail() : null;
                 $contract = $this->resolveContract($data, $submit, $station->id);
+                $issuedAt = CarbonImmutable::now();
 
                 $attributes = [
                     'service_type' => $data['service_type'],
-                    'serial_number' => $data['serial_number'] ?? null,
+                    'serial_number' => $submit
+                        ? $this->generateSerialNumber($station->metroLine->code, $station->code, SdmType::from($data['service_type']), $issuedAt)
+                        : $memo?->serial_number,
+                    'is_urgent' => $data['is_urgent'] ?? $memo?->is_urgent ?? false,
                     'station_id' => $station->id,
                     'station_name' => $station->name,
                     'line_name' => $station->metroLine->name,
@@ -133,6 +154,7 @@ final class ServiceDeficiencyMemoService
                     'employee_number' => $data['employee_number'] ?? null,
                     'incident_date' => filled($data['incident_date'] ?? null) ? CarbonImmutable::createFromFormat('Y-m-d', $data['incident_date'])->toDateString() : null,
                     'incident_time' => $data['incident_time'] ?? null,
+                    'station_record_brief_remarks' => $data['station_record_brief_remarks'] ?? null,
                     'updated_by' => $user->id,
                 ];
 
@@ -140,7 +162,7 @@ final class ServiceDeficiencyMemoService
                     $attributes['status'] = $contract ? MemoStatus::AwaitingStationManager->value : MemoStatus::Submitted->value;
                     $attributes['workflow_version'] = $contract ? 2 : 1;
                     $attributes['current_stage'] = $contract ? null : WorkflowStage::StationManager->value;
-                    $attributes['submitted_at'] = now();
+                    $attributes['submitted_at'] = $issuedAt;
                 }
 
                 if ($memo === null) {
@@ -174,6 +196,8 @@ final class ServiceDeficiencyMemoService
                 $this->audit->record($memo, $user, $submit ? 'memo.submitted' : ($memo->wasRecentlyCreated ? 'memo.created' : 'memo.updated'), after: [
                     'status' => $memo->status->value,
                     'service_type' => $memo->service_type->value,
+                    'serial_number' => $memo->serial_number,
+                    'is_urgent' => $memo->is_urgent,
                     'contractor_id' => $memo->contractor_id,
                     'service_contract_id' => $memo->service_contract_id,
                     'station_id' => $memo->station_id,
@@ -186,6 +210,20 @@ final class ServiceDeficiencyMemoService
             Storage::disk('local')->delete($storedPaths);
             throw $exception;
         }
+    }
+
+    private function generateSerialNumber(string $lineCode, string $stationCode, SdmType $serviceType, CarbonImmutable $issuedAt): string
+    {
+        $period = $issuedAt->format('Y-m');
+        $sequence = $this->memos->nextSerialSequence($period);
+
+        return implode('/', [
+            $lineCode,
+            $stationCode,
+            $serviceType->code(),
+            $issuedAt->format('Y/m'),
+            str_pad((string) $sequence, 2, '0', STR_PAD_LEFT),
+        ]);
     }
 
     private function createApprovalRoute(ServiceDeficiencyMemo $memo, User $creator, array $data): void
@@ -510,11 +548,12 @@ final class ServiceDeficiencyMemoService
 
     private function syncSections(ServiceDeficiencyMemo $memo, array $data): void
     {
+        $existingRemarks = $memo->deficiencies()->pluck('remarks', 'type');
         $memo->deficiencies()->delete();
         foreach ($data['deficiencies'] ?? [] as $type) {
             $deficiency = $memo->deficiencies()->create([
                 'type' => $type,
-                'remarks' => $data['deficiency_remarks'][$type] ?? null,
+                'remarks' => $data['deficiency_remarks'][$type] ?? $existingRemarks->get($type),
             ]);
             if ($type === DeficiencyType::LateReporting->value && filled($data['late_reporting'] ?? null)) {
                 $deficiency->lateReporting()->create($data['late_reporting']);

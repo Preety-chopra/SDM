@@ -21,6 +21,9 @@ final class StationManagerDashboardRepository implements StationManagerDashboard
 
         return [
             'total' => (clone $query)->count(),
+            'generated' => $this->memoQuery($from, $to, $serviceType, $status)
+                ->where('created_by', $manager->id)
+                ->count(),
             'pending' => (clone $query)->where(fn (Builder $query) => $this->whereManagerDecision($query, $manager, ['pending']))->count(),
             'forwarded' => (clone $query)->where(fn (Builder $query) => $this->whereManagerDecision($query, $manager, ['forwarded', 'approved']))->count(),
             'cancelled' => (clone $query)->where(fn (Builder $query) => $this->whereManagerDecision($query, $manager, ['cancelled', 'rejected']))->count(),
@@ -54,6 +57,7 @@ final class StationManagerDashboardRepository implements StationManagerDashboard
             : "DATE_FORMAT(submitted_at, '%Y-%m')";
 
         return $this->filteredQuery($manager, $from, $to, $serviceType, $status)
+            ->where(fn (Builder $query) => $this->whereManagerDecision($query, $manager, ['forwarded', 'approved']))
             ->selectRaw("{$periodExpression} as period, service_type, count(*) as aggregate")
             ->groupBy('period', 'service_type')
             ->orderBy('period')
@@ -73,8 +77,7 @@ final class StationManagerDashboardRepository implements StationManagerDashboard
 
     private function filteredQuery(User $manager, CarbonInterface $from, CarbonInterface $to, ?SdmType $serviceType, ?MemoStatus $status): Builder
     {
-        return ServiceDeficiencyMemo::query()
-            ->whereBetween('submitted_at', [$from, $to])
+        return $this->memoQuery($from, $to, $serviceType, $status)
             ->where(function (Builder $query) use ($manager): void {
                 $query->whereHas('workflowSteps', fn (Builder $query) => $query
                     ->where('stage', WorkflowStepType::StationManager->value)
@@ -82,7 +85,13 @@ final class StationManagerDashboardRepository implements StationManagerDashboard
                     ->orWhereHas('approvals', fn (Builder $query) => $query
                         ->where('role', WorkflowStage::StationManager->value)
                         ->where('assigned_to', $manager->id));
-            })
+            });
+    }
+
+    private function memoQuery(CarbonInterface $from, CarbonInterface $to, ?SdmType $serviceType, ?MemoStatus $status): Builder
+    {
+        return ServiceDeficiencyMemo::query()
+            ->whereBetween('submitted_at', [$from, $to])
             ->when($serviceType, fn (Builder $query) => $query->where('service_type', $serviceType->value))
             ->when($status, fn (Builder $query) => $query->where('status', $status->value));
     }

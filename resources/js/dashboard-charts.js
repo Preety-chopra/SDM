@@ -87,9 +87,13 @@ function centerTotalPlugin(id) {
     };
 }
 
-function segmentPercentageLabelsPlugin(id) {
+export function formatCountLabel(value) {
+    return String(Number(value || 0));
+}
+
+function segmentLabelsPlugin(id, formatLabel) {
     return {
-        id: `segmentPercentageLabels-${id}`,
+        id: `segmentLabels-${id}`,
         afterDatasetsDraw(chart) {
             const { ctx } = chart;
             const dataset = chart.data.datasets[0];
@@ -104,8 +108,7 @@ function segmentPercentageLabelsPlugin(id) {
                 const radius = (arc.innerRadius + arc.outerRadius) / 2;
                 const x = arc.x + (Math.cos(angle) * radius);
                 const y = arc.y + (Math.sin(angle) * radius);
-                const percentage = (value / total) * 100;
-                const label = `${Number.isInteger(percentage) ? percentage : percentage.toFixed(1)}%`;
+                const label = formatLabel(value, total);
 
                 ctx.save();
                 ctx.textAlign = 'center';
@@ -121,6 +124,18 @@ function segmentPercentageLabelsPlugin(id) {
             });
         },
     };
+}
+
+function segmentPercentageLabelsPlugin(id) {
+    return segmentLabelsPlugin(`percentage-${id}`, (value, total) => {
+        const percentage = (value / total) * 100;
+
+        return `${Number.isInteger(percentage) ? percentage : percentage.toFixed(1)}%`;
+    });
+}
+
+function segmentCountLabelsPlugin(id) {
+    return segmentLabelsPlugin(`count-${id}`, formatCountLabel);
 }
 
 export function createDashboardCharts(config) {
@@ -386,7 +401,7 @@ export function createStationManagerDashboardCharts(config) {
                     type: 'doughnut',
                     plugins: [
                         centerTotalPlugin('station-manager-stations'),
-                        segmentPercentageLabelsPlugin('station-manager-stations'),
+                        segmentCountLabelsPlugin('station-manager-stations'),
                     ],
                     data: {
                         labels: config.stationDistribution.labels,

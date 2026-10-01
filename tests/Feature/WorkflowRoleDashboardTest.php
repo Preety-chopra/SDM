@@ -73,6 +73,27 @@ class WorkflowRoleDashboardTest extends TestCase
             ->assertDontSee($completed->serial_number);
     }
 
+    public function test_am_cmc_and_downstream_dashboards_do_not_display_draft_status(): void
+    {
+        foreach ([
+            UserRole::ManagerOperations,
+            UserRole::CmcTeamLead,
+            UserRole::CmcStaff,
+            UserRole::DeputyGeneralManager,
+        ] as $role) {
+            $this->actingAs($this->user($role))
+                ->get(route('dashboard'))
+                ->assertOk()
+                ->assertViewHas(
+                    'workflowRoleDashboard',
+                    fn (array $dashboard): bool => collect($dashboard['statuses'])
+                        ->doesntContain(fn (MemoStatus $status): bool => $status === MemoStatus::Draft),
+                )
+                ->assertDontSee('value="draft"', false)
+                ->assertDontSee('>Draft</option>', false);
+        }
+    }
+
     public function test_cmc_staff_dashboard_uses_the_assigned_cmc_portfolio(): void
     {
         $cmcStaff = $this->user(UserRole::CmcStaff);

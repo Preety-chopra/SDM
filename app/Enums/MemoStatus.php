@@ -32,4 +32,28 @@ enum MemoStatus: string
             default => Str::headline($this->value),
         };
     }
+
+    /** @return list<self> */
+    public static function lineManagerFilterCases(): array
+    {
+        return [
+            self::LineReview,
+            self::AmCmcReview,
+            self::CmcAssignment,
+            self::CmcScrutiny,
+            self::DgmApproval,
+            self::PendingPenaltyLetter,
+            self::ObjectionWindow,
+            self::ObjectionReview,
+            self::Cancelled,
+            self::Closed,
+        ];
+    }
+
+    public function lineManagerFilterLabel(): string
+    {
+        return $this === self::LineReview
+            ? 'Pending (at current user level)'
+            : $this->label();
+    }
 }

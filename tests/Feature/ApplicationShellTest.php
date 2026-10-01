@@ -65,16 +65,19 @@ class ApplicationShellTest extends TestCase
         $stationController = User::factory()->create();
         $stationController->assignRole(UserRole::Station->value);
         $legacyStationController = User::factory()->create();
-        $legacyStationController->assignRole(Role::findOrCreate('station_controller'));
+        $legacyRole = Role::findOrCreate('station_controller');
+        $legacyRole->syncPermissions(Role::findByName(UserRole::Station->value)->permissions);
+        $legacyStationController->assignRole($legacyRole);
 
         foreach ([$stationController, $legacyStationController] as $user) {
             $this->actingAs($user)
-                ->get(route('profile.edit'))
+                ->get(route('sdm-memos.index'))
                 ->assertOk()
                 ->assertDontSee('data-app-sidebar', false)
                 ->assertDontSee('data-sidebar-toggle', false)
                 ->assertDontSee('>Open sidebar</span>', false)
                 ->assertSee('data-account-header', false)
+                ->assertSee('data-station-controller-navigation', false)
                 ->assertSee('action="'.route('logout').'"', false);
         }
     }

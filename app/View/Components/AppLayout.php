@@ -2,7 +2,6 @@
 
 namespace App\View\Components;
 
-use App\Enums\UserRole;
 use Illuminate\Support\Str;
 use Illuminate\View\Component;
 use Illuminate\View\View;
@@ -26,7 +25,7 @@ class AppLayout extends Component
     private function showBackButton(): bool
     {
         return ! request()->routeIs('dashboard')
-            && ! (request()->routeIs('sdm-memos.create') && $this->isStationController());
+            && ! $this->isStationController();
     }
 
     private function showSidebar(): bool
@@ -36,7 +35,7 @@ class AppLayout extends Component
 
     private function isStationController(): bool
     {
-        return request()->user()?->hasAnyRole([UserRole::Station->value, 'station_controller']) ?? false;
+        return request()->user()?->isStationController() ?? false;
     }
 
     private function backUrl(): string

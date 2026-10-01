@@ -90,12 +90,12 @@ class ServiceDeficiencyMemoTest extends TestCase
 
         $memoData = [
             'service_type' => SdmType::Cfs->value,
-            'serial_number' => 'SM-SUBMITTED-1',
             'contractor_id' => $contractor->id,
             'incident_date' => '18-08-2026',
             'incident_time' => '14:25',
             'staff_name' => 'Test Staff',
             'employee_number' => 'EMP-STAFF-1',
+            'outsourced_staff_acknowledged' => '1',
             'deficiencies' => [DeficiencyType::Misbehavior->value],
             'deficiency_remarks' => [DeficiencyType::Misbehavior->value => 'Test incident'],
         ];
@@ -109,7 +109,7 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->post(route('sdm-memos.store-and-submit'), [...$memoData, 'line_manager_employee_number' => $lineManager->employee_number])
             ->assertRedirect();
 
-        $memo = ServiceDeficiencyMemo::query()->where('serial_number', 'SM-SUBMITTED-1')->sole();
+        $memo = ServiceDeficiencyMemo::query()->whereNotNull('submitted_at')->sole();
         $this->assertSame($station->id, $memo->station_id);
         $this->assertSame($line->name, $memo->line_name);
         $this->assertSame(MemoStatus::UnderReview, $memo->status);
@@ -246,7 +246,7 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertSee(route('sdm-memos.destroy', $memo), false);
 
         $this->actingAs($user)->delete(route('sdm-memos.destroy', $memo))
-            ->assertRedirect(route('sdm-memos.index'))
+            ->assertRedirect(route('sdm-memos.drafts'))
             ->assertSessionHas('status', 'Draft deleted.');
 
         $this->assertNull(ServiceDeficiencyMemo::withTrashed()->find($memo->id));
@@ -259,18 +259,32 @@ class ServiceDeficiencyMemoTest extends TestCase
         $stationManager = User::query()->role(UserRole::StationManager->value)->firstOrFail();
         $memo = ServiceDeficiencyMemo::query()->create([
             'service_type' => SdmType::Cfs->value,
+            'serial_number' => 'OWN-SM-DRAFT',
             'station_id' => $station->id,
             'station_name' => $station->name,
             'status' => MemoStatus::Draft->value,
             'created_by' => $stationManager->id,
         ]);
 
+        $otherStationManager = User::factory()->create();
+        $otherStationManager->assignRole(UserRole::StationManager->value);
+        ServiceDeficiencyMemo::query()->create([
+            'service_type' => SdmType::Cfs->value,
+            'serial_number' => 'OTHER-SM-DRAFT',
+            'station_id' => $station->id,
+            'station_name' => $station->name,
+            'status' => MemoStatus::Draft->value,
+            'created_by' => $otherStationManager->id,
+        ]);
+
         $this->withSession(['auth.station_id' => $station->id])
             ->actingAs($stationManager)
-            ->get(route('sdm-memos.index', ['status' => MemoStatus::Draft->value]))
+            ->get(route('sdm-memos.index', ['status' => 'drafts_own']))
             ->assertOk()
+            ->assertSee('OWN-SM-DRAFT')
+            ->assertDontSee('OTHER-SM-DRAFT')
             ->assertSee(route('sdm-memos.destroy', $memo), false)
-            ->assertSee('Delete');
+            ->assertSee('Cancel');
 
         $this->actingAs($stationManager)
             ->delete(route('sdm-memos.destroy', $memo))
@@ -308,22 +322,86 @@ class ServiceDeficiencyMemoTest extends TestCase
             'staff_name' => 'Test Staff',
             'employee_number' => 'EMP-10',
             'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
             'deficiencies' => [DeficiencyType::Other->value],
             'deficiency_remarks' => [DeficiencyType::Other->value => 'Other service deficiency.'],
         ]);
 
         $memo = ServiceDeficiencyMemo::query()->sole();
-        $response->assertRedirect(route('sdm-memos.show', $memo));
+        $response->assertRedirect(route('sdm-memos.index'));
         $this->assertSame(MemoStatus::Submitted, $memo->status);
         $this->assertNotNull($memo->submitted_at);
         $this->assertSame($user->id, $memo->created_by);
         $this->assertSame('14:25', $memo->incident_time);
-        $this->assertNull($memo->serial_number);
+        $this->assertSame('RED/RED-01/CFA/2026/09/01', $memo->serial_number);
 
         $this->actingAs($user)->get(route('sdm-memos.show', $memo))
             ->assertOk()
             ->assertSee('Incident time (IST)')
             ->assertSee('14:25');
+    }
+
+    public function test_submission_requires_outsourced_staff_acknowledgement(): void
+    {
+        [$user] = $this->stationUserWithLine();
+        $contractor = Contractor::query()->create(['name' => 'Metro Services', 'is_active' => true]);
+
+        $this->actingAs($user)->post(route('sdm-memos.store-and-submit'), [
+            'service_type' => SdmType::Cfs->value,
+            'contractor_id' => $contractor->id,
+            'incident_date' => '18-08-2026',
+            'incident_time' => '14:25',
+            'staff_name' => 'Test Staff',
+            'employee_number' => 'EMP-ACKNOWLEDGEMENT',
+            'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'deficiencies' => [DeficiencyType::Other->value],
+        ])->assertSessionHasErrors('outsourced_staff_acknowledged');
+
+        $this->assertDatabaseCount('service_deficiency_memos', 0);
+    }
+
+    public function test_submission_generates_a_unique_monthly_sdm_serial_number(): void
+    {
+        Carbon::setTestNow('2026-09-25 10:30:00');
+
+        [$firstUser, $firstLine, $firstStation] = $this->stationUserWithLine('L-1E');
+        $firstStation->update(['code' => 'RHE']);
+        [$secondUser, $secondLine, $secondStation] = $this->stationUserWithLine('L-5');
+        $secondStation->update(['code' => 'APMN']);
+        $contractor = Contractor::query()->create(['name' => 'Metro Services', 'is_active' => true]);
+
+        $this->actingAs($firstUser)->post(route('sdm-memos.store-and-submit'), [
+            'service_type' => SdmType::Cfs->value,
+            'contractor_id' => $contractor->id,
+            'incident_date' => '25-09-2026',
+            'incident_time' => '09:00',
+            'staff_name' => 'First Staff Member',
+            'employee_number' => 'EMP-101',
+            'station_manager_employee_number' => 'L-1E-SM-1',
+            'outsourced_staff_acknowledged' => '1',
+            'deficiencies' => [DeficiencyType::Other->value],
+            'deficiency_remarks' => [DeficiencyType::Other->value => 'First deficiency.'],
+        ])->assertRedirect(route('sdm-memos.index'));
+
+        $this->actingAs($secondUser)->post(route('sdm-memos.store-and-submit'), [
+            'service_type' => SdmType::Ticketing->value,
+            'contractor_id' => $contractor->id,
+            'incident_date' => '25-09-2026',
+            'incident_time' => '09:15',
+            'staff_name' => 'Second Staff Member',
+            'employee_number' => 'EMP-102',
+            'station_manager_employee_number' => 'L-5-SM-1',
+            'outsourced_staff_acknowledged' => '1',
+            'deficiencies' => [DeficiencyType::Other->value],
+            'deficiency_remarks' => [DeficiencyType::Other->value => 'Second deficiency.'],
+        ])->assertRedirect(route('sdm-memos.index'));
+
+        $this->assertSame('L-1E', $firstLine->code);
+        $this->assertSame('L-5', $secondLine->code);
+        $this->assertSame([
+            'L-1E/RHE/CFA/2026/09/01',
+            'L-5/APMN/TVS/2026/09/02',
+        ], ServiceDeficiencyMemo::query()->orderBy('id')->pluck('serial_number')->all());
     }
 
     public function test_memo_details_display_the_line_code_and_name_separated_by_a_comma(): void
@@ -375,6 +453,7 @@ class ServiceDeficiencyMemoTest extends TestCase
             'staff_name' => 'Test Staff',
             'employee_number' => 'EMP-9',
             'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
             'deficiencies' => [DeficiencyType::LateReporting->value, DeficiencyType::DressCode->value, DeficiencyType::CashCheck->value],
             'deficiency_remarks' => [DeficiencyType::DressCode->value => 'Uniform was incomplete.'],
             'late_reporting' => ['booked_shift_from' => '09:00', 'booked_shift_to' => '17:00', 'actual_reporting_time' => '09:25'],
@@ -394,7 +473,7 @@ class ServiceDeficiencyMemoTest extends TestCase
             'attachments' => [UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
         ]);
 
-        $response->assertRedirect(route('sdm-memos.show', $memo));
+        $response->assertRedirect(route('sdm-memos.index'));
         $memo->refresh();
         $this->assertSame(MemoStatus::Submitted, $memo->status);
         $this->assertSame('Metro Services', $memo->contractor_name);
@@ -433,13 +512,14 @@ class ServiceDeficiencyMemoTest extends TestCase
             'staff_name' => 'Test Staff',
             'employee_number' => 'EMP-LATE',
             'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
             'deficiencies' => [DeficiencyType::LateReporting->value],
             'late_reporting' => [
                 'booked_shift_from' => '09:00:00',
                 'booked_shift_to' => '17:00:00',
                 'actual_reporting_time' => '09:25:00',
             ],
-        ])->assertRedirect(route('sdm-memos.show', $memo));
+        ])->assertRedirect(route('sdm-memos.index'));
 
         $memo->refresh();
         $this->assertSame(MemoStatus::Submitted, $memo->status);
@@ -460,6 +540,7 @@ class ServiceDeficiencyMemoTest extends TestCase
             'staff_name' => 'Test Staff',
             'employee_number' => 'EMP-LATE-TV',
             'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
             'deficiencies' => [DeficiencyType::LateReporting->value],
             'late_reporting' => [
                 'booked_shift_from' => '09:00',
@@ -472,7 +553,7 @@ class ServiceDeficiencyMemoTest extends TestCase
             ],
         ])->assertRedirect();
 
-        $memo = ServiceDeficiencyMemo::query()->where('serial_number', 'TV-LATE-REPORTING')->sole();
+        $memo = ServiceDeficiencyMemo::query()->sole();
         $this->assertSame(MemoStatus::Submitted, $memo->status);
         $this->assertNull($memo->cashCheck);
     }
@@ -507,6 +588,71 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertSee('Cash-check remarks (if any)')
             ->assertDontSee('cash_check[operator_name]', false)
             ->assertDontSee('cash_check[checked_at]', false);
+    }
+
+    public function test_create_form_always_shows_one_optional_general_remarks_field(): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertSee('Remarks (optional)')
+            ->assertSee('name="station_record_brief_remarks"', false)
+            ->assertDontSee('name="deficiency_remarks', false)
+            ->assertDontSee('Poor Dress Code / Failure to Follow Instructions remarks')
+            ->assertDontSee('Misbehavior with Customer / Staff remarks');
+    }
+
+    public function test_dress_code_and_misbehavior_can_be_submitted_without_deficiency_specific_remarks(): void
+    {
+        [$user] = $this->stationUserWithLine();
+        $contractor = Contractor::query()->create(['name' => 'Metro Services', 'is_active' => true]);
+
+        $response = $this->actingAs($user)->post(route('sdm-memos.store-and-submit'), [
+            'service_type' => SdmType::Cfs->value,
+            'contractor_id' => $contractor->id,
+            'incident_date' => '18-08-2026',
+            'incident_time' => '14:25',
+            'staff_name' => 'Test Staff',
+            'employee_number' => 'EMP-OPTIONAL-REMARKS',
+            'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
+            'deficiencies' => [
+                DeficiencyType::DressCode->value,
+                DeficiencyType::Misbehavior->value,
+            ],
+            'station_record_brief_remarks' => 'General optional context for the SDM.',
+        ]);
+
+        $memo = ServiceDeficiencyMemo::query()->sole();
+
+        $response->assertRedirect(route('sdm-memos.index'));
+        $this->assertSame('General optional context for the SDM.', $memo->station_record_brief_remarks);
+        $this->assertTrue($memo->deficiencies->every(fn ($deficiency): bool => $deficiency->remarks === null));
+    }
+
+    public function test_create_form_shows_the_staff_acknowledgement_and_conditionally_displays_complaint_documents(): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertSeeInOrder([
+                'Deficiencies',
+                'I have received acknowledgement from outsourced staff',
+                'Complaint and supporting documents',
+            ])
+            ->assertSeeInOrder([
+                'id="outsourced_staff_acknowledged"',
+                'name="outsourced_staff_acknowledged"',
+                'type="checkbox"',
+                'value="1"',
+                'required',
+                'aria-required="true"',
+            ], false)
+            ->assertSee('formnovalidate', false)
+            ->assertSee('x-show="has(\'public_complaint\')"', false)
+            ->assertSee('x-cloak', false);
     }
 
     public function test_station_controller_create_form_has_a_clear_submit_forwarding_prompt(): void
@@ -594,29 +740,30 @@ class ServiceDeficiencyMemoTest extends TestCase
         ]);
     }
 
-    public function test_serial_number_is_unique_per_sdm_type_but_is_not_displayed_to_users(): void
+    public function test_serial_number_is_visible_in_the_owners_submitted_list_and_to_authorized_viewers(): void
     {
         [$owner] = $this->stationUserWithLine('RED');
         [$other] = $this->stationUserWithLine('GREEN');
         $viewerWithoutMemoPermissions = User::factory()->create();
         $memo = $this->draft($owner, SdmType::Cfs, 'SAME-1');
 
-        $this->actingAs($owner)->post(route('sdm-memos.store'), ['service_type' => SdmType::Cfs->value, 'serial_number' => 'SAME-1'])
-            ->assertSessionHasErrors('serial_number');
-        $this->actingAs($owner)->post(route('sdm-memos.store'), ['service_type' => SdmType::Ticketing->value, 'serial_number' => 'SAME-1'])
-            ->assertRedirect();
+        $memo->update(['status' => MemoStatus::Submitted->value, 'submitted_at' => now()]);
+        $this->actingAs($owner)->get(route('sdm-memos.index'))->assertOk()->assertSee($memo->serial_number);
         $this->actingAs($other)->get(route('sdm-memos.index'))->assertOk()->assertDontSee($memo->serial_number);
-        $this->actingAs($other)->get(route('sdm-memos.show', $memo))->assertOk()->assertDontSee($memo->serial_number);
+        $this->actingAs($other)->get(route('sdm-memos.show', $memo))->assertForbidden();
         $this->actingAs($other)->get(route('sdm-memos.edit', $memo))->assertForbidden();
         $this->actingAs($viewerWithoutMemoPermissions)->get(route('dashboard'))->assertOk()->assertSee('All memos');
         $this->actingAs($viewerWithoutMemoPermissions)->get(route('sdm-memos.index'))->assertOk()->assertDontSee($memo->serial_number);
-        $this->actingAs($viewerWithoutMemoPermissions)->get(route('sdm-memos.show', $memo))->assertOk()->assertDontSee($memo->serial_number);
+        $this->actingAs($viewerWithoutMemoPermissions)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSeeInOrder(['SDM Serial Number:', $memo->serial_number]);
     }
 
     public function test_memo_index_can_filter_by_type_station_line_incident_date_and_status(): void
     {
         [$user, $targetLine, $targetStation] = $this->stationUserWithLine('FILTER-RED');
         [$otherUser] = $this->stationUserWithLine('FILTER-GREEN');
+        $viewer = User::factory()->create();
         $target = $this->draft($user, SdmType::Cfs, 'FILTER-TARGET-101');
         $target->update([
             'incident_date' => '2026-09-10',
@@ -625,7 +772,7 @@ class ServiceDeficiencyMemoTest extends TestCase
         $other = $this->draft($otherUser, SdmType::Ticketing, 'OTHER-MEMO-202');
         $other->update(['incident_date' => '2026-09-11']);
 
-        $this->actingAs($user)->get(route('sdm-memos.index'))
+        $this->actingAs($viewer)->get(route('sdm-memos.index'))
             ->assertOk()
             ->assertSee('name="service_type"', false)
             ->assertDontSee('name="serial_number"', false)
@@ -643,7 +790,7 @@ class ServiceDeficiencyMemoTest extends TestCase
         ];
 
         foreach ($filters as $filter) {
-            $this->actingAs($user)->get(route('sdm-memos.index', $filter))
+            $this->actingAs($viewer)->get(route('sdm-memos.index', $filter))
                 ->assertOk()
                 ->assertViewHas('memos', fn ($memos): bool => collect($memos->items())->pluck('id')->all() === [$target->id])
                 ->assertDontSee($target->serial_number)
@@ -742,8 +889,11 @@ class ServiceDeficiencyMemoTest extends TestCase
 
     private function draft(User $user, SdmType $type, string $serial): ServiceDeficiencyMemo
     {
-        $this->actingAs($user)->post(route('sdm-memos.store'), ['service_type' => $type->value, 'serial_number' => $serial])->assertRedirect();
+        $this->actingAs($user)->post(route('sdm-memos.store'), ['service_type' => $type->value])->assertRedirect();
 
-        return ServiceDeficiencyMemo::query()->where('serial_number', $serial)->sole();
+        $memo = ServiceDeficiencyMemo::query()->whereBelongsTo($user, 'creator')->latest('id')->firstOrFail();
+        $memo->update(['serial_number' => $serial]);
+
+        return $memo;
     }
 }

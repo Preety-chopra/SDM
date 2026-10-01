@@ -52,6 +52,8 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::patch('/users/{user}/status', [UserController::class, 'status'])->name('users.status');
 
     Route::post('/sdm-memos/submit', [ServiceDeficiencyMemoController::class, 'storeAndSubmit'])->name('sdm-memos.store-and-submit');
+    Route::post('/sdm-memos/bulk-forward', [MemoWorkflowController::class, 'bulkForward'])->name('sdm-memos.bulk-forward');
+    Route::get('/sdm-memos/drafts', [ServiceDeficiencyMemoController::class, 'drafts'])->name('sdm-memos.drafts');
     Route::resource('sdm-memos', ServiceDeficiencyMemoController::class)->except('update');
     Route::post('/sdm-memos/{sdm_memo}', [ServiceDeficiencyMemoController::class, 'update'])->name('sdm-memos.update');
     Route::patch('/sdm-memos/{sdm_memo}/station-manager', [ServiceDeficiencyMemoController::class, 'updateStationManager'])->name('sdm-memos.station-manager.update');

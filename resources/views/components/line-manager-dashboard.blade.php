@@ -49,7 +49,7 @@
                 <select name="status" class="block min-h-10 w-full rounded-xl border-gray-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white">
                     <option value="">All statuses</option>
                     @foreach ($dashboard['statuses'] as $status)
-                        <option value="{{ $status->value }}" @selected($filters['status'] === $status->value)>{{ $status->label() }}</option>
+                        <option value="{{ $status['value'] }}" @selected($filters['status'] === $status['value'])>{{ $status['label'] }}</option>
                     @endforeach
                 </select>
             </label>
@@ -76,7 +76,7 @@
             ])>
                 <p @class(['text-4xl font-black tracking-tight', 'text-gray-950 dark:text-white' => $metric['tone'] !== 'emerald'])>{{ $metric['count'] }}</p>
                 <p @class(['mt-2 text-sm font-bold', 'text-emerald-50' => $metric['tone'] === 'emerald', 'text-gray-700 dark:text-gray-200' => $metric['tone'] !== 'emerald'])>{{ $metric['label'] }}</p>
-                <p @class(['mt-3 text-xs font-medium', 'text-emerald-100' => $metric['tone'] === 'emerald', 'text-gray-500 dark:text-gray-400' => $metric['tone'] !== 'emerald'])>{{ round(($metric['count'] / $total) * 100, 1) }}% of selected total</p>
+                {{-- <p @class(['mt-3 text-xs font-medium', 'text-emerald-100' => $metric['tone'] === 'emerald', 'text-gray-500 dark:text-gray-400' => $metric['tone'] !== 'emerald'])>{{ round(($metric['count'] / $total) * 100, 1) }}% of selected total</p> --}}
             </article>
         @endforeach
     </div>

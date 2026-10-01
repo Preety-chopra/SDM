@@ -28,11 +28,14 @@ class StoreMemoWorkflowActionRequest extends FormRequest
 
         $isCancel = $this->string('action')->toString() === 'cancel';
         $stage = $memo->current_stage;
+        $allowedActions = $stage === WorkflowStage::StationManager
+            ? ['forward', 'request_cancellation']
+            : ['forward', 'approve', 'cancel', 'request_cancellation'];
 
         return [
-            'action' => ['required', Rule::in(['forward', 'approve', 'cancel'])],
+            'action' => ['required', Rule::in($allowedActions)],
             'forward_to_employee_number' => [
-                Rule::requiredIf($stage === WorkflowStage::StationManager && $this->string('action')->toString() === 'forward'),
+                Rule::requiredIf($stage === WorkflowStage::StationManager && in_array($this->string('action')->toString(), ['forward', 'request_cancellation'], true)),
                 'nullable',
                 'string',
                 'max:100',
@@ -61,18 +64,21 @@ class StoreMemoWorkflowActionRequest extends FormRequest
         $requiresAssessment = in_array($stage, [WorkflowStepType::LineReview, WorkflowStepType::CmcAssessment], true)
             && $action === 'forward';
         $requiresCmcAssessment = $stage === WorkflowStepType::CmcAssessment && $action === 'forward';
+        $allowedActions = $stage === WorkflowStepType::StationManager
+            ? ['forward', 'request_cancellation']
+            : ['forward', 'approve', 'return', 'cancel', 'request_cancellation'];
 
         return [
-            'action' => ['required', Rule::in(['forward', 'approve', 'return', 'cancel'])],
+            'action' => ['required', Rule::in($allowedActions)],
             'forward_to_employee_number' => [
-                Rule::requiredIf($stage === WorkflowStepType::StationManager && $action === 'forward'),
+                Rule::requiredIf($stage === WorkflowStepType::StationManager && in_array($action, ['forward', 'request_cancellation'], true)),
                 'nullable',
                 'string',
                 'max:100',
             ],
             'remarks' => [Rule::requiredIf(in_array($action, ['return', 'cancel'], true)), 'nullable', 'string', 'max:5000'],
             'items' => [Rule::requiredIf($requiresAssessment), 'nullable', 'array', 'min:1'],
-            'items.*.contract_penalty_clause_id' => ['required', 'integer', 'exists:contract_penalty_clauses,id'],
+            'items.*.contract_penalty_clause_id' => ['required', 'integer', 'distinct', 'exists:contract_penalty_clauses,id'],
             'items.*.proposed_amount' => ['required', 'numeric', 'min:0'],
             'items.*.justification' => ['nullable', 'string', 'max:5000'],
             'items.*.calculation_inputs' => ['nullable', 'array'],

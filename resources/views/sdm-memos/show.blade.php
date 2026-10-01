@@ -2,6 +2,9 @@
     <x-slot name="header">
         <div>
             <h2 class="text-xl font-semibold text-gray-900 dark:text-white">SDM</h2>
+            @if($memo->submitted_at && filled($memo->serial_number))
+                <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">SDM Serial Number: {{ $memo->serial_number }}</p>
+            @endif
             <p class="text-sm text-gray-500">{{ $memo->service_type->code() }} · {{ $memo->cancellationLabel() ?? str($memo->status->value)->headline() }}</p>
         </div>
     </x-slot>
@@ -17,7 +20,9 @@
                 <div class="flex justify-end"><a href="{{ route('sdm-memos.edit', $memo) }}" class="rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">Edit SDM</a></div>
             @endcan
             @can('reassignStationManager', $memo)
-                @php($isStationManagerHandover = auth()->user()->hasRole(\App\Enums\UserRole::StationManager->value))
+                @php
+                    $isStationManagerHandover = auth()->user()->hasRole(\App\Enums\UserRole::StationManager->value);
+                @endphp
                 <section class="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
                     <h3 class="font-semibold text-amber-950 dark:text-amber-100">{{ $isStationManagerHandover ? 'Handover pending SDM' : 'Change forwarded SM' }}</h3>
                     <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
@@ -73,6 +78,7 @@
                         'Incident time (IST)'=>filled($memo->incident_time) ? substr($memo->incident_time, 0, 5) : null,
                         'Staff'=>$memo->staff_name,
                         'Employee number'=>$memo->employee_number,
+                        'Remarks'=>$memo->station_record_brief_remarks,
                         // 'Staff mobile'=>$memo->staffAcknowledgement?->mobile_number,
                         'Created by'=>$memo->creator->name,
                         'Submitted At'=>$memo->submitted_at?->format('d-m-Y H:i')
@@ -151,7 +157,7 @@
                             <p class="font-semibold">Submitted by {{ $memo->creator->name }}</p>
                             <p class="text-sm text-gray-500">{{ $memo->submitted_at->format('d-m-Y H:i') }}</p>
                         </li>
-                        @foreach($memo->approvals as $approval)
+                        @foreach($timelineApprovals as $approval)
                             <li class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
                                 <div class="flex flex-wrap items-center justify-between gap-2">
                                     <p class="font-semibold text-gray-900 dark:text-white">{{ $approval->role->label() }}</p>
@@ -181,6 +187,25 @@
             @can('act', $memo)
                 @if($memo->workflow_version < 2)
                 <section class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 dark:border-emerald-900 dark:bg-emerald-950">
+                    @php
+                        $isLegacyStationManagerConfirmation = $memo->current_stage === \App\Enums\WorkflowStage::StationManager;
+                        $legacyConfirmationPreview = $isLegacyStationManagerConfirmation
+                            ? $stationManagerConfirmationPreview
+                            : [
+                                ['label' => 'SDM type', 'value' => $memo->service_type->label()],
+                                ['label' => 'From', 'value' => collect([auth()->user()->name, auth()->user()->employee_number])->filter()->join(' · ')],
+                                ['label' => 'Staff', 'value' => collect([$memo->staff_name, $memo->employee_number])->filter()->join(' · ')],
+                                ['label' => 'Station', 'value' => $memo->station_name],
+                                ['label' => 'Incident date', 'value' => $memo->incident_date?->format('d-m-Y')],
+                                ['label' => 'Current stage', 'value' => $memo->current_stage->label()],
+                            ];
+                        $legacyConfirmationFields = $isLegacyStationManagerConfirmation
+                            ? []
+                            : [
+                                ['label' => 'Forward to', 'name' => 'forward_to_employee_number'],
+                                ['label' => 'Remarks', 'name' => 'remarks'],
+                            ];
+                    @endphp
                     <h3 class="font-semibold text-emerald-950 dark:text-emerald-100">Action required: {{ $memo->current_stage->label() }}</h3>
                     <form
                         method="POST"
@@ -189,22 +214,17 @@
                         class="mt-4 flex flex-col gap-4"
                         x-data="sdmActionForm"
                         @submit="requestSdmConfirmation($event)"
-                        data-confirmation-preview="{{ json_encode([
-                            ['label' => 'SDM type', 'value' => $memo->service_type->label()],
-                            ['label' => 'From', 'value' => collect([auth()->user()->name, auth()->user()->employee_number])->filter()->join(' · ')],
-                            ['label' => 'Staff', 'value' => collect([$memo->staff_name, $memo->employee_number])->filter()->join(' · ')],
-                            ['label' => 'Station', 'value' => $memo->station_name],
-                            ['label' => 'Incident date', 'value' => $memo->incident_date?->format('d-m-Y')],
-                            ['label' => 'Current stage', 'value' => $memo->current_stage->label()],
-                        ]) }}"
-                        data-confirmation-fields="{{ json_encode([
-                            ['label' => 'Forward to', 'name' => 'forward_to_employee_number'],
-                            ['label' => 'Remarks', 'name' => 'remarks'],
-                        ]) }}"
+                        data-confirmation-show-action="{{ $isLegacyStationManagerConfirmation ? 'false' : 'true' }}"
+                        data-confirmation-preview="{{ json_encode($legacyConfirmationPreview) }}"
+                        data-confirmation-fields="{{ json_encode($legacyConfirmationFields) }}"
                     >
                         @csrf
                         <div>
-                            <x-input-label for="remarks" value="Remarks (mandatory for cancellation)" required/>
+                            <x-input-label
+                                for="remarks"
+                                :value="$memo->current_stage === \App\Enums\WorkflowStage::StationManager ? 'Remarks / cancellation request to AM (optional)' : 'Remarks (mandatory for cancellation)'"
+                                :required="$memo->current_stage !== \App\Enums\WorkflowStage::StationManager"
+                            />
                             <textarea id="remarks" name="remarks" rows="4" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white">{{ old('remarks') }}</textarea>
                             <x-input-error :messages="$errors->get('remarks')" class="mt-2"/>
                         </div>
@@ -229,7 +249,13 @@
                                 <button name="action" value="approve" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Approve SDM</button>
                             @else
                                 <button name="action" value="forward" data-sdm-confirm data-confirmation-action="Forward SDM" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Verify and forward</button>
-                            @endif<button name="action" value="cancel" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel SDM</button>
+                                @if($memo->current_stage === \App\Enums\WorkflowStage::StationManager)
+                                    <button name="action" value="request_cancellation" data-sdm-confirm data-confirmation-action="Request cancellation" class="rounded-lg border border-rose-600 px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500 dark:text-rose-300 dark:hover:bg-rose-950/40">Request for cancellation</button>
+                                @endif
+                            @endif
+                            @if($memo->current_stage !== \App\Enums\WorkflowStage::StationManager)
+                                <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel SDM</button>
+                            @endif
                         </div>
                         <x-sdm-confirmation-preview />
                     </form>

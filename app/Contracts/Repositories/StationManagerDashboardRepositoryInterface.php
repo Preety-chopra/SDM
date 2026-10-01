@@ -11,7 +11,7 @@ use Illuminate\Support\Collection;
 
 interface StationManagerDashboardRepositoryInterface
 {
-    /** @return array{total: int, pending: int, forwarded: int, cancelled: int} */
+    /** @return array{total: int, generated: int, pending: int, forwarded: int, cancelled: int} */
     public function summary(User $manager, CarbonInterface $from, CarbonInterface $to, ?SdmType $serviceType, ?MemoStatus $status): array;
 
     /** @return Collection<int, object{station_id: int|null, station_name: string, aggregate: int|string}> */

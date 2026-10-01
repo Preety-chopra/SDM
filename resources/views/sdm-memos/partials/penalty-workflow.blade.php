@@ -7,15 +7,46 @@
     $latestAssessment = $memo->assessments->last();
     $approvedAssessment = $memo->assessments->last(fn ($assessment) => $assessment->status === 'approved');
     $oldAssessmentItems = old('items');
-    $prefillAssessmentItems = $cmcStage && ! is_array($oldAssessmentItems)
-        ? ($latestAssessment?->items->keyBy('contract_penalty_clause_id') ?? collect())
-        : collect();
+    $prefillAssessmentItems = match (true) {
+        is_array($oldAssessmentItems) => collect(),
+        $cmcStage => $latestAssessment?->items->keyBy('contract_penalty_clause_id') ?? collect(),
+        $currentStep?->stage === \App\Enums\WorkflowStepType::LineReview => $lineReviewPenaltyPrefillItems,
+        default => collect(),
+    };
     $selectedClauseIds = is_array($oldAssessmentItems)
         ? collect($oldAssessmentItems)->pluck('contract_penalty_clause_id')->filter()->map(fn ($id) => (string) $id)->values()
         : $prefillAssessmentItems->keys()->map(fn ($id) => (string) $id)->values();
     $inputClass = 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100';
+    $remarksLabel = match ($currentStep?->stage) {
+        \App\Enums\WorkflowStepType::DgmApproval => 'Remarks (mandatory when returning or cancelling)',
+        \App\Enums\WorkflowStepType::StationManager => 'Remarks / cancellation request to AM (optional)',
+        \App\Enums\WorkflowStepType::LineReview => 'Remarks (mandatory for cancellation)',
+        default => 'Remarks',
+    };
+    $isStationManagerConfirmation = $currentStep?->stage === \App\Enums\WorkflowStepType::StationManager;
+    $confirmationPreview = $isStationManagerConfirmation
+        ? $stationManagerConfirmationPreview
+        : [
+            ['label' => 'SDM type', 'value' => $memo->service_type->label()],
+            ['label' => 'From', 'value' => collect([auth()->user()->name, auth()->user()->employee_number])->filter()->join(' · ')],
+            ['label' => 'Staff', 'value' => collect([$memo->staff_name, $memo->employee_number])->filter()->join(' · ')],
+            ['label' => 'Station', 'value' => $memo->station_name],
+            ['label' => 'Incident date', 'value' => $memo->incident_date?->format('d-m-Y')],
+            ['label' => 'Current stage', 'value' => $currentStep?->stage->label()],
+        ];
+    $confirmationFields = $isStationManagerConfirmation
+        ? []
+        : [
+            ['label' => 'Forward to', 'name' => 'forward_to_employee_number'],
+            ['label' => 'Negative points', 'name' => 'negative_points'],
+            ['label' => 'Staff action', 'name' => 'staff_action'],
+            ['label' => 'Bill month', 'name' => 'bill_month'],
+            ['label' => 'Monthly bill value', 'name' => 'monthly_bill_value'],
+            ['label' => 'Remarks', 'name' => 'remarks'],
+        ];
 @endphp
 
+@if($showContractAssessment)
 <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
     <div class="flex flex-wrap items-center justify-between gap-3">
         <div><h3 class="font-semibold text-gray-900 dark:text-white">Contract assessment</h3><p class="mt-1 text-sm text-gray-500">{{ $memo->serviceContract?->contract_number }} · {{ $memo->service_type->label() }}</p></div>
@@ -64,12 +95,13 @@
         @endcan
     </div>
 </section>
+@endif
 
 <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
     <h3 class="font-semibold text-gray-900 dark:text-white">Case timeline</h3>
-    <p class="text-sm text-gray-500 dark:text-gray-400">Follow the case through each approval level from station sign-off to the final DGM decision.</p>
+    <p class="text-sm text-gray-500 dark:text-gray-400">Follow the case through the approval levels available to you.</p>
     <div class="mt-6 flex flex-col gap-8">
-        @foreach($memo->workflowSteps->groupBy('round') as $round => $roundSteps)
+        @foreach($timelineSteps->groupBy('round') as $round => $roundSteps)
             <div>
                 @if(!$loop->first)
                     <div class="mb-5 flex items-center gap-3"><span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span><h4 class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Reassessment cycle {{ $loop->iteration - 1 }}</h4><span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span></div>
@@ -145,22 +177,9 @@
             class="mt-4 flex flex-col gap-5"
             x-data="sdmActionForm"
             @submit="requestSdmConfirmation($event)"
-            data-confirmation-preview="{{ json_encode([
-                ['label' => 'SDM type', 'value' => $memo->service_type->label()],
-                ['label' => 'From', 'value' => collect([auth()->user()->name, auth()->user()->employee_number])->filter()->join(' · ')],
-                ['label' => 'Staff', 'value' => collect([$memo->staff_name, $memo->employee_number])->filter()->join(' · ')],
-                ['label' => 'Station', 'value' => $memo->station_name],
-                ['label' => 'Incident date', 'value' => $memo->incident_date?->format('d-m-Y')],
-                ['label' => 'Current stage', 'value' => $currentStep->stage->label()],
-            ]) }}"
-            data-confirmation-fields="{{ json_encode([
-                ['label' => 'Forward to', 'name' => 'forward_to_employee_number'],
-                ['label' => 'Negative points', 'name' => 'negative_points'],
-                ['label' => 'Staff action', 'name' => 'staff_action'],
-                ['label' => 'Bill month', 'name' => 'bill_month'],
-                ['label' => 'Monthly bill value', 'name' => 'monthly_bill_value'],
-                ['label' => 'Remarks', 'name' => 'remarks'],
-            ]) }}"
+            data-confirmation-show-action="{{ $isStationManagerConfirmation ? 'false' : 'true' }}"
+            data-confirmation-preview="{{ json_encode($confirmationPreview) }}"
+            data-confirmation-fields="{{ json_encode($confirmationFields) }}"
         >@csrf
             @if($assignmentStage)
                 <div>
@@ -177,6 +196,9 @@
             @if($assessmentStage)
                 <div class="flex flex-col gap-3">
                     <x-input-label value="Select and assess contractual clauses" required/>
+                    @if($currentStep->stage === \App\Enums\WorkflowStepType::LineReview)
+                        <p class="text-sm text-emerald-800 dark:text-emerald-200">Penalties matching the recorded deficiencies are pre-selected. You may add or remove clauses before forwarding.</p>
+                    @endif
                     @foreach($memo->serviceContract->penaltyClauses as $index => $clause)
                         @php($prefillItem = $prefillAssessmentItems->get($clause->id))
                         <article class="rounded-xl border border-emerald-200 bg-white p-4 dark:border-emerald-900 dark:bg-gray-900">
@@ -184,13 +206,13 @@
                             <div class="mt-3 grid gap-3 md:grid-cols-3" x-show="selectedClauses.includes('{{ $clause->id }}')">
                                 <input type="hidden" name="items[{{ $index }}][contract_penalty_clause_id]" value="{{ $clause->id }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')">
                                 @if($clause->calculation_type === \App\Enums\PenaltyCalculationType::PerDayPerWorker)
-                                    <div><x-input-label value="Days"/><input name="items[{{ $index }}][calculation_inputs][days]" type="number" min="0" value="{{ old("items.$index.calculation_inputs.days", data_get($prefillItem?->calculation_inputs, 'days')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
-                                    <div><x-input-label value="Workmen"/><input name="items[{{ $index }}][calculation_inputs][workers]" type="number" min="0" value="{{ old("items.$index.calculation_inputs.workers", data_get($prefillItem?->calculation_inputs, 'workers')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
+                                    <div><x-input-label value="Days"/><input name="items[{{ $index }}][calculation_inputs][days]" type="number" min="0" value="{{ old("items.$index.calculation_inputs.days", data_get($prefillItem, 'calculation_inputs.days')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
+                                    <div><x-input-label value="Workmen"/><input name="items[{{ $index }}][calculation_inputs][workers]" type="number" min="0" value="{{ old("items.$index.calculation_inputs.workers", data_get($prefillItem, 'calculation_inputs.workers')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
                                 @elseif($clause->calculation_type === \App\Enums\PenaltyCalculationType::FixedPlusCost)
-                                    <div><x-input-label value="Loss/damage cost"/><input name="items[{{ $index }}][calculation_inputs][additional_cost]" type="number" min="0" step="0.01" value="{{ old("items.$index.calculation_inputs.additional_cost", data_get($prefillItem?->calculation_inputs, 'additional_cost')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
+                                    <div><x-input-label value="Loss/damage cost"/><input name="items[{{ $index }}][calculation_inputs][additional_cost]" type="number" min="0" step="0.01" value="{{ old("items.$index.calculation_inputs.additional_cost", data_get($prefillItem, 'calculation_inputs.additional_cost')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
                                 @endif
-                                <div><x-input-label value="Proposed amount" required/><input name="items[{{ $index }}][proposed_amount]" type="number" min="0" step="0.01" value="{{ old("items.$index.proposed_amount", $prefillItem?->proposed_amount) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')" :required="selectedClauses.includes('{{ $clause->id }}')"></div>
-                                <div class="md:col-span-3"><x-input-label value="Justification (optional)"/><textarea name="items[{{ $index }}][justification]" rows="2" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')">{{ old("items.$index.justification", $prefillItem?->justification) }}</textarea></div>
+                                <div><x-input-label value="Proposed amount" required/><input name="items[{{ $index }}][proposed_amount]" type="number" min="0" step="0.01" value="{{ old("items.$index.proposed_amount", data_get($prefillItem, 'proposed_amount')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')" :required="selectedClauses.includes('{{ $clause->id }}')"></div>
+                                <div class="md:col-span-3"><x-input-label value="Justification (optional)"/><textarea name="items[{{ $index }}][justification]" rows="2" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')">{{ old("items.$index.justification", data_get($prefillItem, 'justification')) }}</textarea></div>
                             </div>
                         </article>
                     @endforeach
@@ -199,7 +221,7 @@
             @if($cmcStage)
                 <div class="grid gap-4 md:grid-cols-2"><div><x-input-label value="Negative points" required/><input name="negative_points" type="number" min="0" class="{{ $inputClass }}" required></div><div><x-input-label value="Staff action" required/><select name="staff_action" class="{{ $inputClass }}" required>@foreach(['none','warning','final_warning','recall'] as $action)<option value="{{ $action }}">{{ str($action)->headline() }}</option>@endforeach</select></div><div><x-input-label value="Bill month" required/><input name="bill_month" type="month" class="{{ $inputClass }}" required></div><div><x-input-label value="Monthly bill value" required/><input name="monthly_bill_value" type="number" min="0.01" step="0.01" class="{{ $inputClass }}" required></div></div>
             @endif
-            @unless($assignmentStage)<div><x-input-label :value="$dgmStage ? 'Remarks (mandatory when returning or cancelling)' : ($currentStep->stage === \App\Enums\WorkflowStepType::StationManager || $currentStep->stage === \App\Enums\WorkflowStepType::LineReview ? 'Remarks (mandatory for cancellation)' : 'Remarks')" :required="$dgmStage"/><textarea name="remarks" rows="3" class="{{ $inputClass }}"></textarea><x-input-error :messages="$errors->get('remarks')" class="mt-2"/></div>@endunless
+            @unless($assignmentStage)<div><x-input-label :value="$remarksLabel" :required="$dgmStage"/><textarea name="remarks" rows="3" class="{{ $inputClass }}"></textarea><x-input-error :messages="$errors->get('remarks')" class="mt-2"/></div>@endunless
             @if($currentStep->stage === \App\Enums\WorkflowStepType::StationManager)
                 <div>
                     <x-employee-autocomplete
@@ -213,7 +235,20 @@
             @endif
             @if($dgmStage && $latestAssessment?->cap_warning)<label class="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200"><input type="checkbox" name="cap_acknowledged" value="1" class="rounded border-gray-300 text-emerald-700"> <span>I acknowledge the advisory 10% monthly-bill warning. <span data-required-marker aria-hidden="true" class="font-bold !text-red-600 dark:!text-red-400">*</span><span class="sr-only"> (required for approval)</span></span></label>@endif
             <div class="flex flex-wrap justify-end gap-3">
-                @if($assignmentStage)<button name="action" value="assign" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Assign for scrutiny</button>@elseif($dgmStage)<button name="action" value="return" class="rounded-lg border border-amber-600 px-5 py-2.5 text-sm font-semibold text-amber-800 dark:text-amber-300">Return to CMC</button><button name="action" value="cancel" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel</button><button name="action" value="approve" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Approve assessment</button>@else<button name="action" value="forward" data-sdm-confirm data-confirmation-action="Forward SDM" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Verify and forward</button>@if(in_array($currentStep->stage, [\App\Enums\WorkflowStepType::StationManager, \App\Enums\WorkflowStepType::LineReview], true))<button name="action" value="cancel" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel SDM</button>@endif @endif
+                @if($assignmentStage)
+                    <button name="action" value="assign" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Assign for scrutiny</button>
+                @elseif($dgmStage)
+                    <button name="action" value="return" class="rounded-lg border border-amber-600 px-5 py-2.5 text-sm font-semibold text-amber-800 dark:text-amber-300">Return to CMC</button>
+                    <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel</button>
+                    <button name="action" value="approve" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Approve assessment</button>
+                @else
+                    <button name="action" value="forward" data-sdm-confirm data-confirmation-action="Forward SDM" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Verify and forward</button>
+                    @if($currentStep->stage === \App\Enums\WorkflowStepType::StationManager)
+                        <button name="action" value="request_cancellation" data-sdm-confirm data-confirmation-action="Request cancellation" class="rounded-lg border border-rose-600 px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500 dark:text-rose-300 dark:hover:bg-rose-950/40">Request for cancellation</button>
+                    @elseif($currentStep->stage === \App\Enums\WorkflowStepType::LineReview)
+                        <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel SDM</button>
+                    @endif
+                @endif
             </div>
             <x-sdm-confirmation-preview />
         </form>

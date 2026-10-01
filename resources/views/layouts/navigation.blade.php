@@ -1,3 +1,7 @@
+@php
+    $isStationController = Auth::user()->isStationController();
+@endphp
+
 @if ($showSidebar)
     <div x-cloak x-show="mobileOpen" x-transition.opacity class="fixed inset-0 z-40 bg-gray-950/50 md:hidden" @click="mobileOpen = false" aria-hidden="true"></div>
 
@@ -36,7 +40,7 @@
             $idleClasses = 'text-gray-600 hover:bg-gray-100 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white';
         @endphp
 
-        @unless (Auth::user()->hasAnyRole([\App\Enums\UserRole::Station->value, 'station_controller']))
+        @unless ($isStationController)
             <a href="{{ route('dashboard') }}" title="Dashboard" class="{{ $baseClasses }} {{ request()->routeIs('dashboard') ? $activeClasses : $idleClasses }}">
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 11.5 12 4l9 7.5M5.5 10v10h13V10M9 20v-6h6v6" /></svg>
                 <span x-show="! collapsed || mobileOpen" x-transition.opacity>Dashboard</span>
@@ -44,7 +48,7 @@
         @endunless
 
         @can('viewAny', \App\Models\ServiceDeficiencyMemo::class)
-            <a href="{{ route('sdm-memos.index') }}" title="Service Deficiency Memos" class="relative {{ $baseClasses }} {{ request()->routeIs('sdm-memos.*') ? $activeClasses : $idleClasses }}">
+            <a href="{{ route('sdm-memos.index', ['acknowledge_notifications' => 1]) }}" title="Service Deficiency Memos" class="relative {{ $baseClasses }} {{ request()->routeIs('sdm-memos.*') ? $activeClasses : $idleClasses }}">
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 3.5h8l4 4V20a1 1 0 0 1-1 1H7a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2ZM14 3v5h5M9 12h6M9 16h6" /></svg>
                 <span x-show="! collapsed || mobileOpen" x-transition.opacity class="flex-1">All memos</span>
                 @if ($pendingMemoCount > 0)
@@ -110,10 +114,32 @@
             <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
         </button>
     @else
-        <a href="{{ route('dashboard') }}" class="group flex min-w-0 items-center gap-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        <a href="{{ $isStationController ? route('sdm-memos.create') : route('dashboard') }}" class="group flex min-w-0 items-center gap-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
             <x-application-logo class="h-10 w-12 shrink-0 transition-transform group-hover:scale-105" />
             <span class="hidden truncate text-sm font-black tracking-tight text-gray-950 sm:block dark:text-white">SDM Workspace</span>
         </a>
+    @endif
+
+    @if ($isStationController)
+        <nav data-station-controller-navigation aria-label="Station Controller navigation" class="min-w-0 flex-1 overflow-x-auto">
+            <div class="mx-auto flex w-max items-center gap-2">
+                @foreach ([
+                    ['route' => 'sdm-memos.create', 'label' => 'Create New SDM'],
+                    ['route' => 'sdm-memos.index', 'label' => 'View All'],
+                    ['route' => 'sdm-memos.drafts', 'label' => 'Drafts'],
+                ] as $item)
+                    <a
+                        href="{{ route($item['route']) }}"
+                        @if (request()->routeIs($item['route'])) aria-current="page" @endif
+                        @class([
+                            'inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-xl border px-4 py-2 text-xs font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 sm:text-sm',
+                            'border-emerald-700 bg-emerald-700 text-white hover:border-emerald-800 hover:bg-emerald-800' => request()->routeIs($item['route']),
+                            'border-gray-300 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-emerald-700 dark:hover:bg-emerald-950 dark:hover:text-emerald-300' => ! request()->routeIs($item['route']),
+                        ])
+                    >{{ $item['label'] }}</a>
+                @endforeach
+            </div>
+        </nav>
     @endif
 
     <div class="ml-auto">
@@ -127,7 +153,9 @@
             </x-slot>
             <x-slot name="content">
                 <div class="border-b border-gray-100 px-4 py-3 dark:border-gray-600"><p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ Auth::user()->name }}</p><p class="truncate text-xs text-gray-500 dark:text-gray-400">{{ Auth::user()->email }}</p></div>
-                <x-dropdown-link :href="route('profile.edit')">Change password</x-dropdown-link>
+                @unless ($isStationController)
+                    <x-dropdown-link :href="route('profile.edit')">Change password</x-dropdown-link>
+                @endunless
                 <form method="POST" action="{{ route('logout') }}">@csrf<button type="submit" class="block w-full px-4 py-2 text-left text-sm text-rose-700 transition hover:bg-rose-50 focus:outline-none dark:text-rose-300 dark:hover:bg-rose-950">Log out</button></form>
             </x-slot>
         </x-dropdown>

@@ -17,9 +17,12 @@ final class NavigationComposer
     public function compose(View $view): void
     {
         $user = request()->user();
+        $notificationsAcknowledged = $user
+            && (int) request()->session()->get('memo_notifications_acknowledged_by') === $user->id;
+
         $view->with([
             'navigationRoles' => $this->roles->managedRoles(),
-            'pendingMemoCount' => $user?->can(UserPermission::ActOnRoutedMemos->value)
+            'pendingMemoCount' => $user?->can(UserPermission::ActOnRoutedMemos->value) && ! $notificationsAcknowledged
                 ? $this->memos->pendingActionCount($user)
                 : 0,
         ]);

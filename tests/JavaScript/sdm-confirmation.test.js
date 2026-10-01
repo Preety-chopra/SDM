@@ -103,3 +103,95 @@ test('preview combines safe fixed values with current form values', () => {
         { label: 'Type', value: 'CFA · Customer Facilitation' },
     ]);
 });
+
+test('preview can hide the action row for memo detail confirmation', () => {
+    const fields = new Map([
+        ['service_type', {
+            value: 'cfs',
+            type: 'select-one',
+            selectedOptions: [{ textContent: 'CFA · Customer Facilitation' }],
+        }],
+        ['station_manager_employee_number', {
+            value: '12345',
+            type: 'text',
+            dataset: { previewValue: 'Harish(12345)' },
+        }],
+        ['deficiencies[]', [
+            {
+                value: 'late_reporting',
+                type: 'checkbox',
+                checked: true,
+                dataset: { previewValue: 'Late reporting' },
+            },
+            {
+                value: 'public_complaint',
+                type: 'checkbox',
+                checked: false,
+                dataset: { previewValue: 'Public complaint' },
+            },
+        ]],
+    ]);
+    const state = confirmation();
+    const form = {
+        dataset: {
+            confirmationShowAction: 'false',
+            confirmationPreview: '[]',
+            confirmationFields: JSON.stringify([
+                { label: 'SDM type', name: 'service_type' },
+                { label: 'Line', value: 'RED · Red Line' },
+                { label: 'Station', value: 'RED-01 · Central Secretariat' },
+                { label: 'Deficiencies', name: 'deficiencies[]' },
+                { label: 'Forward to', name: 'station_manager_employee_number' },
+            ]),
+        },
+        elements: { namedItem: (name) => fields.get(name) ?? null },
+    };
+
+    assert.deepEqual(state.buildSdmPreview(form, { dataset: { confirmationAction: 'Submit SDM' } }), [
+        { label: 'SDM type', value: 'CFA · Customer Facilitation' },
+        { label: 'Line', value: 'RED · Red Line' },
+        { label: 'Station', value: 'RED-01 · Central Secretariat' },
+        { label: 'Deficiencies', value: 'Late reporting' },
+        { label: 'Forward to', value: 'Harish(12345)' },
+    ]);
+});
+
+test('preview reads urgent priority from the current checkbox state', () => {
+    const urgentCheckbox = {
+        value: '1',
+        type: 'checkbox',
+        checked: true,
+        dataset: { previewValue: 'Urgent' },
+    };
+    const fields = new Map([
+        ['is_urgent', [
+            {
+                value: '0',
+                type: 'hidden',
+                dataset: { previewIgnore: '' },
+            },
+            urgentCheckbox,
+        ]],
+    ]);
+    const state = confirmation();
+    const form = {
+        dataset: {
+            confirmationShowAction: 'false',
+            confirmationPreview: '[]',
+            confirmationFields: JSON.stringify([
+                { label: 'Priority', name: 'is_urgent', emptyValue: 'Normal' },
+            ]),
+        },
+        elements: { namedItem: (name) => fields.get(name) ?? null },
+    };
+
+    assert.deepEqual(state.buildSdmPreview(form, { dataset: {} }), [
+        { label: 'Priority', value: 'Urgent' },
+    ]);
+
+    urgentCheckbox.checked = false;
+
+    assert.deepEqual(state.buildSdmPreview(form, { dataset: {} }), [
+        { label: 'Priority', value: 'Normal' },
+    ]);
+});

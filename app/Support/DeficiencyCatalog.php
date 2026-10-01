@@ -45,6 +45,17 @@ final class DeficiencyCatalog
         return array_column(self::for($type), 'value');
     }
 
+    public static function serialNumberFor(SdmType $type, DeficiencyType $deficiency): ?int
+    {
+        foreach (self::for($type) as $option) {
+            if ($option['value'] === $deficiency->value) {
+                return $option['serial_number'];
+            }
+        }
+
+        return null;
+    }
+
     /** @return list<DeficiencyType> */
     private static function typesFor(SdmType $type): array
     {

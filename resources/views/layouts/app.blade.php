@@ -39,5 +39,35 @@
                 <main>{{ $slot }}</main>
             </div>
         </div>
+
+        @if(session('urgent_attention_memos'))
+            <x-modal name="urgent-attention" :show="true" maxWidth="lg" focusable>
+                <section role="dialog" aria-modal="true" aria-labelledby="urgent-attention-title" class="p-6">
+                    <div class="flex items-start gap-4">
+                        <span class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700 animate-pulse dark:bg-red-950 dark:text-red-300" aria-hidden="true">!</span>
+                        <div class="min-w-0 flex-1">
+                            <h2 id="urgent-attention-title" class="text-xl font-bold text-red-700 dark:text-red-300">Urgent attention required</h2>
+                            <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">The following urgent SDM {{ count(session('urgent_attention_memos')) === 1 ? 'is' : 'are' }} awaiting your action.</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-5 flex flex-col gap-3">
+                        @foreach(session('urgent_attention_memos') as $urgentMemo)
+                            <a href="{{ route('sdm-memos.show', $urgentMemo['id']) }}" class="flex items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 transition hover:border-red-400 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 dark:border-red-900 dark:bg-red-950/40 dark:hover:border-red-700">
+                                <span class="min-w-0">
+                                    <span class="flex flex-wrap items-center gap-2 font-semibold text-gray-950 dark:text-white"><span>{{ $urgentMemo['serial_number'] }}</span><span class="rounded-full bg-red-600 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-white animate-pulse dark:bg-red-500">Urgent</span></span>
+                                    <span class="mt-1 block text-xs text-gray-600 dark:text-gray-300">{{ $urgentMemo['service_type'] }} · {{ $urgentMemo['station_name'] }}</span>
+                                </span>
+                                <span class="shrink-0 font-semibold text-red-700 dark:text-red-300">Open →</span>
+                            </a>
+                        @endforeach
+                    </div>
+
+                    <div class="mt-6 flex justify-end">
+                        <button type="button" x-on:click="$dispatch('close')" class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-red-500 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">Dismiss</button>
+                    </div>
+                </section>
+            </x-modal>
+        @endif
     </body>
 </html>

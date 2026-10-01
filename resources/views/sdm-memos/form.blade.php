@@ -13,20 +13,15 @@
     $forwardingLabel = $forwardingRole === \App\Enums\UserRole::StationManager
         ? 'SM employee number'
         : 'Manager/Assistant Manager (O)-Line employee number';
-    $confirmationPreview = [
-        ['label' => 'From', 'value' => collect([auth()->user()->name, auth()->user()->employee_number])->filter()->join(' · ')],
+    $confirmationPreview = [];
+    $confirmationFields = [
         ['label' => 'Line', 'value' => collect([$station?->metroLine?->code, $station?->metroLine?->name])->filter()->join(' · ')],
         ['label' => 'Station', 'value' => collect([$station?->code, $station?->name])->filter()->join(' · ')],
-        ['label' => 'Status', 'value' => 'Ready to submit'],
-    ];
-    $confirmationFields = [
         ['label' => 'SDM type', 'name' => 'service_type'],
-        ['label' => 'Contractor', 'name' => 'contractor_id'],
+        ['label' => 'Deficiencies', 'name' => 'deficiencies[]'],
         ['label' => 'Incident date', 'name' => 'incident_date'],
         ['label' => 'Incident time', 'name' => 'incident_time'],
-        ['label' => 'Staff', 'name' => 'staff_name'],
-        ['label' => 'Employee number', 'name' => 'employee_number'],
-        ['label' => 'Deficiencies', 'name' => 'deficiencies[]'],
+        ['label' => 'Priority', 'name' => 'is_urgent', 'emptyValue' => 'Normal'],
         ...($requiresForwarding ? [['label' => 'Forward to', 'name' => $forwardingField]] : []),
     ];
     $pageTitle = $memo ? ($isDraft ? 'Edit SDM draft' : 'Edit submitted SDM') : 'Create Service Deficiency Memo';
@@ -54,14 +49,24 @@
                     </ul>
                 </div>
             @endif
-            <form method="POST" enctype="multipart/form-data" action="{{ $memo ? route('sdm-memos.update', $memo) : route('sdm-memos.store') }}" class="flex flex-col gap-6" x-data="memoForm" @submit="requestSdmConfirmation($event)" data-selected-deficiencies='@json($selected)' data-service-type="{{ $serviceType }}" data-deficiency-options='@json($deficiencyOptionsByType)' data-booked-shift-from="{{ $lateTime('booked_shift_from') }}" data-booked-shift-to="{{ $lateTime('booked_shift_to') }}" data-actual-reporting-time="{{ $lateTime('actual_reporting_time') }}" data-confirmation-preview="{{ json_encode($confirmationPreview) }}" data-confirmation-fields="{{ json_encode($confirmationFields) }}">
+            <form method="POST" enctype="multipart/form-data" action="{{ $memo ? route('sdm-memos.update', $memo) : route('sdm-memos.store') }}" class="flex flex-col gap-6" x-data="memoForm" @submit="requestSdmConfirmation($event)" data-selected-deficiencies='@json($selected)' data-service-type="{{ $serviceType }}" data-deficiency-options='@json($deficiencyOptionsByType)' data-booked-shift-from="{{ $lateTime('booked_shift_from') }}" data-booked-shift-to="{{ $lateTime('booked_shift_to') }}" data-actual-reporting-time="{{ $lateTime('actual_reporting_time') }}" data-confirmation-show-action="false" data-confirmation-preview="{{ json_encode($confirmationPreview) }}" data-confirmation-fields="{{ json_encode($confirmationFields) }}">
                 @csrf
                 <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Memo details</h3>
-                        @unless($memo)
-                            <p data-memo-location class="text-sm font-semibold text-gray-600 dark:text-gray-300">[{{ $memoLocation }}]</p>
-                        @endunless
+                    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div class="flex items-baseline gap-2">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Memo details</h3>
+                            @unless($memo)
+                                <p data-memo-location class="text-lg font-semibold text-gray-900 dark:text-white">[{{ $memoLocation }}]</p>
+                            @endunless
+                        </div>
+                        <div class="w-full sm:w-auto sm:max-w-sm">
+                            <input type="hidden" name="is_urgent" value="0" data-preview-ignore>
+                            <label for="is_urgent" class="flex cursor-pointer items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
+                                <input id="is_urgent" type="checkbox" name="is_urgent" value="1" data-preview-value="Urgent" @checked(old('is_urgent', $memo?->is_urgent)) class="mt-0.5 rounded border-red-300 text-red-600 focus:ring-red-500 dark:border-red-700 dark:bg-gray-900">
+                                <span><span class="block font-semibold">Mark as urgent</span><span class="mt-0.5 block text-xs text-red-700 dark:text-red-300">Highlights this SDM and alerts the assigned user at login.</span></span>
+                            </label>
+                            <x-input-error :messages="$errors->get('is_urgent')" class="mt-2"/>
+                        </div>
                     </div>
                     <div class="mt-5 grid gap-5 md:grid-cols-2">
                         <div>
@@ -145,12 +150,12 @@
                             <x-input-error :messages="$errors->get('incident_time')" class="mt-2"/>
                         </div>
                         <div>
-                            <x-input-label for="employee_number" value="Employee number" required/>
+                            <x-input-label for="employee_number" value="Outsourced Staff- Employee number" required/>
                             <x-text-input id="employee_number" name="employee_number" class="mt-1 block w-full" :value="old('employee_number',$memo?->employee_number)"/>
                             <x-input-error :messages="$errors->get('employee_number')" class="mt-2"/>
                         </div>
                         <div>
-                            <x-input-label for="staff_name" value="Staff name" required/>
+                            <x-input-label for="staff_name" value="Outsourced Staff- Employee name" required/>
                             <x-text-input id="staff_name" name="staff_name" class="mt-1 block w-full" :value="old('staff_name',$memo?->staff_name)"/>
                             <x-input-error :messages="$errors->get('staff_name')" class="mt-2"/>
                         </div>
@@ -175,7 +180,31 @@
                             </div>
                         </div>
                     </div>
-                    @foreach([\App\Enums\DeficiencyType::DressCode,\App\Enums\DeficiencyType::Misbehavior,\App\Enums\DeficiencyType::Other] as $type)<div x-cloak x-show="has('{{ $type->value }}')" class="mt-5"><x-input-label :value="$type->label().' remarks'" required/><textarea name="deficiency_remarks[{{ $type->value }}]" rows="3" class="{{ $inputClass }}">{{ old('deficiency_remarks.'.$type->value,$memo?->deficiencies->first(fn($item)=>$item->type===$type)?->remarks) }}</textarea><x-input-error :messages="$errors->get('deficiency_remarks.'.$type->value)" class="mt-2"/></div>@endforeach
+                    <div class="mt-5">
+                        <x-input-label for="station_record_brief_remarks" value="Remarks (optional)"/>
+                        <textarea id="station_record_brief_remarks" name="station_record_brief_remarks" rows="4" class="{{ $inputClass }}">{{ old('station_record_brief_remarks', $memo?->station_record_brief_remarks) }}</textarea>
+                        <x-input-error :messages="$errors->get('station_record_brief_remarks')" class="mt-2"/>
+                    </div>
+
+                    <div class="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
+                        <label for="outsourced_staff_acknowledged" class="flex cursor-pointer items-start gap-3">
+                            <input
+                                id="outsourced_staff_acknowledged"
+                                name="outsourced_staff_acknowledged"
+                                type="checkbox"
+                                value="1"
+                                required
+                                aria-required="true"
+                                @checked(old('outsourced_staff_acknowledged'))
+                                class="mt-0.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-800"
+                            >
+                            <span class="text-sm font-medium text-gray-800 dark:text-gray-100">
+                                I have received acknowledgement from outsourced staff
+                                <span class="text-red-600" aria-hidden="true">*</span>
+                            </span>
+                        </label>
+                        <x-input-error :messages="$errors->get('outsourced_staff_acknowledged')" class="mt-2"/>
+                    </div>
                 </section>
 
                 <section x-cloak x-show="serviceType === '{{ \App\Enums\SdmType::Ticketing->value }}' && has('cash_check')" class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -224,7 +253,7 @@
                     <x-input-error :messages="$errors->get('cash_check')" class="mt-2"/>
                 </section>
 
-                <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <section x-cloak x-show="has('{{ \App\Enums\DeficiencyType::PublicComplaint->value }}')" class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Complaint and supporting documents</h3>
                     <div class="mt-5 grid gap-5 md:grid-cols-2">
                         <div>
@@ -281,7 +310,7 @@
 
                 <div class="flex flex-wrap justify-end gap-3">
                     <a href="{{ route('sdm-memos.index') }}" class="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200">Cancel</a>
-                    <button type="submit" class="rounded-lg border border-emerald-700 px-5 py-2.5 text-sm font-semibold text-emerald-700">{{ $isDraft ? 'Save draft' : 'Save changes' }}</button>
+                    <button type="submit" @if($isDraft) formnovalidate @endif class="rounded-lg border border-emerald-700 px-5 py-2.5 text-sm font-semibold text-emerald-700">{{ $isDraft ? 'Save draft' : 'Save changes' }}</button>
                     @if($isDraft)
                         <button type="submit" formaction="{{ $memo ? route('sdm-memos.submit', $memo) : route('sdm-memos.store-and-submit') }}" data-sdm-confirm data-confirmation-action="Submit SDM" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">Submit memo</button>
                     @endif

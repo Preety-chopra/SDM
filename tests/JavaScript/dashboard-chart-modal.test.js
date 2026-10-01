@@ -1,7 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildChartMemosUrl } from '../../resources/js/dashboard-charts.js';
+import { buildChartMemosUrl, formatCountLabel } from '../../resources/js/dashboard-charts.js';
+
+test('station chart segment labels display counts without percentages', () => {
+    assert.equal(formatCountLabel(7), '7');
+    assert.equal(formatCountLabel('12'), '12');
+    assert.equal(formatCountLabel(null), '0');
+    assert.equal(formatCountLabel(7).includes('%'), false);
+});
 
 test('chart modal URL combines dashboard filters with the selected bar filters', () => {
     const url = buildChartMemosUrl(

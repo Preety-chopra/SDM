@@ -16,12 +16,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['service_type', 'serial_number', 'station_id', 'station_name', 'line_name', 'line_code', 'contractor_id', 'service_contract_id', 'cmc_staff_id', 'contractor_name', 'staff_name', 'employee_number', 'incident_date', 'incident_time', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'created_by', 'updated_by', 'submitted_at'])]
+#[Fillable(['service_type', 'serial_number', 'is_urgent', 'station_id', 'station_name', 'line_name', 'line_code', 'contractor_id', 'service_contract_id', 'cmc_staff_id', 'contractor_name', 'staff_name', 'employee_number', 'incident_date', 'incident_time', 'station_record_brief_remarks', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'created_by', 'updated_by', 'submitted_at'])]
 class ServiceDeficiencyMemo extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $attributes = ['status' => MemoStatus::Draft->value, 'workflow_version' => 1];
+    protected $attributes = ['status' => MemoStatus::Draft->value, 'workflow_version' => 1, 'is_urgent' => false];
 
     public function station(): BelongsTo
     {
@@ -46,6 +46,13 @@ class ServiceDeficiencyMemo extends Model
     public function currentWorkflowStep(): BelongsTo
     {
         return $this->belongsTo(MemoWorkflowStep::class, 'current_workflow_step_id');
+    }
+
+    public function stationManagerWorkflowStep(): HasOne
+    {
+        return $this->hasOne(MemoWorkflowStep::class, 'memo_id')
+            ->where('stage', WorkflowStepType::StationManager->value)
+            ->oldestOfMany();
     }
 
     public function workflowSteps(): HasMany
@@ -120,6 +127,26 @@ class ServiceDeficiencyMemo extends Model
             ->orderBy('sequence');
     }
 
+    public function stationManagerApproval(): HasOne
+    {
+        return $this->hasOne(MemoApproval::class, 'memo_id')
+            ->where('role', WorkflowStage::StationManager->value)
+            ->oldestOfMany();
+    }
+
+    public function lineManagerApproval(): HasOne
+    {
+        return $this->hasOne(MemoApproval::class, 'memo_id')
+            ->where('role', WorkflowStage::LineManager->value);
+    }
+
+    public function lineReviewWorkflowStep(): HasOne
+    {
+        return $this->hasOne(MemoWorkflowStep::class, 'memo_id')
+            ->where('stage', WorkflowStepType::LineReview->value)
+            ->oldest('sequence');
+    }
+
     public function cancellationApproval(): HasOne
     {
         return $this->hasOne(MemoApproval::class, 'memo_id')
@@ -178,11 +205,102 @@ class ServiceDeficiencyMemo extends Model
         };
     }
 
+    public function stationManagerStatusLabel(): string
+    {
+        if ($this->status === MemoStatus::Draft) {
+            return 'Draft';
+        }
+
+        if ($this->status === MemoStatus::Cancelled) {
+            $stage = $this->workflow_version >= 2
+                ? $this->cancellationWorkflowStep?->stage
+                : $this->cancellationApproval?->role;
+
+            return match ($stage) {
+                WorkflowStage::StationManager, WorkflowStepType::StationManager => 'Cancelled by SM',
+                WorkflowStage::LineManager, WorkflowStepType::LineReview => 'Cancelled by AM',
+                default => $stage ? 'Forwarded' : 'Cancelled',
+            };
+        }
+
+        $stage = $this->workflow_version >= 2
+            ? $this->currentWorkflowStep?->stage
+            : $this->current_stage;
+
+        return match ($stage) {
+            WorkflowStage::StationManager, WorkflowStepType::StationManager,
+            WorkflowStage::LineManager, WorkflowStepType::LineReview => 'With '.$stage->label(),
+            default => 'Forwarded By AM/Manager (Line)',
+        };
+    }
+
+    public function stationManagerListStatusLabel(): string
+    {
+        if ($this->status === MemoStatus::Draft) {
+            return 'Draft';
+        }
+
+        if ($this->status === MemoStatus::Cancelled) {
+            $stage = $this->workflow_version >= 2
+                ? $this->cancellationWorkflowStep?->stage
+                : $this->cancellationApproval?->role;
+
+            return match ($stage) {
+                WorkflowStage::LineManager, WorkflowStepType::LineReview => 'Cancelled by AM',
+                WorkflowStage::StationManager, WorkflowStepType::StationManager => 'Cancelled by SM',
+                default => 'Cancelled',
+            };
+        }
+
+        $stage = $this->workflow_version >= 2
+            ? $this->currentWorkflowStep?->stage
+            : $this->current_stage;
+
+        if (in_array($stage, [WorkflowStage::StationManager, WorkflowStepType::StationManager], true)) {
+            return 'Pending (at SM level)';
+        }
+
+        $stationManagerAction = $this->workflow_version >= 2
+            ? $this->stationManagerWorkflowStep
+            : $this->stationManagerApproval;
+
+        if (in_array($stage, [WorkflowStage::LineManager, WorkflowStepType::LineReview], true)) {
+            return $stationManagerAction?->remarks === 'Cancellation requested by Station Manager.'
+                ? 'Cancellation requested'
+                : 'Forwarded to AM';
+        }
+
+        return 'Processed by AM';
+    }
+
+    public function forwardedToLineManagerLabel(): string
+    {
+        $lineManager = $this->workflow_version >= 2
+            ? $this->lineReviewWorkflowStep
+            : $this->lineManagerApproval;
+        $name = $lineManager?->assigned_name;
+        $employeeNumber = $lineManager?->assigned_employee_number;
+
+        if (filled($name) && filled($employeeNumber)) {
+            return "{$name} ({$employeeNumber})";
+        }
+
+        return $name ?: ($employeeNumber ?: '—');
+    }
+
+    public function stationControllerStatusLabel(): string
+    {
+        return in_array($this->status, [MemoStatus::Submitted, MemoStatus::AwaitingStationManager], true)
+            ? 'Pending'
+            : 'Processed by SM';
+    }
+
     protected function casts(): array
     {
         return [
             'service_type' => SdmType::class,
             'status' => MemoStatus::class,
+            'is_urgent' => 'boolean',
             'current_stage' => WorkflowStage::class,
             'incident_date' => 'date',
             'submitted_at' => 'datetime',

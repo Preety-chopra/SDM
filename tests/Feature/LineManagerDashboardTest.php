@@ -50,7 +50,7 @@ class LineManagerDashboardTest extends TestCase
         $this->assignedMemo($otherManager, $redStation, 'OTHER-AM', MemoStatus::LineReview, 'pending', '2026-09-18 09:00:00');
 
         $this->actingAs($manager)
-            ->get(route('dashboard'))
+            ->get(route('dashboard', ['date_from' => '2026-09-01', 'date_to' => '2026-09-30']))
             ->assertOk()
             ->assertViewHas('isLineManager', true)
             ->assertViewHas('lineManagerDashboard', function (array $dashboard): bool {
@@ -90,7 +90,11 @@ class LineManagerDashboardTest extends TestCase
         $this->assignedMemo($manager, $blueStation, 'TVS-AUGUST', MemoStatus::AmCmcReview, 'forwarded', '2026-08-05 09:00:00', SdmType::Ticketing);
 
         $this->actingAs($manager)
-            ->get(route('dashboard', ['service_type' => SdmType::Cfs->value]))
+            ->get(route('dashboard', [
+                'date_from' => '2026-09-01',
+                'date_to' => '2026-09-30',
+                'service_type' => SdmType::Cfs->value,
+            ]))
             ->assertOk()
             ->assertViewHas('lineManagerDashboard', function (array $dashboard): bool {
                 $trend = $dashboard['monthly_trend'];
@@ -103,6 +107,58 @@ class LineManagerDashboardTest extends TestCase
                     && $trend['datasets'][0]['data'] === [1, 0, 0, 0, 0, 1];
             })
             ->assertDontSee('TVS-AUGUST');
+    }
+
+    public function test_line_manager_current_status_filter_contains_only_am_and_downstream_statuses(): void
+    {
+        $manager = $this->lineManager('AM-100');
+
+        $this->actingAs($manager)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertViewHas('lineManagerDashboard', fn (array $dashboard): bool => $dashboard['statuses'] === [
+                ['value' => MemoStatus::LineReview->value, 'label' => 'Pending (at current user level)'],
+                ['value' => MemoStatus::AmCmcReview->value, 'label' => 'AM CMC Review'],
+                ['value' => MemoStatus::CmcAssignment->value, 'label' => 'CMC Assignment'],
+                ['value' => MemoStatus::CmcScrutiny->value, 'label' => 'CMC Scrutiny'],
+                ['value' => MemoStatus::DgmApproval->value, 'label' => 'DGM Approval'],
+                ['value' => MemoStatus::PendingPenaltyLetter->value, 'label' => 'Pending Penalty Letter'],
+                ['value' => MemoStatus::ObjectionWindow->value, 'label' => 'Objection Window'],
+                ['value' => MemoStatus::ObjectionReview->value, 'label' => 'Objection Review'],
+                ['value' => MemoStatus::Cancelled->value, 'label' => 'Cancelled'],
+                ['value' => MemoStatus::Closed->value, 'label' => 'Closed'],
+            ])
+            ->assertSee('Pending (at current user level)')
+            ->assertDontSee('value="draft"', false)
+            ->assertDontSee('>Draft</option>', false)
+            ->assertDontSee('value="pending_deduction"', false);
+    }
+
+    public function test_line_manager_dashboard_defaults_to_the_current_half_month(): void
+    {
+        $manager = $this->lineManager('AM-100');
+        [$station] = $this->stations();
+
+        $this->assignedMemo($manager, $station, 'FIRST-HALF', MemoStatus::LineReview, 'pending', '2026-09-15 23:59:59');
+        $this->assignedMemo($manager, $station, 'SECOND-HALF', MemoStatus::LineReview, 'pending', '2026-09-16 00:00:00');
+
+        $this->actingAs($manager)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertViewHas('lineManagerDashboard', fn (array $dashboard): bool => $dashboard['total_received'] === 1
+                && $dashboard['filters']['date_from'] === '2026-09-16'
+                && $dashboard['filters']['date_to'] === '2026-09-30'
+                && $dashboard['recent_sdms']->pluck('id')->all() === [ServiceDeficiencyMemo::query()->where('serial_number', 'SECOND-HALF')->value('id')]);
+
+        Carbon::setTestNow('2026-09-10 12:00:00');
+
+        $this->actingAs($manager)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertViewHas('lineManagerDashboard', fn (array $dashboard): bool => $dashboard['total_received'] === 1
+                && $dashboard['filters']['date_from'] === '2026-09-01'
+                && $dashboard['filters']['date_to'] === '2026-09-15'
+                && $dashboard['recent_sdms']->pluck('id')->all() === [ServiceDeficiencyMemo::query()->where('serial_number', 'FIRST-HALF')->value('id')]);
     }
 
     public function test_known_line_colors_are_saved_on_the_lines_table(): void

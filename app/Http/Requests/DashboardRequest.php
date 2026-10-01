@@ -40,7 +40,7 @@ class DashboardRequest extends FormRequest
 
         return filled($value)
             ? CarbonImmutable::createFromFormat('!Y-m-d', $value)
-            : CarbonImmutable::now()->startOfMonth();
+            : $this->defaultDateFrom();
     }
 
     public function dateTo(): CarbonImmutable
@@ -49,7 +49,7 @@ class DashboardRequest extends FormRequest
 
         return filled($value)
             ? CarbonImmutable::createFromFormat('!Y-m-d', $value)->endOfDay()
-            : CarbonImmutable::now()->endOfMonth();
+            : $this->defaultDateTo();
     }
 
     public function serviceType(): ?SdmType
@@ -74,5 +74,35 @@ class DashboardRequest extends FormRequest
         return $this->user()?->getRoleNames()->contains(
             fn (string $role): bool => in_array($role, [UserRole::Station->value, 'station_controller'], true),
         ) ?? false;
+    }
+
+    private function defaultDateFrom(): CarbonImmutable
+    {
+        $now = CarbonImmutable::now();
+
+        if (! $this->usesHalfMonthlyReportingWindow() || $now->day <= 15) {
+            return $now->startOfMonth();
+        }
+
+        return $now->startOfMonth()->addDays(15);
+    }
+
+    private function defaultDateTo(): CarbonImmutable
+    {
+        $now = CarbonImmutable::now();
+
+        if (! $this->usesHalfMonthlyReportingWindow() || $now->day > 15) {
+            return $now->endOfMonth();
+        }
+
+        return $now->startOfMonth()->addDays(14)->endOfDay();
+    }
+
+    private function usesHalfMonthlyReportingWindow(): bool
+    {
+        return $this->user()?->hasAnyRole([
+            UserRole::StationManager->value,
+            UserRole::AssistantManager->value,
+        ]) ?? false;
     }
 }
