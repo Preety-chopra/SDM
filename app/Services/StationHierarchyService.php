@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Contracts\Repositories\StationHierarchyRepositoryInterface;
 use App\Enums\UserRole;
-use App\Enums\WorkflowStage;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Validation\ValidationException;
@@ -48,87 +47,6 @@ final class StationHierarchyService
         }
 
         $this->hierarchies->updateReportingRelationship($subordinate, $supervisor);
-    }
-
-    /** @return array<string, User> */
-    public function resolveForSubmission(User $creator, ?string $stationManagerEmployeeNumber = null): array
-    {
-        return $this->resolveForStation((int) $creator->station_id, $stationManagerEmployeeNumber);
-    }
-
-    /** @return array<string, User> */
-    public function resolveForStation(int $stationId, ?string $stationManagerEmployeeNumber = null): array
-    {
-        if (blank($stationManagerEmployeeNumber)) {
-            throw ValidationException::withMessages([
-                'station_manager_employee_number' => 'Enter the employee number of an enabled Station Manager.',
-            ]);
-        }
-
-        $assignee = $this->hierarchies->findEnabledUserForRoleByEmployeeNumber(
-            UserRole::StationManager,
-            $stationManagerEmployeeNumber,
-        );
-        $assignments = [];
-
-        foreach (WorkflowStage::cases() as $stage) {
-            if (! $assignee?->is_enabled || ! $assignee->hasRole($stage->role()->value)) {
-                throw ValidationException::withMessages([
-                    'hierarchy' => 'The approval hierarchy is incomplete. Ask an administrator to configure every reporting relationship.',
-                ]);
-            }
-
-            $assignments[$stage->value] = $assignee;
-            $assignee = $stage->next() ? $this->hierarchies->findSupervisorFor($assignee) : null;
-        }
-
-        return $assignments;
-    }
-
-    /** @return array<string, User> */
-    public function resolveForStationManagerSubmission(User $creator, ?string $lineManagerEmployeeNumber): array
-    {
-        if (! $creator->is_enabled || ! $creator->hasRole(UserRole::StationManager->value)) {
-            throw ValidationException::withMessages([
-                'hierarchy' => 'Only an enabled Station Manager can use Station Manager forwarding.',
-            ]);
-        }
-
-        if (blank($lineManagerEmployeeNumber)) {
-            throw ValidationException::withMessages([
-                'line_manager_employee_number' => 'Enter the employee number of an enabled Manager/Assistant Manager (O)-Line.',
-            ]);
-        }
-
-        $lineManager = $this->hierarchies->findEnabledUserForRoleByEmployeeNumber(
-            UserRole::AssistantManager,
-            $lineManagerEmployeeNumber,
-        );
-
-        if (! $lineManager) {
-            throw ValidationException::withMessages([
-                'line_manager_employee_number' => 'Enter the employee number of an enabled Manager/Assistant Manager (O)-Line.',
-            ]);
-        }
-
-        $assignments = [
-            WorkflowStage::StationManager->value => $creator,
-            WorkflowStage::LineManager->value => $lineManager,
-        ];
-        $assignee = $lineManager;
-
-        foreach ([WorkflowStage::OperationsManager, WorkflowStage::DeputyGeneralManager] as $stage) {
-            $assignee = $this->hierarchies->findSupervisorFor($assignee);
-            if (! $assignee?->is_enabled || ! $assignee->hasRole($stage->role()->value)) {
-                throw ValidationException::withMessages([
-                    'hierarchy' => 'The approval hierarchy is incomplete. Ask an administrator to configure every reporting relationship.',
-                ]);
-            }
-
-            $assignments[$stage->value] = $assignee;
-        }
-
-        return $assignments;
     }
 
     public function ensureUserCanBeChanged(User $user): void

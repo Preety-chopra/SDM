@@ -20,6 +20,7 @@ use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
 use App\Services\MasterDataService;
 use App\Services\MemoAssessmentService;
+use App\Services\MemoTimelineService;
 use App\Services\ServiceDeficiencyMemoService;
 use App\Services\UserService;
 use App\Support\DeficiencyCatalog;
@@ -35,6 +36,7 @@ class ServiceDeficiencyMemoController extends Controller
         private MasterDataService $masterData,
         private UserService $users,
         private MemoAssessmentService $assessments,
+        private MemoTimelineService $timeline,
     ) {}
 
     public function index(ListMemosRequest $request): View
@@ -71,6 +73,15 @@ class ServiceDeficiencyMemoController extends Controller
                 ->all(),
             default => MemoStatus::cases(),
         };
+        $memoCategoryTabs = [
+            ['category' => null, 'label' => 'All Memos'],
+            ['category' => 'pending', 'label' => 'Pending Memos'],
+        ];
+
+        if (! $isDownstreamWorkflowUser) {
+            $memoCategoryTabs[] = ['category' => 'transferred', 'label' => 'Transferred Memos'];
+        }
+
         $memos = $this->memos->paginateFor($request->user(), $filters, $pendingStage, $category);
         $bulkForwardingEnabled = $category === null
             && $request->user()->can('bulkForward', ServiceDeficiencyMemo::class);
@@ -100,6 +111,7 @@ class ServiceDeficiencyMemoController extends Controller
             'lines' => $this->masterData->lines(),
             'bulkForwardingEnabled' => $bulkForwardingEnabled,
             'bulkForwardDestinations' => $bulkForwardDestinations,
+            'memoCategoryTabs' => $memoCategoryTabs,
         ]);
     }
 
@@ -149,16 +161,7 @@ class ServiceDeficiencyMemoController extends Controller
             'cancellationApproval', 'cancellationWorkflowStep',
         ]);
 
-        $timelineSteps = match (true) {
-            $request->user()->isStationController() => $sdmMemo->workflowSteps->filter(
-                fn ($step): bool => $step->stage === WorkflowStepType::StationManager,
-            ),
-            $request->user()->hasRole(UserRole::StationManager->value) => $sdmMemo->workflowSteps->filter(fn ($step): bool => in_array($step->stage, [
-                WorkflowStepType::StationManager,
-                WorkflowStepType::LineReview,
-            ], true)),
-            default => $sdmMemo->workflowSteps,
-        };
+        $timelineSteps = $this->timeline->visibleSteps($sdmMemo, $request->user());
 
         $timelineApprovals = match (true) {
             $request->user()->isStationController() => $sdmMemo->approvals->filter(
@@ -190,9 +193,18 @@ class ServiceDeficiencyMemoController extends Controller
             'stationManagerConfirmationPreview' => $stationManagerConfirmationPreview,
             'showContractAssessment' => ! $request->user()->isStationController()
                 && ! $request->user()->hasRole(UserRole::StationManager->value),
+            'showCmcStaffDetails' => $request->user()->hasAnyRole([
+                UserRole::ManagerOperations->value,
+                UserRole::CmcTeamLead->value,
+                UserRole::CmcStaff->value,
+                UserRole::DeputyGeneralManager->value,
+            ]),
             'lineReviewPenaltyPrefillItems' => $sdmMemo->currentWorkflowStep?->stage === WorkflowStepType::LineReview
                 ? $this->assessments->lineReviewPrefill($sdmMemo)
                 : collect(),
+            'cmcNegativePointsPrefill' => $sdmMemo->currentWorkflowStep?->stage === WorkflowStepType::CmcAssessment
+                ? $this->assessments->negativePointsPrefill($sdmMemo)
+                : null,
             'stationManagerCandidates' => $request->user()->can('reassignStationManager', $sdmMemo)
                 ? $this->users->enabledForRole(UserRole::StationManager)
                     ->filter(fn (User $user): bool => filled($user->employee_number) && $user->id !== $request->user()->id)
@@ -235,6 +247,12 @@ class ServiceDeficiencyMemoController extends Controller
     {
         $wasSubmitted = $sdmMemo->submitted_at !== null;
         $this->memos->updateDraft($sdmMemo, $request->user(), $request->validated());
+
+        if ($wasSubmitted && $request->user()->hasRole(UserRole::StationManager->value)) {
+            return redirect()
+                ->route('sdm-memos.show', $sdmMemo)
+                ->with('status', 'SDM updated.');
+        }
 
         return back()->with('status', $wasSubmitted ? 'SDM updated.' : 'Draft saved.');
     }

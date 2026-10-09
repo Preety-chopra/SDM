@@ -9,11 +9,7 @@
         @can(\App\Enums\UserPermission::ActOnRoutedMemos->value)
         <nav aria-label="SDM categories" class="mb-5 overflow-x-auto">
             <div class="inline-flex min-w-full gap-1 rounded-xl border border-gray-200 bg-gray-100 p-1 sm:min-w-0 dark:border-gray-700 dark:bg-gray-900">
-                @foreach ([
-                    ['category' => null, 'label' => 'All Memos'],
-                    ['category' => 'pending', 'label' => 'Pending Memos'],
-                    ['category' => 'transferred', 'label' => 'Transferred Memos'],
-                ] as $tab)
+                @foreach ($memoCategoryTabs as $tab)
                     @php
                         $tabParameters = array_filter([
                             ...$filters,
@@ -82,6 +78,19 @@
                 <div>
                     <x-input-label for="incident_date" value="Incident date" />
                     <x-text-input id="incident_date" name="incident_date" type="date" :value="$filters['incident_date'] ?? ''" class="mt-1 block w-full" />
+                    <x-input-error :messages="$errors->get('incident_date')" class="mt-2" />
+                </div>
+
+                <div>
+                    <x-input-label for="incident_date_from" value="Submitted On" />
+                    <x-text-input id="incident_date_from" name="incident_date_from" type="date" :value="$filters['incident_date_from'] ?? ''" class="mt-1 block w-full" />
+                    <x-input-error :messages="$errors->get('incident_date_from')" class="mt-2" />
+                </div>
+
+                <div>
+                    <x-input-label for="incident_date_to" value="Submitted Till" />
+                    <x-text-input id="incident_date_to" name="incident_date_to" type="date" :value="$filters['incident_date_to'] ?? ''" class="mt-1 block w-full" />
+                    <x-input-error :messages="$errors->get('incident_date_to')" class="mt-2" />
                 </div>
 
                 <div>
@@ -222,7 +231,7 @@
                                 <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $memo->updated_at?->format('d-m-Y H:i') ?? '—' }}</td>
                                 <td class="min-w-52 px-5 py-4">
                                     <div class="flex items-start justify-end gap-3">
-                                        <a class="font-semibold text-emerald-700 hover:underline dark:text-emerald-400" href="{{ auth()->user()->can('update', $memo) ? route('sdm-memos.edit', $memo) : route('sdm-memos.show', $memo) }}">Open</a>
+                                        <a class="font-semibold text-emerald-700 hover:underline dark:text-emerald-400" href="{{ $memo->status === \App\Enums\MemoStatus::Draft ? route('sdm-memos.edit', $memo) : route('sdm-memos.show', $memo) }}">Open</a>
                                         @can('delete', $memo)
                                             <form method="POST" action="{{ route('sdm-memos.destroy', $memo) }}">
                                                 @csrf

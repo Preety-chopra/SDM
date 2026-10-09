@@ -31,7 +31,6 @@ final class ServiceDeficiencyMemoService
     public function __construct(
         private ServiceDeficiencyMemoRepositoryInterface $memos,
         private UserRepositoryInterface $users,
-        private StationHierarchyService $hierarchies,
         private AuditService $audit,
     ) {}
 
@@ -86,7 +85,6 @@ final class ServiceDeficiencyMemoService
             $this->resolveSubmissionAssignments(
                 $user,
                 $data,
-                $this->submissionStationId($user, $data),
             );
         } catch (ValidationException $exception) {
             $this->createDraft($user, $data);
@@ -106,7 +104,6 @@ final class ServiceDeficiencyMemoService
         $this->resolveSubmissionAssignments(
             $user,
             $data,
-            $this->submissionStationId($user, $data, $memo),
         );
 
         return $this->persist($memo, $user, $data, true);
@@ -130,11 +127,15 @@ final class ServiceDeficiencyMemoService
 
         try {
             return DB::transaction(function () use ($memo, $user, $data, $submit, &$storedPaths): ServiceDeficiencyMemo {
+                $isStationManagerEdit = $memo !== null
+                    && $memo->submitted_at !== null
+                    && $this->isPendingWithStationManager($memo, $user);
+                $beforeAuditValues = $isStationManagerEdit ? $this->auditValues($memo) : [];
                 $stationId = $this->submissionStationId($user, $data, $memo);
                 $station = Station::query()->with('metroLine')->whereKey($stationId)->where('is_active', true)->firstOrFail();
                 abort_unless($station->metroLine?->is_active, 422, 'Your station must be assigned to an active line.');
                 $contractor = filled($data['contractor_id'] ?? null) ? Contractor::query()->whereKey($data['contractor_id'])->firstOrFail() : null;
-                $contract = $this->resolveContract($data, $submit, $station->id);
+                $contract = $submit ? $this->resolveContract($data, true, $station->id) : $memo?->serviceContract;
                 $issuedAt = CarbonImmutable::now();
 
                 $attributes = [
@@ -193,7 +194,10 @@ final class ServiceDeficiencyMemoService
                     }
                 }
 
-                $this->audit->record($memo, $user, $submit ? 'memo.submitted' : ($memo->wasRecentlyCreated ? 'memo.created' : 'memo.updated'), after: [
+                $auditEvent = $isStationManagerEdit
+                    ? 'memo.station_manager.edited'
+                    : ($submit ? 'memo.submitted' : ($memo->wasRecentlyCreated ? 'memo.created' : 'memo.updated'));
+                $afterAuditValues = $isStationManagerEdit ? $this->auditValues($memo) : [
                     'status' => $memo->status->value,
                     'service_type' => $memo->service_type->value,
                     'serial_number' => $memo->serial_number,
@@ -202,7 +206,8 @@ final class ServiceDeficiencyMemoService
                     'service_contract_id' => $memo->service_contract_id,
                     'station_id' => $memo->station_id,
                     'incident_time' => $memo->incident_time,
-                ]);
+                ];
+                $this->audit->record($memo, $user, $auditEvent, $beforeAuditValues, $afterAuditValues);
 
                 return $memo->load(['deficiencies.lateReporting', 'publicComplaint.station', 'cashCheck', 'attachments', 'staffAcknowledgement', 'currentWorkflowStep']);
             });
@@ -228,16 +233,16 @@ final class ServiceDeficiencyMemoService
 
     private function createApprovalRoute(ServiceDeficiencyMemo $memo, User $creator, array $data): void
     {
-        $assignees = $this->resolveSubmissionAssignments($creator, $data, $memo->station_id);
+        $assignees = $this->resolveSubmissionAssignments($creator, $data);
 
         foreach (WorkflowStage::cases() as $stage) {
             $assignee = $assignees[$stage->value];
             $attributes = [
                 'role' => $stage->value,
                 'sequence' => $stage->sequence(),
-                'assigned_to' => $assignee->id,
-                'assigned_name' => $assignee->name,
-                'assigned_employee_number' => $assignee->employee_number,
+                'assigned_to' => $assignee?->id,
+                'assigned_name' => $assignee?->name,
+                'assigned_employee_number' => $assignee?->employee_number,
                 'decision' => 'pending',
             ];
 
@@ -423,7 +428,13 @@ final class ServiceDeficiencyMemoService
             ->where('status', 'published')
             ->where('contractor_id', $data['contractor_id'])
             ->where('service_type', $data['service_type'])
-            ->where(fn ($query) => $query->where('station_id', $stationId)->orWhereNull('station_id'))
+            ->where(fn ($query) => $query
+                ->whereHas('stations', fn ($stationQuery) => $stationQuery->whereKey($stationId))
+                ->orWhere(fn ($legacyQuery) => $legacyQuery
+                    ->doesntHave('stations')
+                    ->where(fn ($fallbackQuery) => $fallbackQuery
+                        ->where('station_id', $stationId)
+                        ->orWhereNull('station_id'))))
             ->whereDate('effective_from', '<=', $incidentDate)
             ->whereDate('effective_to', '>=', $incidentDate)
             ->lockForUpdate()
@@ -442,7 +453,7 @@ final class ServiceDeficiencyMemoService
 
     private function createWorkflowRoute(ServiceDeficiencyMemo $memo, User $creator, ServiceContract $contract, array $data): void
     {
-        $legacyAssignments = $this->resolveSubmissionAssignments($creator, $data, $memo->station_id);
+        $legacyAssignments = $this->resolveSubmissionAssignments($creator, $data);
         $cmcTeamLeads = $this->users->enabledForRole(UserRole::CmcTeamLead->value);
         if ($cmcTeamLeads->count() !== 1) {
             throw ValidationException::withMessages([
@@ -470,7 +481,11 @@ final class ServiceDeficiencyMemoService
                 'stage' => $stage->value,
                 'role' => $stage->role()->value,
                 'assigned_to' => $assignee?->id,
-                'assigned_name' => $assignee?->name ?? 'Awaiting CMC Team Lead assignment',
+                'assigned_name' => $assignee?->name ?? match ($stage) {
+                    WorkflowStepType::LineReview => 'Awaiting Station Manager forwarding',
+                    WorkflowStepType::CmcAssessment => 'Awaiting CMC Team Lead assignment',
+                    default => 'Awaiting assignment',
+                },
                 'assigned_employee_number' => $assignee?->employee_number,
                 'decision' => 'pending',
             ]);
@@ -530,20 +545,129 @@ final class ServiceDeficiencyMemoService
         return (int) ($data['station_id'] ?? $memo?->station_id ?? $user->station_id);
     }
 
-    /** @return array<string, User> */
-    private function resolveSubmissionAssignments(User $user, array $data, int $stationId): array
+    private function isPendingWithStationManager(ServiceDeficiencyMemo $memo, User $user): bool
     {
-        if ($user->hasRole(UserRole::StationManager->value)) {
-            return $this->hierarchies->resolveForStationManagerSubmission(
-                $user,
-                $data['line_manager_employee_number'] ?? null,
-            );
+        if (! $user->is_enabled || ! $user->hasRole(UserRole::StationManager->value)) {
+            return false;
         }
 
-        return $this->hierarchies->resolveForStation(
-            $stationId,
-            $data['station_manager_employee_number'] ?? null,
-        );
+        if ($memo->workflow_version >= 2) {
+            return $memo->status === MemoStatus::AwaitingStationManager
+                && $memo->currentWorkflowStep()
+                    ->where('stage', WorkflowStepType::StationManager->value)
+                    ->where('assigned_to', $user->id)
+                    ->where('decision', 'pending')
+                    ->exists();
+        }
+
+        return $memo->status === MemoStatus::Submitted
+            && $memo->current_stage === WorkflowStage::StationManager
+            && $memo->approvals()
+                ->where('role', WorkflowStage::StationManager->value)
+                ->where('assigned_to', $user->id)
+                ->where('decision', 'pending')
+                ->exists();
+    }
+
+    /** @return array<string, mixed> */
+    private function auditValues(ServiceDeficiencyMemo $memo): array
+    {
+        $memo->load(['deficiencies.lateReporting', 'publicComplaint', 'cashCheck']);
+
+        return [
+            'service_type' => $memo->service_type->value,
+            'is_urgent' => $memo->is_urgent,
+            'contractor_id' => $memo->contractor_id,
+            'service_contract_id' => $memo->service_contract_id,
+            'station_id' => $memo->station_id,
+            'staff_name' => $memo->staff_name,
+            'employee_number' => $memo->employee_number,
+            'incident_date' => $memo->incident_date?->toDateString(),
+            'incident_time' => $memo->incident_time,
+            'station_record_brief_remarks' => $memo->station_record_brief_remarks,
+            'deficiencies' => $memo->deficiencies
+                ->sortBy(fn ($deficiency): string => $deficiency->type->value)
+                ->values()
+                ->map(fn ($deficiency): array => [
+                    'type' => $deficiency->type->value,
+                    'remarks' => $deficiency->remarks,
+                    'late_reporting' => $deficiency->lateReporting ? [
+                        'booked_shift_from' => $deficiency->lateReporting->booked_shift_from,
+                        'booked_shift_to' => $deficiency->lateReporting->booked_shift_to,
+                        'actual_reporting_time' => $deficiency->lateReporting->actual_reporting_time,
+                    ] : null,
+                ])->all(),
+            'public_complaint' => $memo->publicComplaint ? [
+                'number' => $memo->publicComplaint->complaint_serial_number,
+                'station_id' => $memo->publicComplaint->station_id,
+            ] : null,
+            'cash_check' => $memo->cashCheck ? [
+                'tom_ccc_number' => $memo->cashCheck->tom_ccc_number,
+                'end_of_shift_receipt_number' => $memo->cashCheck->end_of_shift_receipt_number,
+                'checked_at' => $memo->cashCheck->checked_at?->toDateTimeString(),
+                'difference_amount' => $memo->cashCheck->difference_amount,
+                'hidden_cash_amount' => $memo->cashCheck->hidden_cash_amount,
+                'checking_official_name' => $memo->cashCheck->checking_official_name,
+                'checking_official_designation' => $memo->cashCheck->checking_official_designation,
+                'checking_official_employee_number' => $memo->cashCheck->checking_official_employee_number,
+                'remarks' => $memo->cashCheck->remarks,
+            ] : null,
+        ];
+    }
+
+    /** @return array<string, User|null> */
+    private function resolveSubmissionAssignments(User $user, array $data): array
+    {
+        $isStationManager = $user->hasRole(UserRole::StationManager->value);
+        $stationManager = $isStationManager
+            ? $user
+            : $this->resolveSelectedAssignee(
+                UserRole::StationManager,
+                $data['station_manager_employee_number'] ?? null,
+                'station_manager_employee_number',
+                'Enter the employee number of an enabled Station Manager.',
+            );
+        $lineManager = $isStationManager
+            ? $this->resolveSelectedAssignee(
+                UserRole::AssistantManager,
+                $data['line_manager_employee_number'] ?? null,
+                'line_manager_employee_number',
+                'Enter the employee number of an enabled Manager/Assistant Manager (O)-Line.',
+            )
+            : null;
+
+        return [
+            WorkflowStage::StationManager->value => $stationManager,
+            WorkflowStage::LineManager->value => $lineManager,
+            WorkflowStage::OperationsManager->value => $this->resolveDefaultAssignee(UserRole::ManagerOperations, 'AM/CMC'),
+            WorkflowStage::DeputyGeneralManager->value => $this->resolveDefaultAssignee(UserRole::DeputyGeneralManager, 'DGM/CMC'),
+        ];
+    }
+
+    private function resolveSelectedAssignee(UserRole $role, ?string $employeeNumber, string $field, string $message): User
+    {
+        $assignee = filled($employeeNumber)
+            ? $this->users->findEnabledForRoleByEmployeeNumber($role->value, $employeeNumber)
+            : null;
+
+        if (! $assignee) {
+            throw ValidationException::withMessages([$field => $message]);
+        }
+
+        return $assignee;
+    }
+
+    private function resolveDefaultAssignee(UserRole $role, string $label): User
+    {
+        $assignees = $this->users->enabledForRole($role->value);
+
+        if ($assignees->count() !== 1) {
+            throw ValidationException::withMessages([
+                'workflow' => "Exactly one enabled {$label} must be configured before an SDM can be submitted.",
+            ]);
+        }
+
+        return $assignees->sole();
     }
 
     private function syncSections(ServiceDeficiencyMemo $memo, array $data): void

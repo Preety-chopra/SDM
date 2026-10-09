@@ -33,7 +33,9 @@ final class ServiceContractService
         try {
             return DB::transaction(function () use ($actor, $data, &$path): ServiceContract {
                 $document = $data['source_document'] ?? null;
-                $attributes = Arr::except($data, ['source_document', 'clauses']);
+                $attributes = Arr::except($data, ['source_document', 'clauses', 'line_ids', 'station_ids']);
+                $attributes['line_id'] = $data['line_ids'][0];
+                $attributes['station_id'] = $data['station_ids'][0];
                 $attributes += [
                     'contract_group' => Str::ulid()->toString(),
                     'version' => 1,
@@ -48,6 +50,7 @@ final class ServiceContractService
                 }
 
                 $contract = $this->contracts->create($attributes);
+                $this->syncLocations($contract, $data);
                 $contract->seedPenaltyClauses();
                 $this->syncClauses($contract, $data['clauses'] ?? []);
                 $this->audit->record($contract, $actor, 'contract.created', after: $this->auditValues($contract));
@@ -75,7 +78,9 @@ final class ServiceContractService
             $updated = DB::transaction(function () use ($contract, $actor, $data, &$newPath): ServiceContract {
                 $before = $this->auditValues($contract);
                 $document = $data['source_document'] ?? null;
-                $attributes = Arr::except($data, ['source_document', 'clauses']);
+                $attributes = Arr::except($data, ['source_document', 'clauses', 'line_ids', 'station_ids']);
+                $attributes['line_id'] = $data['line_ids'][0];
+                $attributes['station_id'] = $data['station_ids'][0];
                 $attributes['updated_by'] = $actor->id;
 
                 if ($document instanceof UploadedFile) {
@@ -84,6 +89,7 @@ final class ServiceContractService
                 }
 
                 $contract = $this->contracts->update($contract, $attributes);
+                $this->syncLocations($contract, $data);
                 $this->syncClauses($contract, $data['clauses'] ?? []);
                 $this->audit->record($contract, $actor, 'contract.updated', $before, $this->auditValues($contract));
 
@@ -108,8 +114,10 @@ final class ServiceContractService
         if ($contract->status !== 'draft') {
             throw ValidationException::withMessages(['contract' => 'Only draft contract versions can be published.']);
         }
-        if ($contract->line_id === null || $contract->station_id === null) {
-            throw ValidationException::withMessages(['station_id' => 'Assign an active line and station before publishing this contract.']);
+        $this->ensureLocationPivots($contract);
+
+        if (! $contract->lines()->exists() || ! $contract->stations()->exists()) {
+            throw ValidationException::withMessages(['station_ids' => 'Assign at least one active line and station before publishing this contract.']);
         }
         if ($this->contracts->hasPublishedOverlap($contract)) {
             throw ValidationException::withMessages(['effective_from' => 'This contract overlaps another published contract for the same station, contractor, and service.']);
@@ -130,6 +138,7 @@ final class ServiceContractService
 
         return DB::transaction(function () use ($contract, $actor): ServiceContract {
             $contract->load('penaltyClauses');
+            $this->ensureLocationPivots($contract);
             $revision = $this->contracts->create([
                 ...Arr::only($contract->getAttributes(), ['contract_group', 'contractor_id', 'line_id', 'station_id', 'service_type', 'contract_number', 'title', 'effective_from', 'effective_to', 'cmc_staff_id', 'source_document_name', 'source_document_path', 'source_document_mime', 'source_document_size']),
                 'version' => ServiceContract::query()->where('contract_group', $contract->contract_group)->max('version') + 1,
@@ -137,6 +146,8 @@ final class ServiceContractService
                 'created_by' => $actor->id,
                 'updated_by' => $actor->id,
             ]);
+            $revision->lines()->sync($contract->lines()->pluck('lines.id'));
+            $revision->stations()->sync($contract->stations()->pluck('stations.id'));
             $revision->penaltyClauses()->createMany($contract->penaltyClauses->map(fn ($clause) => Arr::except($clause->getAttributes(), ['id', 'service_contract_id', 'created_at', 'updated_at']))->all());
             $this->audit->record($revision, $actor, 'contract.revision_created', after: ['source_contract_id' => $contract->id, 'version' => $revision->version]);
 
@@ -179,6 +190,23 @@ final class ServiceContractService
         $contract->penaltyClauses()->createMany(array_values($clauses));
     }
 
+    private function syncLocations(ServiceContract $contract, array $data): void
+    {
+        $contract->lines()->sync($data['line_ids']);
+        $contract->stations()->sync($data['station_ids']);
+    }
+
+    private function ensureLocationPivots(ServiceContract $contract): void
+    {
+        if (! $contract->lines()->exists() && $contract->line_id !== null) {
+            $contract->lines()->sync([$contract->line_id]);
+        }
+
+        if (! $contract->stations()->exists() && $contract->station_id !== null) {
+            $contract->stations()->sync([$contract->station_id]);
+        }
+    }
+
     private function documentAttributes(UploadedFile $document, string $path): array
     {
         return [
@@ -191,6 +219,10 @@ final class ServiceContractService
 
     private function auditValues(ServiceContract $contract): array
     {
-        return Arr::only($contract->getAttributes(), ['contractor_id', 'line_id', 'station_id', 'service_type', 'contract_number', 'title', 'effective_from', 'effective_to', 'cmc_staff_id', 'status', 'version']);
+        return [
+            ...Arr::only($contract->getAttributes(), ['contractor_id', 'line_id', 'station_id', 'service_type', 'contract_number', 'title', 'effective_from', 'effective_to', 'cmc_staff_id', 'status', 'version']),
+            'line_ids' => $contract->lines()->pluck('lines.id')->all(),
+            'station_ids' => $contract->stations()->pluck('stations.id')->all(),
+        ];
     }
 }

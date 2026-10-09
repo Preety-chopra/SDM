@@ -65,6 +65,12 @@ final class LineManagerDashboardService
         return $this->dashboard->memosForLine($manager, $lineCode, $dateFrom, $dateTo, $serviceType, $status, $limit);
     }
 
+    /** @return Collection<int, ServiceDeficiencyMemo> */
+    public function pendingMemos(User $manager): Collection
+    {
+        return $this->dashboard->pendingMemos($manager);
+    }
+
     /**
      * @param  Collection<int, object>  $rows
      * @return array{labels: list<string>, datasets: list<array{label: string, service_type: string, data: list<int>}>}

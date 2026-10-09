@@ -6,6 +6,7 @@ use App\Contracts\Repositories\StationRepositoryInterface;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Services\LineManagerDashboardService;
 use App\Services\ServiceDeficiencyMemoService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,6 +18,7 @@ class AuthenticatedSessionController extends Controller
     public function __construct(
         private StationRepositoryInterface $stations,
         private ServiceDeficiencyMemoService $memos,
+        private LineManagerDashboardService $lineManagerDashboard,
     ) {}
 
     /**
@@ -42,14 +44,29 @@ class AuthenticatedSessionController extends Controller
             $request->session()->forget('auth.station_id');
         }
 
-        $urgentMemos = $this->memos->urgentPendingFor($request->user());
-        if ($urgentMemos->isNotEmpty()) {
-            $request->session()->flash('urgent_attention_memos', $urgentMemos->map(fn ($memo): array => [
-                'id' => $memo->id,
-                'serial_number' => $memo->serial_number,
-                'service_type' => $memo->service_type->label(),
-                'station_name' => $memo->station_name,
-            ])->all());
+        if ($request->user()->hasRole(UserRole::AssistantManager->value)) {
+            $pendingMemos = $this->lineManagerDashboard->pendingMemos($request->user());
+
+            if ($pendingMemos->isNotEmpty()) {
+                $request->session()->flash('line_manager_pending_memos', $pendingMemos->map(fn ($memo): array => [
+                    'id' => $memo->id,
+                    'serial_number' => $memo->serial_number,
+                    'service_type' => $memo->service_type->label(),
+                    'station_name' => $memo->station_name,
+                    'submitted_at' => $memo->submitted_at?->format('d-m-Y H:i'),
+                    'is_urgent' => $memo->is_urgent,
+                ])->all());
+            }
+        } else {
+            $urgentMemos = $this->memos->urgentPendingFor($request->user());
+            if ($urgentMemos->isNotEmpty()) {
+                $request->session()->flash('urgent_attention_memos', $urgentMemos->map(fn ($memo): array => [
+                    'id' => $memo->id,
+                    'serial_number' => $memo->serial_number,
+                    'service_type' => $memo->service_type->label(),
+                    'station_name' => $memo->station_name,
+                ])->all());
+            }
         }
 
         $defaultDestination = $request->user()->hasAnyRole([UserRole::Station->value, 'station_controller'])

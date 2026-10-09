@@ -31,6 +31,10 @@ class ServiceDeficiencyMemoPolicy
 
     public function view(User $user, ServiceDeficiencyMemo $memo): bool
     {
+        if ($memo->status === MemoStatus::Draft) {
+            return $memo->created_by === $user->id;
+        }
+
         if ($user->isStationController()) {
             return $user->can(UserPermission::ViewOwnMemos->value)
                 && $memo->created_by === $user->id;
@@ -42,9 +46,14 @@ class ServiceDeficiencyMemoPolicy
     public function act(User $user, ServiceDeficiencyMemo $memo): bool
     {
         if ($memo->workflow_version === 2) {
+            $currentStep = $memo->currentWorkflowStep;
+
             return $user->is_enabled
                 && $user->can(UserPermission::ActOnRoutedMemos->value)
-                && $memo->currentWorkflowStep()->where('assigned_to', $user->id)->where('decision', 'pending')->exists();
+                && $currentStep?->decision === 'pending'
+                && ($currentStep->assigned_to === $user->id
+                    || ($currentStep->stage === WorkflowStepType::CmcAssessment
+                        && $user->hasRole(UserRole::CmcTeamLead->value)));
         }
 
         return $user->is_enabled
@@ -55,6 +64,13 @@ class ServiceDeficiencyMemoPolicy
 
     public function update(User $user, ServiceDeficiencyMemo $memo): bool
     {
+        if ($user->is_enabled
+            && $user->hasRole(UserRole::StationManager->value)
+            && $user->can(UserPermission::ActOnRoutedMemos->value)
+            && $this->isPendingWithStationManager($memo, $user)) {
+            return true;
+        }
+
         return $user->can(UserPermission::UpdateOwnDraftMemos->value)
             && $memo->created_by === $user->id
             && ($memo->status === MemoStatus::Draft

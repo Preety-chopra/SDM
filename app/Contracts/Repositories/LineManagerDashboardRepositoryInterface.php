@@ -27,5 +27,8 @@ interface LineManagerDashboardRepositoryInterface
     public function recentMemos(User $manager, CarbonInterface $from, CarbonInterface $to, ?SdmType $serviceType, ?MemoStatus $status, int $limit = 10): Collection;
 
     /** @return Collection<int, ServiceDeficiencyMemo> */
+    public function pendingMemos(User $manager): Collection;
+
+    /** @return Collection<int, ServiceDeficiencyMemo> */
     public function memosForLine(User $manager, string $lineCode, CarbonInterface $from, CarbonInterface $to, ?SdmType $serviceType, ?MemoStatus $status, int $limit): Collection;
 }

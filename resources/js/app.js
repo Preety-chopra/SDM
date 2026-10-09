@@ -4,6 +4,7 @@ import Alpine from 'alpinejs';
 import { createDashboardCharts, createLineManagerDashboardCharts, createStationManagerDashboardCharts, createWorkflowRoleDashboardCharts } from './dashboard-charts';
 import { createSdmConfirmation } from './sdm-confirmation';
 import { createBulkMemoSelection } from './bulk-memo-selection';
+import { createMemoCancellationDialog } from './memo-cancellation-dialog';
 
 window.Alpine = Alpine;
 
@@ -34,11 +35,21 @@ Alpine.data('userForm', () => ({
 }));
 
 Alpine.data('contractForm', () => ({
-    lineId: '',
-    stationId: '',
+    lineIds: [],
+    stationIds: [],
+    stations: [],
     init() {
-        this.lineId = this.$el.dataset.lineId || '';
-        this.stationId = this.$el.dataset.stationId || '';
+        this.lineIds = JSON.parse(this.$el.dataset.lineIds || '[]').map(String);
+        this.stationIds = JSON.parse(this.$el.dataset.stationIds || '[]').map(String);
+        this.stations = JSON.parse(this.$el.dataset.stations || '[]');
+    },
+    stationMatchesSelectedLine(stationId) {
+        const station = this.stations.find((item) => String(item.id) === String(stationId));
+
+        return station && this.lineIds.includes(String(station.line_id));
+    },
+    pruneStations() {
+        this.stationIds = this.stationIds.filter((stationId) => this.stationMatchesSelectedLine(stationId));
     },
 }));
 
@@ -141,6 +152,7 @@ Alpine.data('memoForm', () => ({
 
 Alpine.data('sdmActionForm', () => createSdmConfirmation());
 Alpine.data('bulkMemoSelection', () => createBulkMemoSelection());
+Alpine.data('memoCancellationDialog', () => createMemoCancellationDialog());
 Alpine.data('dashboardCharts', (config) => createDashboardCharts(config));
 Alpine.data('stationManagerDashboardCharts', (config) => createStationManagerDashboardCharts(config));
 Alpine.data('lineManagerDashboardCharts', (config) => createLineManagerDashboardCharts(config));

@@ -10,7 +10,6 @@ use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
 use App\Models\Contractor;
 use App\Models\Line;
-use App\Models\ReportingRelationship;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
 use App\Models\User;
@@ -283,6 +282,7 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertOk()
             ->assertSee('OWN-SM-DRAFT')
             ->assertDontSee('OTHER-SM-DRAFT')
+            ->assertSee('href="'.route('sdm-memos.edit', $memo).'"', false)
             ->assertSee(route('sdm-memos.destroy', $memo), false)
             ->assertSee('Cancel');
 
@@ -759,6 +759,28 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertSeeInOrder(['SDM Serial Number:', $memo->serial_number]);
     }
 
+    public function test_draft_is_visible_only_to_the_user_who_created_it(): void
+    {
+        [$creator] = $this->stationUserWithLine('DRAFT-OWNER');
+        $draft = $this->draft($creator, SdmType::Cfs, 'PRIVATE-DRAFT-101');
+        $administrator = User::factory()->create();
+        $administrator->assignRole(UserRole::Administrator->value);
+
+        $this->actingAs($administrator)
+            ->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => collect($memos->items())->doesntContain('id', $draft->id))
+            ->assertDontSee($draft->serial_number);
+
+        $this->actingAs($administrator)
+            ->get(route('sdm-memos.show', $draft))
+            ->assertForbidden();
+
+        $this->actingAs($creator)
+            ->get(route('sdm-memos.edit', $draft))
+            ->assertOk();
+    }
+
     public function test_memo_index_can_filter_by_type_station_line_incident_date_and_status(): void
     {
         [$user, $targetLine, $targetStation] = $this->stationUserWithLine('FILTER-RED');
@@ -876,13 +898,15 @@ class ServiceDeficiencyMemoTest extends TestCase
         $stationManager->assignRole(UserRole::StationManager->value);
         $lineManager = User::factory()->create(['employee_number' => $code.'-AM-1']);
         $lineManager->assignRole(UserRole::AssistantManager->value);
-        $operationsManager = User::factory()->create();
-        $operationsManager->assignRole(UserRole::ManagerOperations->value);
-        $dgm = User::factory()->create();
-        $dgm->assignRole(UserRole::DeputyGeneralManager->value);
-        ReportingRelationship::query()->create(['subordinate_id' => $stationManager->id, 'supervisor_id' => $lineManager->id]);
-        ReportingRelationship::query()->create(['subordinate_id' => $lineManager->id, 'supervisor_id' => $operationsManager->id]);
-        ReportingRelationship::query()->create(['subordinate_id' => $operationsManager->id, 'supervisor_id' => $dgm->id]);
+        if (! User::query()->role(UserRole::ManagerOperations->value)->exists()) {
+            $operationsManager = User::factory()->create();
+            $operationsManager->assignRole(UserRole::ManagerOperations->value);
+        }
+
+        if (! User::query()->role(UserRole::DeputyGeneralManager->value)->exists()) {
+            $dgm = User::factory()->create();
+            $dgm->assignRole(UserRole::DeputyGeneralManager->value);
+        }
 
         return [$user, $line, $station];
     }

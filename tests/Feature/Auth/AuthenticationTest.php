@@ -2,8 +2,13 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Enums\MemoStatus;
+use App\Enums\SdmType;
 use App\Enums\UserRole;
+use App\Enums\WorkflowStepType;
 use App\Models\Line;
+use App\Models\MemoWorkflowStep;
+use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -186,6 +191,50 @@ class AuthenticationTest extends TestCase
         }
     }
 
+    public function test_line_manager_sees_their_pending_sdms_in_submission_date_descending_order_after_login(): void
+    {
+        $manager = User::factory()->create(['employee_number' => 'AM-LOGIN']);
+        $manager->assignRole(UserRole::AssistantManager->value);
+        $otherManager = User::factory()->create(['employee_number' => 'AM-OTHER']);
+        $otherManager->assignRole(UserRole::AssistantManager->value);
+        $line = Line::query()->create(['code' => 'LOGIN-LINE', 'name' => 'Login Line', 'is_active' => true]);
+        $station = Station::query()->create([
+            'code' => 'LOGIN-STATION',
+            'name' => 'Login Station',
+            'line_id' => $line->id,
+            'is_active' => true,
+        ]);
+
+        $olderPending = $this->lineReviewMemo($manager, $station, 'AM-PENDING-OLDER', '2026-10-01 09:00:00');
+        $newerPending = $this->lineReviewMemo($manager, $station, 'AM-PENDING-NEWER', '2026-10-04 09:00:00');
+        $forwarded = $this->lineReviewMemo($manager, $station, 'AM-FORWARDED', '2026-10-05 09:00:00', 'forwarded');
+        $otherManagerPending = $this->lineReviewMemo($otherManager, $station, 'OTHER-AM-PENDING', '2026-10-05 10:00:00');
+
+        $response = $this->post(route('login'), [
+            'username' => $manager->name,
+            'password' => 'password',
+        ]);
+
+        $response
+            ->assertRedirect(route('dashboard', absolute: false))
+            ->assertSessionHas('line_manager_pending_memos', fn (array $memos): bool => array_column($memos, 'id') === [
+                $newerPending->id,
+                $olderPending->id,
+            ]);
+
+        $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('Pending SDMs awaiting your action')
+            ->assertSeeInOrder(['AM-PENDING-NEWER', 'AM-PENDING-OLDER'])
+            ->assertSee(route('sdm-memos.show', $newerPending), false)
+            ->assertDontSee($forwarded->serial_number)
+            ->assertDontSee($otherManagerPending->serial_number);
+
+        $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertDontSee('Pending SDMs awaiting your action');
+    }
+
     public function test_users_can_not_authenticate_with_invalid_password(): void
     {
         $user = User::factory()->create();
@@ -241,5 +290,43 @@ class AuthenticationTest extends TestCase
 
         $this->assertGuest();
         $response->assertRedirect('/');
+    }
+
+    private function lineReviewMemo(
+        User $manager,
+        Station $station,
+        string $serialNumber,
+        string $submittedAt,
+        string $decision = 'pending',
+    ): ServiceDeficiencyMemo {
+        $memo = ServiceDeficiencyMemo::query()->create([
+            'service_type' => SdmType::Cfs->value,
+            'serial_number' => $serialNumber,
+            'station_id' => $station->id,
+            'station_name' => $station->name,
+            'line_code' => $station->metroLine?->code,
+            'line_name' => $station->metroLine?->name,
+            'status' => $decision === 'pending' ? MemoStatus::LineReview->value : MemoStatus::AmCmcReview->value,
+            'workflow_version' => 2,
+            'created_by' => $manager->id,
+            'submitted_at' => $submittedAt,
+        ]);
+        $step = MemoWorkflowStep::query()->create([
+            'memo_id' => $memo->id,
+            'round' => 1,
+            'sequence' => 2,
+            'stage' => WorkflowStepType::LineReview->value,
+            'role' => UserRole::AssistantManager->value,
+            'assigned_to' => $manager->id,
+            'assigned_name' => $manager->name,
+            'assigned_employee_number' => $manager->employee_number,
+            'decision' => $decision,
+        ]);
+
+        if ($decision === 'pending') {
+            $memo->update(['current_workflow_step_id' => $step->id]);
+        }
+
+        return $memo;
     }
 }

@@ -40,7 +40,44 @@
             </div>
         </div>
 
-        @if(session('urgent_attention_memos'))
+        @if(session('line_manager_pending_memos'))
+            <x-modal name="line-manager-pending-sdms" :show="true" maxWidth="2xl" focusable>
+                <section role="dialog" aria-modal="true" aria-labelledby="line-manager-pending-title" aria-describedby="line-manager-pending-description" class="p-6 sm:p-7">
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-xs font-bold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-400">AM/Manager (Line) queue</p>
+                            <h2 id="line-manager-pending-title" class="mt-1 text-xl font-black text-gray-950 dark:text-white">Pending SDMs awaiting your action</h2>
+                            <p id="line-manager-pending-description" class="mt-1 text-sm text-gray-600 dark:text-gray-300">Listed by submission date, newest first.</p>
+                        </div>
+                        <button type="button" x-on:click="$dispatch('close')" aria-label="Close pending SDMs" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-300 text-xl font-bold text-gray-600 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">&times;</button>
+                    </div>
+
+                    <div class="mt-5 max-h-[60vh] overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                        <div class="divide-y divide-gray-200 dark:divide-gray-700">
+                            @foreach(session('line_manager_pending_memos') as $pendingMemo)
+                                <a href="{{ route('sdm-memos.show', $pendingMemo['id']) }}" class="flex items-center justify-between gap-4 px-4 py-3 transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500 dark:hover:bg-emerald-950/30">
+                                    <span class="min-w-0">
+                                        <span class="flex flex-wrap items-center gap-2 font-semibold text-gray-950 dark:text-white">
+                                            <span>{{ $pendingMemo['serial_number'] }}</span>
+                                            @if($pendingMemo['is_urgent'])
+                                                <span class="rounded-full bg-red-600 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-white dark:bg-red-500">Urgent</span>
+                                            @endif
+                                        </span>
+                                        <span class="mt-1 block text-xs text-gray-600 dark:text-gray-300">{{ $pendingMemo['service_type'] }} · {{ $pendingMemo['station_name'] ?: 'Station not recorded' }}</span>
+                                        <span class="mt-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Submitted {{ $pendingMemo['submitted_at'] ?: 'date not recorded' }}</span>
+                                    </span>
+                                    <span class="shrink-0 font-semibold text-emerald-700 dark:text-emerald-300">Open →</span>
+                                </a>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <div class="mt-6 flex justify-end">
+                        <button type="button" x-on:click="$dispatch('close')" class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">Dismiss</button>
+                    </div>
+                </section>
+            </x-modal>
+        @elseif(session('urgent_attention_memos'))
             <x-modal name="urgent-attention" :show="true" maxWidth="lg" focusable>
                 <section role="dialog" aria-modal="true" aria-labelledby="urgent-attention-title" class="p-6">
                     <div class="flex items-start gap-4">

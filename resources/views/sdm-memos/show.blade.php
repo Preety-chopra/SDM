@@ -9,6 +9,9 @@
         </div>
     </x-slot>
     <div class="py-10">
+        @php
+            $isStationManagerViewer = auth()->user()->hasRole(\App\Enums\UserRole::StationManager->value);
+        @endphp
         <div class="mx-auto flex max-w-5xl flex-col gap-6 px-4 sm:px-6 lg:px-8">
             @if(session('status'))
                 <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">{{ session('status') }}</div>
@@ -17,54 +20,42 @@
                 <div class="rounded-lg border border-rose-200 bg-rose-50 p-4 font-semibold text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{ $memo->cancellationLabel() }}</div>
             @endif
             @can('update', $memo)
-                <div class="flex justify-end"><a href="{{ route('sdm-memos.edit', $memo) }}" class="rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">Edit SDM</a></div>
+                @unless($isStationManagerViewer)
+                    <div class="flex justify-end"><a href="{{ route('sdm-memos.edit', $memo) }}" class="rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">Edit SDM</a></div>
+                @endunless
             @endcan
             @can('reassignStationManager', $memo)
-                @php
-                    $isStationManagerHandover = auth()->user()->hasRole(\App\Enums\UserRole::StationManager->value);
-                @endphp
-                <section class="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
-                    <h3 class="font-semibold text-amber-950 dark:text-amber-100">{{ $isStationManagerHandover ? 'Handover pending SDM' : 'Change forwarded SM' }}</h3>
-                    <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
-                        {{ $isStationManagerHandover
-                            ? 'Select another active Station Manager to take over this pending SDM.'
-                            : 'You can change the Station Manager until '.$memo->submitted_at->addDays(2)->format('d-m-Y H:i').', provided the current SM has not acted.' }}
-                    </p>
-                    <form method="POST" action="{{ route('sdm-memos.station-manager.update', $memo) }}" class="mt-5 flex flex-col gap-4">
-                        @csrf
-                        @method('PATCH')
-                        <x-employee-autocomplete
-                            name="station_manager_employee_number"
-                            :label="$isStationManagerHandover ? 'Handover to SM employee number' : 'New SM employee number'"
-                            :candidates="$stationManagerCandidates"
-                            :value="old('station_manager_employee_number')"
-                        />
-                        <x-input-error :messages="$errors->get('station_manager_employee_number')"/>
-                        <div class="flex justify-end">
-                            <button type="submit" class="rounded-lg bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">{{ $isStationManagerHandover ? 'Handover SDM' : 'Change SM' }}</button>
-                        </div>
-                    </form>
-                </section>
+                @unless($isStationManagerViewer)
+                    <section class="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
+                        <h3 class="font-semibold text-amber-950 dark:text-amber-100">Change forwarded SM</h3>
+                        <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">You can change the Station Manager until {{ $memo->submitted_at->addDays(2)->format('d-m-Y H:i') }}, provided the current SM has not acted.</p>
+                        <form method="POST" action="{{ route('sdm-memos.station-manager.update', $memo) }}" class="mt-5 flex flex-col gap-4">
+                            @csrf
+                            @method('PATCH')
+                            <x-employee-autocomplete
+                                name="station_manager_employee_number"
+                                label="New SM employee number"
+                                :candidates="$stationManagerCandidates"
+                                :value="old('station_manager_employee_number')"
+                            />
+                            <x-input-error :messages="$errors->get('station_manager_employee_number')"/>
+                            <div class="flex justify-end">
+                                <button type="submit" class="rounded-lg bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">Change SM</button>
+                            </div>
+                        </form>
+                    </section>
+                @endunless
             @endcan
             @can('handoverLineManager', $memo)
-                <section class="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
-                    <h3 class="font-semibold text-amber-950 dark:text-amber-100">Handover pending SDM to another AM/Manager (Line)</h3>
-                    <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">Select another active AM/Manager (Line) to take over this pending SDM.</p>
-                    <form method="POST" action="{{ route('sdm-memos.line-manager.update', $memo) }}" class="mt-5 flex flex-col gap-4">
-                        @csrf
-                        @method('PATCH')
-                        <x-employee-autocomplete
-                            name="line_manager_employee_number"
-                            label="Handover to AM/Manager (Line) employee number"
-                            :candidates="$lineManagerHandoverCandidates"
-                            :value="old('line_manager_employee_number')"
-                        />
-                        <x-input-error :messages="$errors->get('line_manager_employee_number')"/>
-                        <div class="flex justify-end">
-                            <button type="submit" class="rounded-lg bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">Handover SDM</button>
-                        </div>
-                    </form>
-                </section>
+                <x-memo-handover-dialog
+                    :modal-name="'handover-line-manager-'.$memo->id"
+                    title="Handover pending SDM to another AM/Manager (Line)"
+                    description="Select another active AM/Manager (Line) to take over this pending SDM."
+                    :action="route('sdm-memos.line-manager.update', $memo)"
+                    field-name="line_manager_employee_number"
+                    field-label="Handover to AM/Manager (Line) employee number"
+                    :candidates="$lineManagerHandoverCandidates"
+                />
             @endcan
             <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                 <dl class="grid gap-5 md:grid-cols-3">
@@ -251,6 +242,7 @@
                                 <button name="action" value="forward" data-sdm-confirm data-confirmation-action="Forward SDM" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Verify and forward</button>
                                 @if($memo->current_stage === \App\Enums\WorkflowStage::StationManager)
                                     <button name="action" value="request_cancellation" data-sdm-confirm data-confirmation-action="Request cancellation" class="rounded-lg border border-rose-600 px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500 dark:text-rose-300 dark:hover:bg-rose-950/40">Request for cancellation</button>
+                                    <x-memo-station-manager-actions :memo="$memo" />
                                 @endif
                             @endif
                             @if($memo->current_stage !== \App\Enums\WorkflowStage::StationManager)
@@ -259,6 +251,20 @@
                         </div>
                         <x-sdm-confirmation-preview />
                     </form>
+                    @if($isLegacyStationManagerConfirmation)
+                        @can('reassignStationManager', $memo)
+                            <x-memo-handover-dialog
+                                :modal-name="'handover-station-manager-'.$memo->id"
+                                title="Handover pending SDM"
+                                description="Select another active Station Manager to take over this pending SDM."
+                                :action="route('sdm-memos.station-manager.update', $memo)"
+                                field-name="station_manager_employee_number"
+                                field-label="Handover to SM employee number"
+                                :candidates="$stationManagerCandidates"
+                                :show-trigger="false"
+                            />
+                        @endcan
+                    @endif
                 </section>
                 @endif
             @endcan

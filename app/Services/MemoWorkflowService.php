@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Contracts\Repositories\ServiceDeficiencyMemoRepositoryInterface;
 use App\Contracts\Repositories\UserRepositoryInterface;
 use App\Enums\MemoStatus;
+use App\Enums\UserPermission;
 use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
 use App\Enums\WorkflowStepType;
@@ -70,7 +71,7 @@ final class MemoWorkflowService
             return DB::transaction(function () use ($memo, $actor, $data, &$storedPaths): ServiceDeficiencyMemo {
                 $memo = ServiceDeficiencyMemo::query()->lockForUpdate()->findOrFail($memo->id);
                 if ($memo->workflow_version >= 2) {
-                    return $this->actVersionTwo($memo, $actor, $data);
+                    return $this->actVersionTwo($memo, $actor, $data, $storedPaths);
                 }
 
                 $stage = $memo->current_stage;
@@ -142,13 +143,17 @@ final class MemoWorkflowService
         }
     }
 
-    private function actVersionTwo(ServiceDeficiencyMemo $memo, User $actor, array $data): ServiceDeficiencyMemo
+    private function actVersionTwo(ServiceDeficiencyMemo $memo, User $actor, array $data, array &$storedPaths): ServiceDeficiencyMemo
     {
         $step = MemoWorkflowStep::query()->lockForUpdate()->findOrFail($memo->current_workflow_step_id);
         $action = $data['action'];
         $isCancellationRequest = $action === 'request_cancellation';
+        $isCmcTeamLeadVerification = $step->stage === WorkflowStepType::CmcAssessment
+            && $actor->is_enabled
+            && $actor->hasRole(UserRole::CmcTeamLead->value)
+            && $actor->can(UserPermission::ActOnRoutedMemos->value);
 
-        if ($step->assigned_to !== $actor->id || $step->decision !== 'pending') {
+        if (($step->assigned_to !== $actor->id && ! $isCmcTeamLeadVerification) || $step->decision !== 'pending') {
             abort(403);
         }
 
@@ -161,8 +166,8 @@ final class MemoWorkflowService
         if ($isCancellationRequest && $step->stage !== WorkflowStepType::StationManager) {
             throw ValidationException::withMessages(['action' => 'Only the Station Manager can request cancellation from AM/Line.']);
         }
-        if ($isCmcAssignment && $action !== 'assign') {
-            throw ValidationException::withMessages(['action' => 'The CMC Team Lead must assign the SDM to CMC Staff.']);
+        if ($isCmcAssignment && ! in_array($action, ['assign', 'verify'], true)) {
+            throw ValidationException::withMessages(['action' => 'The CMC Team Lead must assign CMC Staff or verify the SDM directly.']);
         }
         if (! $isCmcAssignment && $isDgm && ! in_array($action, ['approve', 'return', 'cancel'], true)) {
             throw ValidationException::withMessages(['action' => 'DGM must approve, return, or cancel the SDM.']);
@@ -176,20 +181,39 @@ final class MemoWorkflowService
         }
 
         $assignedCmcStaff = null;
-        if ($isCmcAssignment) {
+        if ($isCmcAssignment && $action === 'assign') {
             $assignedCmcStaff = $this->resolveCmcStaff((int) $data['cmc_staff_id']);
             $this->applyCmcStaffAssignment($memo, $actor, $assignedCmcStaff, false);
+        } elseif ($isCmcAssignment && $action === 'verify') {
+            $this->assignCmcAssessmentToTeamLead($memo, $step, $actor);
         }
 
         $assessment = null;
+        $assessmentAttachment = null;
         if ($action === 'forward' && in_array($step->stage, [WorkflowStepType::LineReview, WorkflowStepType::CmcAssessment], true)) {
             $assessment = $this->assessments->create($memo, $actor, $step->stage, $step->round, $data);
+
+            if ($step->stage === WorkflowStepType::CmcAssessment
+                && ($data['assessment_pdf'] ?? null) instanceof UploadedFile) {
+                $file = $data['assessment_pdf'];
+                $path = $file->store("sdm-memos/{$memo->id}/assessments/{$assessment->id}", 'local');
+                $storedPaths[] = $path;
+                $assessmentAttachment = $memo->attachments()->create([
+                    'original_name' => $file->getClientOriginalName(),
+                    'storage_path' => $path,
+                    'mime_type' => $file->getMimeType(),
+                    'size_bytes' => $file->getSize(),
+                    'uploaded_by' => $actor->id,
+                ]);
+            }
+
             $this->audit->record($memo, $actor, 'memo.assessment.created', [], [
                 'assessment_id' => $assessment->id,
                 'version' => $assessment->version,
                 'round' => $assessment->round,
                 'proposed_total' => $assessment->proposed_total,
                 'negative_points' => $assessment->negative_points,
+                'assessment_pdf_attachment_id' => $assessmentAttachment?->id,
             ]);
         }
 
@@ -244,7 +268,7 @@ final class MemoWorkflowService
             'cmc_staff_id' => $assignedCmcStaff?->id,
         ]);
 
-        return $memo->refresh()->load(['currentWorkflowStep', 'workflowSteps', 'assessments.items']);
+        return $memo->refresh()->load(['currentWorkflowStep', 'workflowSteps', 'assessments.items', 'attachments']);
     }
 
     public function createReviewRound(ServiceDeficiencyMemo $memo): void
@@ -256,12 +280,14 @@ final class MemoWorkflowService
 
         foreach ($stages as $stage) {
             $prior = $memo->workflowSteps()->where('stage', $stage->value)->reorder('sequence', 'desc')->firstOrFail();
-            $assignee = $stage === WorkflowStepType::CmcAssessment ? $memo->cmcStaff()->firstOrFail() : $prior->assignee()->firstOrFail();
+            $assignee = $stage === WorkflowStepType::CmcAssessment
+                ? ($memo->cmcStaff()->first() ?? $prior->assignee()->firstOrFail())
+                : $prior->assignee()->firstOrFail();
             $created->push($memo->workflowSteps()->create([
                 'round' => $round,
                 'sequence' => ++$sequence,
                 'stage' => $stage->value,
-                'role' => $stage->role()->value,
+                'role' => $stage === WorkflowStepType::CmcAssessment ? $prior->role : $stage->role()->value,
                 'assigned_to' => $assignee->id,
                 'assigned_name' => $assignee->name,
                 'assigned_employee_number' => $assignee->employee_number,
@@ -377,6 +403,30 @@ final class MemoWorkflowService
             ['cmc_staff_id' => $previousCmcStaffId],
             ['cmc_staff_id' => $cmcStaff->id],
         );
+    }
+
+    private function assignCmcAssessmentToTeamLead(ServiceDeficiencyMemo $memo, MemoWorkflowStep $step, User $actor): void
+    {
+        abort_unless(
+            $actor->is_enabled
+                && $actor->hasRole(UserRole::CmcTeamLead->value)
+                && $actor->can(UserPermission::ActOnRoutedMemos->value),
+            403,
+        );
+
+        $assessmentStep = $memo->workflowSteps()
+            ->where('sequence', '>', $step->sequence)
+            ->where('stage', WorkflowStepType::CmcAssessment->value)
+            ->where('decision', 'pending')
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        $assessmentStep->update([
+            'role' => UserRole::CmcTeamLead->value,
+            'assigned_to' => $actor->id,
+            'assigned_name' => $actor->name,
+            'assigned_employee_number' => $actor->employee_number,
+        ]);
     }
 
     private function requiresAdministrativeReview(ServiceDeficiencyMemo $memo, MemoAssessment $current): bool

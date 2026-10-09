@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\DeficiencyType;
 use App\Enums\PenaltyCalculationType;
 use App\Enums\WorkflowStepType;
 use App\Models\ContractPenaltyClause;
@@ -9,6 +10,8 @@ use App\Models\MemoAssessment;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
 use App\Support\DeficiencyCatalog;
+use App\Support\LateReportingPenalty;
+use App\Support\NegativePointCatalog;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -18,6 +21,8 @@ final class MemoAssessmentService
     /** @return Collection<int, array{contract_penalty_clause_id: int, calculation_inputs: null, proposed_amount: string|null, justification: null}> */
     public function lineReviewPrefill(ServiceDeficiencyMemo $memo): Collection
     {
+        $memo->loadMissing('deficiencies.lateReporting');
+
         $serialNumbers = $memo->deficiencies
             ->map(fn ($deficiency): ?int => DeficiencyCatalog::serialNumberFor($memo->service_type, $deficiency->type))
             ->filter()
@@ -25,8 +30,8 @@ final class MemoAssessmentService
 
         return ($memo->serviceContract?->penaltyClauses ?? collect())
             ->whereIn('serial_number', $serialNumbers)
-            ->mapWithKeys(function (ContractPenaltyClause $clause): array {
-                $amount = match ($clause->calculation_type) {
+            ->mapWithKeys(function (ContractPenaltyClause $clause) use ($memo): array {
+                $amount = $this->lateReportingPenalty($memo, $clause) ?? match ($clause->calculation_type) {
                     PenaltyCalculationType::Maximum => $clause->maximum_amount,
                     PenaltyCalculationType::Fixed, PenaltyCalculationType::FixedPlusCost => $clause->suggestedAmount([]),
                     default => null,
@@ -39,6 +44,26 @@ final class MemoAssessmentService
                     'justification' => null,
                 ]];
             });
+    }
+
+    public function negativePointsPrefill(ServiceDeficiencyMemo $memo): ?int
+    {
+        $points = $memo->deficiencies
+            ->map(function ($deficiency) use ($memo): ?int {
+                if ($deficiency->type !== DeficiencyType::CashCheck) {
+                    return NegativePointCatalog::for($deficiency->type);
+                }
+
+                return NegativePointCatalog::forCashMismatch((float) ($memo->cashCheck?->difference_amount ?? 0))
+                    + NegativePointCatalog::forHiddenCash(
+                        $memo->cashCheck?->hidden_cash_amount === null
+                            ? null
+                            : (float) $memo->cashCheck->hidden_cash_amount,
+                    );
+            })
+            ->filter(fn (?int $value): bool => $value !== null);
+
+        return $points->isEmpty() ? null : $points->sum();
     }
 
     public function create(
@@ -56,12 +81,14 @@ final class MemoAssessmentService
 
         $version = ((int) $memo->assessments()->max('version')) + 1;
         $monthlyBill = isset($data['monthly_bill_value']) ? (float) $data['monthly_bill_value'] : null;
+        $memo->loadMissing('deficiencies.lateReporting');
         $prepared = $items->map(function (array $item) use ($memo): array {
             $clause = ContractPenaltyClause::query()
                 ->whereBelongsTo($memo->serviceContract, 'contract')
                 ->findOrFail($item['contract_penalty_clause_id']);
             $inputs = $item['calculation_inputs'] ?? [];
-            $suggested = $clause->suggestedAmount($inputs);
+            $lateReportingPenalty = $this->lateReportingPenalty($memo, $clause);
+            $suggested = $lateReportingPenalty ?? $clause->suggestedAmount($inputs);
             $proposed = round((float) $item['proposed_amount'], 2);
 
             if ($proposed < 0) {
@@ -122,5 +149,17 @@ final class MemoAssessmentService
         $assessment->items()->createMany($prepared->all());
 
         return $assessment->load('items');
+    }
+
+    private function lateReportingPenalty(ServiceDeficiencyMemo $memo, ContractPenaltyClause $clause): ?int
+    {
+        $lateReportingDeficiency = $memo->deficiencies->first(
+            fn ($deficiency): bool => $deficiency->type === DeficiencyType::LateReporting
+                && DeficiencyCatalog::serialNumberFor($memo->service_type, $deficiency->type) === $clause->serial_number,
+        );
+
+        return $lateReportingDeficiency?->lateReporting
+            ? LateReportingPenalty::forDelay($lateReportingDeficiency->lateReporting->delayInMinutes())
+            : null;
     }
 }

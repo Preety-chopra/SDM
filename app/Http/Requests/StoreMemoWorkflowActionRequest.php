@@ -52,9 +52,10 @@ class StoreMemoWorkflowActionRequest extends FormRequest
         $stage = $memo->currentWorkflowStep?->stage;
         if ($stage === WorkflowStepType::CmcAssignment) {
             return [
-                'action' => ['required', Rule::in(['assign'])],
+                'action' => ['required', Rule::in(['assign', 'verify'])],
                 'cmc_staff_id' => [
-                    'required',
+                    Rule::requiredIf($action === 'assign'),
+                    'nullable',
                     'integer',
                     Rule::exists(User::class, 'id')->where('is_enabled', true),
                 ],
@@ -86,9 +87,17 @@ class StoreMemoWorkflowActionRequest extends FormRequest
             'items.*.calculation_inputs.workers' => ['nullable', 'integer', 'min:0'],
             'items.*.calculation_inputs.additional_cost' => ['nullable', 'numeric', 'min:0'],
             'negative_points' => [Rule::requiredIf($requiresCmcAssessment), 'nullable', 'integer', 'min:0'],
-            'staff_action' => [Rule::requiredIf($requiresCmcAssessment), 'nullable', Rule::in(['none', 'warning', 'final_warning', 'recall'])],
-            'bill_month' => [Rule::requiredIf($requiresCmcAssessment), 'nullable', 'date_format:Y-m'],
-            'monthly_bill_value' => [Rule::requiredIf($requiresCmcAssessment), 'nullable', 'numeric', 'gt:0'],
+            'staff_action' => [Rule::requiredIf($requiresCmcAssessment), 'nullable', Rule::in(['warning', 'final_warning', 'recall'])],
+            'bill_month' => ['nullable', 'date_format:Y-m'],
+            'monthly_bill_value' => ['nullable', 'numeric', 'gt:0'],
+            'assessment_pdf' => [
+                Rule::prohibitedIf(! $requiresCmcAssessment),
+                'nullable',
+                'file',
+                'mimes:pdf',
+                'mimetypes:application/pdf',
+                'max:10240',
+            ],
             'cap_acknowledged' => ['nullable', 'boolean'],
         ];
     }

@@ -16,7 +16,11 @@
                 </nav>
             @endif
 
-            <form method="POST" enctype="multipart/form-data" action="{{ $contract ? route('contracts.update', $contract) : route('contracts.store') }}" class="flex flex-col gap-6" x-data="contractForm" data-line-id="{{ old('line_id', $contract?->line_id) }}" data-station-id="{{ old('station_id', $contract?->station_id) }}">
+            @php
+                $selectedLineIds = array_map('strval', old('line_ids', $contract?->lines->pluck('id')->all() ?? []));
+                $selectedStationIds = array_map('strval', old('station_ids', $contract?->stations->pluck('id')->all() ?? []));
+            @endphp
+            <form method="POST" enctype="multipart/form-data" action="{{ $contract ? route('contracts.update', $contract) : route('contracts.store') }}" class="flex flex-col gap-6" x-data="contractForm" data-line-ids="{{ json_encode($selectedLineIds) }}" data-station-ids="{{ json_encode($selectedStationIds) }}" data-stations="{{ $stations->map->only(['id', 'line_id'])->values()->toJson() }}">
                 @csrf
                 @if($contract) @method('PUT') @endif
                 <input type="hidden" name="service_type" value="{{ $serviceType->value }}">
@@ -33,24 +37,26 @@
                         <x-input-error :messages="$errors->get('contractor_id')" class="mt-2"/>
                     </div>
                     <div>
-                        <x-input-label for="line_id" value="Line" required/>
-                        <select id="line_id" name="line_id" x-model="lineId" @change="stationId = ''" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white" required>
-                            <option value="">Select line</option>
+                        <x-input-label for="line_ids" value="Lines" required/>
+                        <select id="line_ids" name="line_ids[]" x-model="lineIds" @change="pruneStations" multiple size="5" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white" required>
                             @foreach($lines as $line)
-                                <option value="{{ $line->id }}">{{ $line->code }} · {{ $line->name }}</option>
+                                <option value="{{ $line->id }}" @selected(in_array((string) $line->id, $selectedLineIds, true))>{{ $line->code }} · {{ $line->name }}</option>
                             @endforeach
                         </select>
-                        <x-input-error :messages="$errors->get('line_id')" class="mt-2"/>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (Windows) or Command (Mac) to select multiple lines.</p>
+                        <x-input-error :messages="$errors->get('line_ids')" class="mt-2"/>
+                        <x-input-error :messages="$errors->get('line_ids.*')" class="mt-2"/>
                     </div>
                     <div>
-                        <x-input-label for="station_id" value="Station" required/>
-                        <select id="station_id" name="station_id" x-model="stationId" :disabled="! lineId" class="mt-1 block w-full rounded-md border-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:disabled:bg-gray-950" required>
-                            <option value="">Select station</option>
+                        <x-input-label for="station_ids" value="Stations" required/>
+                        <select id="station_ids" name="station_ids[]" x-model="stationIds" multiple size="8" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white" required>
                             @foreach($stations as $station)
-                                <option x-cloak x-show="lineId === '{{ $station->line_id }}'" :disabled="lineId !== '{{ $station->line_id }}'" value="{{ $station->id }}">{{ $station->code }} · {{ $station->name }}</option>
+                                <option x-cloak x-show="lineIds.includes('{{ $station->line_id }}')" :disabled="! lineIds.includes('{{ $station->line_id }}')" value="{{ $station->id }}" @selected(in_array((string) $station->id, $selectedStationIds, true))>{{ $station->metroLine->code }} · {{ $station->code }} · {{ $station->name }}</option>
                             @endforeach
                         </select>
-                        <x-input-error :messages="$errors->get('station_id')" class="mt-2"/>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Stations are limited to the selected lines. Hold Ctrl or Command to select several.</p>
+                        <x-input-error :messages="$errors->get('station_ids')" class="mt-2"/>
+                        <x-input-error :messages="$errors->get('station_ids.*')" class="mt-2"/>
                     </div>
                     <div><x-input-label for="contract_number" value="Contract number" required/><x-text-input id="contract_number" name="contract_number" :value="old('contract_number', $contract?->contract_number)" class="mt-1 block w-full" required/><x-input-error :messages="$errors->get('contract_number')" class="mt-2"/></div>
                     <div><x-input-label for="title" value="Contract title" required/><x-text-input id="title" name="title" :value="old('title', $contract?->title)" class="mt-1 block w-full" required/><x-input-error :messages="$errors->get('title')" class="mt-2"/></div>

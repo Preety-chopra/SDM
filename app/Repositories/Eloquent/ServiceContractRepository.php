@@ -33,14 +33,24 @@ final class ServiceContractRepository implements ServiceContractRepositoryInterf
 
     public function hasPublishedOverlap(ServiceContract $contract): bool
     {
+        $stationIds = $contract->stations()->pluck('stations.id');
+
+        if ($stationIds->isEmpty() && $contract->station_id !== null) {
+            $stationIds->push($contract->station_id);
+        }
+
         return ServiceContract::query()
             ->whereKeyNot($contract->id)
             ->where('status', 'published')
             ->where('contractor_id', $contract->contractor_id)
             ->where('service_type', $contract->service_type->value)
             ->where(fn (Builder $query): Builder => $query
-                ->where('station_id', $contract->station_id)
-                ->orWhereNull('station_id'))
+                ->whereHas('stations', fn (Builder $stationQuery): Builder => $stationQuery->whereIn('stations.id', $stationIds))
+                ->orWhere(fn (Builder $legacyQuery): Builder => $legacyQuery
+                    ->doesntHave('stations')
+                    ->where(fn (Builder $fallbackQuery): Builder => $fallbackQuery
+                        ->whereIn('station_id', $stationIds)
+                        ->orWhereNull('station_id'))))
             ->whereDate('effective_from', '<=', $contract->effective_to)
             ->whereDate('effective_to', '>=', $contract->effective_from)
             ->exists();
@@ -54,8 +64,12 @@ final class ServiceContractRepository implements ServiceContractRepositoryInterf
             ->where('service_type', $type->value)
             ->when($contractorId, fn ($query) => $query->where('contractor_id', $contractorId))
             ->when($stationId, fn (Builder $query) => $query->where(fn (Builder $locationQuery): Builder => $locationQuery
-                ->where('station_id', $stationId)
-                ->orWhereNull('station_id')))
+                ->whereHas('stations', fn (Builder $stationQuery): Builder => $stationQuery->whereKey($stationId))
+                ->orWhere(fn (Builder $legacyQuery): Builder => $legacyQuery
+                    ->doesntHave('stations')
+                    ->where(fn (Builder $fallbackQuery): Builder => $fallbackQuery
+                        ->where('station_id', $stationId)
+                        ->orWhereNull('station_id')))))
             ->orderBy('contract_number')
             ->get();
     }

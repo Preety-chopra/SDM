@@ -16,12 +16,12 @@
             <h1 id="station-manager-dashboard-heading" class="mt-1 text-2xl font-black tracking-tight text-gray-950 dark:text-white sm:text-3xl">Station Manager Dashboard</h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Track every SDM submitted to you, including pending reviews and memos forwarded to AM/Line.</p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex max-w-full flex-nowrap gap-2 overflow-x-auto xl:max-w-none xl:shrink-0">
             @can('create', \App\Models\ServiceDeficiencyMemo::class)
-                <a href="{{ route('sdm-memos.create') }}" class="inline-flex min-h-10 items-center justify-center rounded-xl border border-emerald-700 bg-white px-4 py-2 text-sm font-bold text-emerald-700 shadow-sm transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:bg-gray-800 dark:text-emerald-300 dark:hover:bg-emerald-950 dark:focus:ring-offset-gray-900">Create New SDM</a>
+                <a href="{{ route('sdm-memos.create') }}" class="inline-flex min-h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl border border-emerald-700 bg-white px-4 py-2 text-sm font-bold text-emerald-700 shadow-sm transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:bg-gray-800 dark:text-emerald-300 dark:hover:bg-emerald-950 dark:focus:ring-offset-gray-900">Create New SDM</a>
             @endcan
-            <a href="{{ route('sdm-memos.index') }}" class="inline-flex min-h-10 items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 shadow-sm transition hover:border-emerald-300 hover:text-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-emerald-700 dark:hover:text-emerald-300 dark:focus:ring-offset-gray-900">View All SDMs</a>
-            <a href="{{ route('sdm-memos.index', ['category' => 'pending']) }}" class="inline-flex min-h-10 items-center justify-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">Open pending queue</a>
+            <a href="{{ route('sdm-memos.index') }}" class="inline-flex min-h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 shadow-sm transition hover:border-emerald-300 hover:text-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-emerald-700 dark:hover:text-emerald-300 dark:focus:ring-offset-gray-900">View All SDMs</a>
+            <a href="{{ route('sdm-memos.index', ['category' => 'pending']) }}" class="inline-flex min-h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">Open pending queue</a>
         </div>
     </div>
 

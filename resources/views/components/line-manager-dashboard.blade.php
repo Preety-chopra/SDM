@@ -15,7 +15,7 @@
 <section aria-labelledby="line-manager-dashboard-heading" class="flex flex-col gap-6" x-data="lineManagerDashboardCharts(@js($chartConfig))">
     <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-            <p class="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">My line review portfolio</p>
+            {{-- <p class="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">My line review portfolio</p> --}}
             <h1 id="line-manager-dashboard-heading" class="mt-1 text-2xl font-black tracking-tight text-gray-950 dark:text-white sm:text-3xl">AM/Manager (Line) Dashboard</h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Track every SDM received for line review, including pending, forwarded, and cancelled cases.</p>
         </div>

@@ -89,12 +89,26 @@ class BulkMemoForwardingTest extends TestCase
             $cmcTeamSm,
             SdmType::Ticketing,
         );
+        $outsideDateRange = $this->memoAtAmStage(
+            'OUTSIDE-DATE-RANGE',
+            $amCmc,
+            WorkflowStepType::AmCmcToScrutiny,
+            $cmcTeamSm,
+            SdmType::Cfs,
+            '2026-09-25',
+        );
 
         $this->actingAs($amCmc)->post(route('sdm-memos.bulk-forward'), [
             'destination' => WorkflowStepType::AmCmcToScrutiny->value,
             'select_all' => '1',
             'service_type' => SdmType::Cfs->value,
-        ])->assertRedirect(route('sdm-memos.index', ['service_type' => SdmType::Cfs->value]))
+            'incident_date_from' => '2026-09-10',
+            'incident_date_to' => '2026-09-20',
+        ])->assertRedirect(route('sdm-memos.index', [
+            'service_type' => SdmType::Cfs->value,
+            'incident_date_from' => '2026-09-10',
+            'incident_date_to' => '2026-09-20',
+        ]))
             ->assertSessionHas('status', '17 SDMs forwarded to CMC Team SM for scrutiny.');
 
         $this->assertSame(
@@ -102,6 +116,7 @@ class BulkMemoForwardingTest extends TestCase
             ServiceDeficiencyMemo::query()->whereKey($matching->pluck('id'))->where('status', MemoStatus::CmcAssignment->value)->count(),
         );
         $this->assertSame(MemoStatus::AmCmcReview, $notMatching->fresh()->status);
+        $this->assertSame(MemoStatus::AmCmcReview, $outsideDateRange->fresh()->status);
     }
 
     public function test_select_all_without_filters_forwards_every_memo_at_the_selected_stage(): void
@@ -159,6 +174,7 @@ class BulkMemoForwardingTest extends TestCase
         WorkflowStepType $amStage,
         User $nextAssignee,
         SdmType $serviceType = SdmType::Cfs,
+        string $incidentDate = '2026-09-15',
     ): ServiceDeficiencyMemo {
         $memo = ServiceDeficiencyMemo::query()->create([
             'service_type' => $serviceType->value,
@@ -167,6 +183,7 @@ class BulkMemoForwardingTest extends TestCase
             'station_name' => $this->station->name,
             'line_code' => 'RED',
             'line_name' => 'Red Line',
+            'incident_date' => $incidentDate,
             'status' => MemoStatus::AmCmcReview->value,
             'workflow_version' => 2,
             'submitted_at' => now(),

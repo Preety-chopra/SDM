@@ -46,13 +46,13 @@ final class MasterDataService
 
     public function deleteLine(Line $line): void
     {
-        throw_if($line->stations()->exists(), ValidationException::withMessages(['line' => 'This line is assigned to one or more stations and cannot be deleted.']));
+        throw_if($line->stations()->exists() || $line->serviceContracts()->exists(), ValidationException::withMessages(['line' => 'This line is assigned to one or more stations or contracts and cannot be deleted.']));
         $line->delete();
     }
 
     public function deleteStation(Station $station): void
     {
-        throw_if($station->users()->exists() || $station->memos()->exists(), ValidationException::withMessages(['station' => 'This station is in use and cannot be deleted. Disable it instead.']));
+        throw_if($station->users()->exists() || $station->memos()->exists() || $station->serviceContracts()->exists(), ValidationException::withMessages(['station' => 'This station is in use and cannot be deleted. Disable it instead.']));
         $station->delete();
     }
 

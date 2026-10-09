@@ -76,7 +76,7 @@
             ])>
                 <p @class(['text-sm font-bold', 'text-white' => $metric['tone'] === 'emerald', 'text-gray-700 dark:text-gray-200' => $metric['tone'] !== 'emerald'])>{{ $metric['label'] }}</p>
                 <p @class(['mt-2 text-3xl font-black', 'text-white' => $metric['tone'] === 'emerald', 'text-gray-950 dark:text-white' => $metric['tone'] !== 'emerald'])>{{ $metric['count'] }}</p>
-                <p @class(['mt-3 text-xs font-medium', 'text-emerald-100' => $metric['tone'] === 'emerald', 'text-gray-500 dark:text-gray-400' => $metric['tone'] !== 'emerald'])>{{ round(($metric['count'] / $total) * 100, 1) }}% of selected total</p>
+                {{-- <p @class(['mt-3 text-xs font-medium', 'text-emerald-100' => $metric['tone'] === 'emerald', 'text-gray-500 dark:text-gray-400' => $metric['tone'] !== 'emerald'])>{{ round(($metric['count'] / $total) * 100, 1) }}% of selected total</p> --}}
             </article>
         @endforeach
     </div>

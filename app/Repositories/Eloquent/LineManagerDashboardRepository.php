@@ -76,6 +76,29 @@ final class LineManagerDashboardRepository implements LineManagerDashboardReposi
             ->get();
     }
 
+    public function pendingMemos(User $manager): Collection
+    {
+        return ServiceDeficiencyMemo::query()
+            ->select(['id', 'service_type', 'serial_number', 'is_urgent', 'station_name', 'submitted_at'])
+            ->where(function (Builder $query) use ($manager): void {
+                $query->whereHas('currentWorkflowStep', fn (Builder $query) => $query
+                    ->where('stage', WorkflowStepType::LineReview->value)
+                    ->where('assigned_to', $manager->id)
+                    ->where('decision', 'pending'))
+                    ->orWhere(function (Builder $query) use ($manager): void {
+                        $query->whereIn('status', [MemoStatus::Submitted->value, MemoStatus::UnderReview->value])
+                            ->whereHas('approvals', fn (Builder $query) => $query
+                                ->where('role', WorkflowStage::LineManager->value)
+                                ->where('assigned_to', $manager->id)
+                                ->where('decision', 'pending')
+                                ->whereColumn('memo_approvals.role', 'service_deficiency_memos.current_stage'));
+                    });
+            })
+            ->latest('submitted_at')
+            ->latest('id')
+            ->get();
+    }
+
     public function memosForLine(User $manager, string $lineCode, CarbonInterface $from, CarbonInterface $to, ?SdmType $serviceType, ?MemoStatus $status, int $limit): Collection
     {
         return $this->filteredQuery($manager, $from, $to, $serviceType, $status)

@@ -9,7 +9,6 @@ use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
 use App\Models\Contractor;
 use App\Models\Line;
-use App\Models\ReportingRelationship;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
 use App\Models\User;
@@ -151,7 +150,10 @@ class StationControllerMemoPortalTest extends TestCase
             'deficiency_remarks' => [DeficiencyType::Other->value => 'Test deficiency'],
         ])->assertRedirect(route('sdm-memos.index'));
 
-        $this->assertModelExists(ServiceDeficiencyMemo::query()->where('serial_number', 'NEW-SC-SDM')->sole());
+        $memo = ServiceDeficiencyMemo::query()->where('created_by', $controller->id)->sole();
+        $this->assertModelExists($memo);
+        $this->assertSame($stationManager->id, $memo->approvals()->where('role', WorkflowStage::StationManager->value)->value('assigned_to'));
+        $this->assertDatabaseCount('reporting_relationships', 0);
     }
 
     public function test_legacy_station_controller_role_receives_the_same_restricted_portal(): void
@@ -183,9 +185,6 @@ class StationControllerMemoPortalTest extends TestCase
         $operationsManager->assignRole(UserRole::ManagerOperations->value);
         $dgm = User::factory()->create();
         $dgm->assignRole(UserRole::DeputyGeneralManager->value);
-        ReportingRelationship::query()->create(['subordinate_id' => $stationManager->id, 'supervisor_id' => $lineManager->id]);
-        ReportingRelationship::query()->create(['subordinate_id' => $lineManager->id, 'supervisor_id' => $operationsManager->id]);
-        ReportingRelationship::query()->create(['subordinate_id' => $operationsManager->id, 'supervisor_id' => $dgm->id]);
 
         return [$controller, $line, $station, $stationManager];
     }

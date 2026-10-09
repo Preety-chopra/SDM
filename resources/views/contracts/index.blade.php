@@ -22,7 +22,7 @@
                     </div>
                     <div><p class="text-xs uppercase text-gray-500">Service</p><p class="font-medium dark:text-white">{{ $contract->service_type->code() }}</p></div>
                     <div><p class="text-xs uppercase text-gray-500">Contractor</p><p class="font-medium dark:text-white">{{ $contract->contractor->name }}</p></div>
-                    <div class="md:col-span-2"><p class="text-xs uppercase text-gray-500">Contract Tenure</p><p class="whitespace-nowrap font-medium dark:text-white">{{ $contract->effective_from->format('d-m-Y') }} to {{ $contract->effective_to->format('d-m-Y') }}</p></div>
+                    <div class="md:col-span-2"><p class="text-xs uppercase text-gray-500">Contract Tenure</p><p class="whitespace-nowrap font-medium dark:text-white">{{ $contract->effective_from->format('d-m-Y') }} – {{ $contract->effective_to->format('d-m-Y') }}</p></div>
                     <div><p class="text-xs uppercase text-gray-500">Version</p><p class="font-medium dark:text-white">{{ $contract->version }}</p></div>
                     <div><span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold {{ $contract->status === 'published' ? 'bg-emerald-100 text-emerald-800' : ($contract->status === 'retired' ? 'bg-gray-100 text-gray-700' : 'bg-amber-100 text-amber-800') }}">{{ str($contract->status)->headline() }}</span></div>
                 </a>

@@ -48,7 +48,7 @@ class ServiceContractController extends Controller
     public function show(ServiceContract $contract): View
     {
         Gate::authorize('view', $contract);
-        $contract->load(['contractor', 'line', 'station', 'penaltyClauses'])->loadCount('memos');
+        $contract->load(['contractor', 'lines', 'stations', 'penaltyClauses'])->loadCount('memos');
 
         return view('contracts.show', ['contract' => $contract]);
     }
@@ -56,7 +56,7 @@ class ServiceContractController extends Controller
     public function edit(ServiceContract $contract): View
     {
         Gate::authorize('update', $contract);
-        $contract->load('penaltyClauses');
+        $contract->load(['lines', 'stations', 'penaltyClauses']);
 
         return $this->formView($contract, $contract->service_type);
     }

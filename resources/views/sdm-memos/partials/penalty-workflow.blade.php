@@ -1,6 +1,7 @@
 @php
     $currentStep = $memo->currentWorkflowStep;
     $assignmentStage = $currentStep?->stage === \App\Enums\WorkflowStepType::CmcAssignment;
+    $lineReviewStage = $currentStep?->stage === \App\Enums\WorkflowStepType::LineReview;
     $assessmentStage = in_array($currentStep?->stage, [\App\Enums\WorkflowStepType::LineReview, \App\Enums\WorkflowStepType::CmcAssessment], true);
     $cmcStage = $currentStep?->stage === \App\Enums\WorkflowStepType::CmcAssessment;
     $dgmStage = $currentStep?->stage === \App\Enums\WorkflowStepType::DgmApproval;
@@ -16,6 +17,11 @@
     $selectedClauseIds = is_array($oldAssessmentItems)
         ? collect($oldAssessmentItems)->pluck('contract_penalty_clause_id')->filter()->map(fn ($id) => (string) $id)->values()
         : $prefillAssessmentItems->keys()->map(fn ($id) => (string) $id)->values();
+    $previousCmcAssessment = $memo->assessments->last(
+        fn ($assessment) => $assessment->source_stage === \App\Enums\WorkflowStepType::CmcAssessment->value
+            && $assessment->negative_points !== null,
+    );
+    $negativePointsPrefill = $previousCmcAssessment?->negative_points ?? $cmcNegativePointsPrefill;
     $inputClass = 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100';
     $remarksLabel = match ($currentStep?->stage) {
         \App\Enums\WorkflowStepType::DgmApproval => 'Remarks (mandatory when returning or cancelling)',
@@ -72,6 +78,7 @@
             @endforeach
         </div>
     @else<p class="mt-4 text-sm text-gray-500">No penalty proposal has been recorded yet.</p>@endif
+    @if($showCmcStaffDetails)
     <div class="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
         <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Memo CMC Staff</p>
         <p class="mt-1 font-semibold text-gray-950 dark:text-white">{{ $memo->cmcStaff?->name ?? 'Not assigned yet' }}</p>
@@ -94,19 +101,22 @@
             </form>
         @endcan
     </div>
+    @endif
 </section>
 @endif
 
-<section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-    <h3 class="font-semibold text-gray-900 dark:text-white">Case timeline</h3>
-    <p class="text-sm text-gray-500 dark:text-gray-400">Follow the case through the approval levels available to you.</p>
-    <div class="mt-6 flex flex-col gap-8">
+<section class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-5">
+    <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 class="font-semibold text-gray-900 dark:text-white">Case timeline</h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400">Approval levels available to you</p>
+    </div>
+    <div class="mt-4 flex flex-col gap-4">
         @foreach($timelineSteps->groupBy('round') as $round => $roundSteps)
             <div>
                 @if(!$loop->first)
-                    <div class="mb-5 flex items-center gap-3"><span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span><h4 class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Reassessment cycle {{ $loop->iteration - 1 }}</h4><span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span></div>
+                    <div class="mb-3 flex items-center gap-2"><span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span><h4 class="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Reassessment cycle {{ $loop->iteration - 1 }}</h4><span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span></div>
                 @endif
-                <ol class="mx-auto flex max-w-3xl flex-col items-stretch">
+                <ol class="flex flex-col gap-2 border-l-2 border-gray-200 pl-3 dark:border-gray-700">
                     @foreach($roundSteps as $step)
                         @php
                             $isCurrent = $step->id === $memo->current_workflow_step_id;
@@ -138,24 +148,23 @@
                                 default => 'Waiting',
                             };
                         @endphp
-                        @if(!$loop->first)
-                            <li aria-hidden="true" class="flex h-10 flex-col items-center justify-center">
-                                <span class="h-6 w-0.5 {{ $timelineState === 'waiting' ? 'bg-gray-200 dark:bg-gray-700' : 'bg-emerald-300 dark:bg-emerald-800' }}"></span>
-                                <svg class="h-4 w-4 {{ $timelineState === 'waiting' ? 'text-gray-300 dark:text-gray-600' : 'text-emerald-500 dark:text-emerald-600' }}" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.22 7.22a.75.75 0 0 1 1.06 0L10 10.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
-                            </li>
-                        @endif
-                        <li data-timeline-state="{{ $timelineState }}" class="rounded-2xl border p-4 shadow-sm sm:p-5 {{ $tileClasses }}">
-                            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                <div class="flex min-w-0 items-start gap-3">
-                                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full {{ $timelineState === 'forwarded' ? 'bg-emerald-600 text-white' : ($timelineState === 'current' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300') }}">
-                                        @if($timelineState === 'forwarded')<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.051l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.142Z" clip-rule="evenodd"/></svg>@elseif($timelineState === 'current')<span class="h-3 w-3 rounded-full bg-white"></span>@else<span class="text-sm font-bold">{{ str_pad((string) $step->sequence, 2, '0', STR_PAD_LEFT) }}</span>@endif
-                                    </span>
-                                    <div><h5 class="font-semibold text-gray-950 dark:text-white">{{ $step->stage->label() }}</h5><p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Assigned to <strong>{{ $step->assigned_name }}</strong>@if($step->assigned_employee_number) · {{ $step->assigned_employee_number }}@endif</p></div>
+                        <li data-timeline-state="{{ $timelineState }}" class="relative rounded-xl border p-3 {{ $tileClasses }}">
+                            <div class="flex items-start gap-2.5">
+                                <span class="-ml-[1.42rem] mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ring-4 ring-white dark:ring-gray-800 {{ $timelineState === 'forwarded' ? 'bg-emerald-600 text-white' : ($timelineState === 'current' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300') }}">
+                                    @if($timelineState === 'forwarded')<svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.051l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.142Z" clip-rule="evenodd"/></svg>@elseif($timelineState === 'current')<span class="h-2.5 w-2.5 rounded-full bg-white"></span>@else<span class="text-xs font-bold">{{ str_pad((string) $step->sequence, 2, '0', STR_PAD_LEFT) }}</span>@endif
+                                </span>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                                        <div class="min-w-0">
+                                            <h5 class="text-sm font-semibold leading-5 text-gray-950 dark:text-white">{{ $step->stage->label() }}</h5>
+                                            <p class="text-xs leading-5 text-gray-600 dark:text-gray-300">Assigned to <strong>{{ $step->assigned_name }}</strong>@if($step->assigned_employee_number) · {{ $step->assigned_employee_number }}@endif</p>
+                                        </div>
+                                        <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide {{ $statusClasses }}">{{ $statusLabel }}</span>
+                                    </div>
+                                    @if($step->acted_at)<p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ $statusLabel }} by {{ $step->actor_name }} on {{ $step->acted_at->format('d-m-Y H:i') }}</p>@endif
+                                    @if($step->remarks)<p class="mt-1.5 whitespace-pre-line rounded-md bg-white/60 px-2.5 py-1.5 text-xs leading-5 text-gray-700 dark:bg-black/10 dark:text-gray-200">{{ $step->remarks }}</p>@endif
                                 </div>
-                                <span class="self-start rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide {{ $statusClasses }}">{{ $statusLabel }}</span>
                             </div>
-                            @if($step->acted_at)<p class="mt-3 border-t border-black/5 pt-3 text-xs text-gray-500 dark:border-white/10 dark:text-gray-400">{{ $statusLabel }} by {{ $step->actor_name }} on {{ $step->acted_at->format('d-m-Y H:i') }}</p>@endif
-                            @if($step->remarks)<p class="mt-2 whitespace-pre-line rounded-lg bg-white/60 p-3 text-sm text-gray-700 dark:bg-black/10 dark:text-gray-200">{{ $step->remarks }}</p>@endif
                         </li>
                     @endforeach
                 </ol>
@@ -169,10 +178,11 @@
 @endif
 
 @can('act', $memo)
-    <section class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 dark:border-emerald-900 dark:bg-emerald-950/40" @if($assessmentStage) x-data='{ selectedClauses: @json($selectedClauseIds) }' @endif>
+    <section class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 dark:border-emerald-900 dark:bg-emerald-950/40" @if($assessmentStage) x-data='{ selectedClauses: @json($selectedClauseIds), showAllClauses: false }' @endif>
         <h3 class="font-semibold text-emerald-950 dark:text-emerald-100">Action required: {{ $currentStep->stage->label() }}</h3>
         <form
             method="POST"
+            enctype="multipart/form-data"
             action="{{ route('sdm-memos.workflow.store', $memo) }}"
             class="mt-4 flex flex-col gap-5"
             x-data="sdmActionForm"
@@ -196,12 +206,18 @@
             @if($assessmentStage)
                 <div class="flex flex-col gap-3">
                     <x-input-label value="Select and assess contractual clauses" required/>
-                    @if($currentStep->stage === \App\Enums\WorkflowStepType::LineReview)
+                    @if($lineReviewStage)
                         <p class="text-sm text-emerald-800 dark:text-emerald-200">Penalties matching the recorded deficiencies are pre-selected. You may add or remove clauses before forwarding.</p>
                     @endif
                     @foreach($memo->serviceContract->penaltyClauses as $index => $clause)
                         @php($prefillItem = $prefillAssessmentItems->get($clause->id))
-                        <article class="rounded-xl border border-emerald-200 bg-white p-4 dark:border-emerald-900 dark:bg-gray-900">
+                        <article
+                            class="rounded-xl border border-emerald-200 bg-white p-4 dark:border-emerald-900 dark:bg-gray-900"
+                            @if($assessmentStage)
+                                x-cloak
+                                x-show="showAllClauses || selectedClauses.includes('{{ $clause->id }}')"
+                            @endif
+                        >
                             <label class="flex items-start gap-3"><input type="checkbox" value="{{ $clause->id }}" x-model="selectedClauses" class="mt-1 rounded border-gray-300 text-emerald-700"><span><strong>{{ $clause->serial_number }}. {{ $clause->description }}</strong><span class="mt-1 block text-xs text-gray-500">{{ $clause->calculation_type->label() }}@if($clause->maximum_amount) · maximum ₹{{ number_format((float) $clause->maximum_amount, 2) }}@elseif($clause->base_amount) · base ₹{{ number_format((float) $clause->base_amount, 2) }}@endif</span></span></label>
                             <div class="mt-3 grid gap-3 md:grid-cols-3" x-show="selectedClauses.includes('{{ $clause->id }}')">
                                 <input type="hidden" name="items[{{ $index }}][contract_penalty_clause_id]" value="{{ $clause->id }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')">
@@ -216,10 +232,26 @@
                             </div>
                         </article>
                     @endforeach
+                    @if($assessmentStage)
+                        <button
+                            type="button"
+                            x-cloak
+                            x-show="! showAllClauses"
+                            @click="showAllClauses = true"
+                            :aria-expanded="showAllClauses"
+                            class="self-start rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-emerald-500 dark:text-emerald-200 dark:hover:bg-emerald-900/50 dark:focus:ring-offset-emerald-950"
+                        >{{ $cmcStage ? 'Add more deficiencies' : 'Add more deficiency' }}</button>
+                    @endif
                 </div>
             @endif
             @if($cmcStage)
-                <div class="grid gap-4 md:grid-cols-2"><div><x-input-label value="Negative points" required/><input name="negative_points" type="number" min="0" class="{{ $inputClass }}" required></div><div><x-input-label value="Staff action" required/><select name="staff_action" class="{{ $inputClass }}" required>@foreach(['none','warning','final_warning','recall'] as $action)<option value="{{ $action }}">{{ str($action)->headline() }}</option>@endforeach</select></div><div><x-input-label value="Bill month" required/><input name="bill_month" type="month" class="{{ $inputClass }}" required></div><div><x-input-label value="Monthly bill value" required/><input name="monthly_bill_value" type="number" min="0.01" step="0.01" class="{{ $inputClass }}" required></div></div>
+                <div class="grid gap-4 md:grid-cols-2"><div><x-input-label value="Negative points" required/><input name="negative_points" type="number" min="0" value="{{ old('negative_points', $negativePointsPrefill) }}" class="{{ $inputClass }}" required></div><div><x-input-label value="Staff action" required/><select name="staff_action" class="{{ $inputClass }}" required>@foreach(['warning','final_warning','recall'] as $action)<option value="{{ $action }}">{{ str($action)->headline() }}</option>@endforeach</select></div></div>
+                <div>
+                    <x-input-label for="assessment_pdf" value="Assessment PDF (optional)"/>
+                    <input id="assessment_pdf" name="assessment_pdf" type="file" accept=".pdf,application/pdf" class="{{ $inputClass }} p-2">
+                    <p class="mt-1 text-xs text-emerald-800 dark:text-emerald-200">PDF only, up to 10 MB.</p>
+                    <x-input-error :messages="$errors->get('assessment_pdf')" class="mt-2"/>
+                </div>
             @endif
             @unless($assignmentStage)<div><x-input-label :value="$remarksLabel" :required="$dgmStage"/><textarea name="remarks" rows="3" class="{{ $inputClass }}"></textarea><x-input-error :messages="$errors->get('remarks')" class="mt-2"/></div>@endunless
             @if($currentStep->stage === \App\Enums\WorkflowStepType::StationManager)
@@ -237,6 +269,7 @@
             <div class="flex flex-wrap justify-end gap-3">
                 @if($assignmentStage)
                     <button name="action" value="assign" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Assign for scrutiny</button>
+                    <button name="action" value="verify" formnovalidate class="rounded-lg border border-emerald-700 bg-white px-5 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:bg-gray-900 dark:text-emerald-200 dark:hover:bg-emerald-900/50 dark:focus:ring-offset-emerald-950">Verify this SDM directly</button>
                 @elseif($dgmStage)
                     <button name="action" value="return" class="rounded-lg border border-amber-600 px-5 py-2.5 text-sm font-semibold text-amber-800 dark:text-amber-300">Return to CMC</button>
                     <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel</button>
@@ -245,6 +278,7 @@
                     <button name="action" value="forward" data-sdm-confirm data-confirmation-action="Forward SDM" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Verify and forward</button>
                     @if($currentStep->stage === \App\Enums\WorkflowStepType::StationManager)
                         <button name="action" value="request_cancellation" data-sdm-confirm data-confirmation-action="Request cancellation" class="rounded-lg border border-rose-600 px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500 dark:text-rose-300 dark:hover:bg-rose-950/40">Request for cancellation</button>
+                        <x-memo-station-manager-actions :memo="$memo" />
                     @elseif($currentStep->stage === \App\Enums\WorkflowStepType::LineReview)
                         <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel SDM</button>
                     @endif
@@ -252,6 +286,20 @@
             </div>
             <x-sdm-confirmation-preview />
         </form>
+        @if($currentStep->stage === \App\Enums\WorkflowStepType::StationManager)
+            @can('reassignStationManager', $memo)
+                <x-memo-handover-dialog
+                    :modal-name="'handover-station-manager-'.$memo->id"
+                    title="Handover pending SDM"
+                    description="Select another active Station Manager to take over this pending SDM."
+                    :action="route('sdm-memos.station-manager.update', $memo)"
+                    field-name="station_manager_employee_number"
+                    field-label="Handover to SM employee number"
+                    :candidates="$stationManagerCandidates"
+                    :show-trigger="false"
+                />
+            @endcan
+        @endif
     </section>
 @endcan
 

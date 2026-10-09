@@ -31,6 +31,12 @@ class BulkForwardMemosRequest extends FormRequest
             'station_id' => ['nullable', 'integer', Rule::exists('stations', 'id')],
             'line_code' => ['nullable', 'string', Rule::exists('lines', 'code')],
             'incident_date' => ['nullable', 'date_format:Y-m-d'],
+            'incident_date_from' => ['nullable', 'date_format:Y-m-d'],
+            'incident_date_to' => [
+                'nullable',
+                'date_format:Y-m-d',
+                Rule::when($this->filled('incident_date_from'), ['after_or_equal:incident_date_from']),
+            ],
             'status' => ['nullable', Rule::enum(MemoStatus::class)],
         ];
     }
@@ -55,7 +61,15 @@ class BulkForwardMemosRequest extends FormRequest
     public function filters(): array
     {
         return array_filter(
-            $this->safe()->only(['service_type', 'station_id', 'line_code', 'incident_date', 'status']),
+            $this->safe()->only([
+                'service_type',
+                'station_id',
+                'line_code',
+                'incident_date',
+                'incident_date_from',
+                'incident_date_to',
+                'status',
+            ]),
             fn (mixed $value): bool => filled($value),
         );
     }

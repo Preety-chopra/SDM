@@ -70,6 +70,30 @@ class SdmMemoStatusFilterTest extends TestCase
         }
     }
 
+    public function test_transferred_memos_tab_is_hidden_for_downstream_cmc_roles_only(): void
+    {
+        foreach ([
+            UserRole::ManagerOperations,
+            UserRole::CmcTeamLead,
+            UserRole::CmcStaff,
+            UserRole::DeputyGeneralManager,
+        ] as $role) {
+            $this->actingAs($this->user($role))
+                ->get(route('sdm-memos.index'))
+                ->assertOk()
+                ->assertSee('All Memos')
+                ->assertSee('Pending Memos')
+                ->assertDontSee('Transferred Memos');
+        }
+
+        foreach ([UserRole::StationManager, UserRole::AssistantManager] as $role) {
+            $this->actingAs($this->user($role))
+                ->get(route('sdm-memos.index'))
+                ->assertOk()
+                ->assertSee('Transferred Memos');
+        }
+    }
+
     private function user(UserRole $role): User
     {
         $user = User::factory()->create();

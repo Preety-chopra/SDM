@@ -23,15 +23,6 @@ final class StationHierarchyRepository implements StationHierarchyRepositoryInte
             ->get(['id', 'name', 'employee_number']);
     }
 
-    public function findEnabledUserForRoleByEmployeeNumber(UserRole $role, string $employeeNumber): ?User
-    {
-        return User::query()
-            ->role($role->value)
-            ->where('employee_number', $employeeNumber)
-            ->where('is_enabled', true)
-            ->first();
-    }
-
     public function reportingRelationships(): Collection
     {
         return ReportingRelationship::query()
@@ -51,15 +42,6 @@ final class StationHierarchyRepository implements StationHierarchyRepositoryInte
             ['subordinate_id' => $subordinate->id],
             ['supervisor_id' => $supervisor->id],
         );
-    }
-
-    public function findSupervisorFor(User $subordinate): ?User
-    {
-        return ReportingRelationship::query()
-            ->with('supervisor.roles')
-            ->whereBelongsTo($subordinate, 'subordinate')
-            ->first()
-            ?->supervisor;
     }
 
     public function userHasPendingApproval(User $user): bool

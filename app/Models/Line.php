@@ -6,6 +6,7 @@ use App\Support\LineColorPalette;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable(['code', 'name', 'is_active'])]
@@ -25,6 +26,11 @@ class Line extends Model
     public function stations(): HasMany
     {
         return $this->hasMany(Station::class);
+    }
+
+    public function serviceContracts(): BelongsToMany
+    {
+        return $this->belongsToMany(ServiceContract::class, 'service_contract_line');
     }
 
     protected function casts(): array

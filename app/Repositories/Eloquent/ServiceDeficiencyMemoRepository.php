@@ -45,10 +45,16 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
         return ServiceDeficiencyMemo::query()
             ->select(['id', 'service_type', 'serial_number', 'is_urgent', 'station_name', 'line_name', 'incident_date', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'cmc_staff_id', 'created_by', 'submitted_at', 'created_at', 'updated_at'])
             ->with($relations)
+            ->where(function (Builder $query) use ($user): void {
+                $query->where('status', '!=', MemoStatus::Draft->value)
+                    ->orWhere('created_by', $user->id);
+            })
             ->when($filters['service_type'] ?? null, fn ($query, $serviceType) => $query->where('service_type', $serviceType))
             ->when($filters['station_id'] ?? null, fn ($query, $stationId) => $query->where('station_id', $stationId))
             ->when($filters['line_code'] ?? null, fn ($query, $lineCode) => $query->where('line_code', $lineCode))
             ->when($filters['incident_date'] ?? null, fn ($query, $incidentDate) => $query->whereDate('incident_date', $incidentDate))
+            ->when($filters['incident_date_from'] ?? null, fn ($query, $incidentDateFrom) => $query->whereDate('incident_date', '>=', $incidentDateFrom))
+            ->when($filters['incident_date_to'] ?? null, fn ($query, $incidentDateTo) => $query->whereDate('incident_date', '<=', $incidentDateTo))
             ->when(! $isStationManager && $statusFilter, fn (Builder $query) => $query->where('status', $statusFilter))
             ->when($isStationManager && $statusFilter, fn (Builder $query) => $this->scopeToStationManagerStatus($query, $user, StationManagerMemoStatus::from($statusFilter)))
             ->when($pendingStage, fn ($query) => $query
@@ -71,6 +77,8 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
             ->when($filters['station_id'] ?? null, fn (Builder $query, int|string $stationId) => $query->where('station_id', $stationId))
             ->when($filters['line_code'] ?? null, fn (Builder $query, string $lineCode) => $query->where('line_code', $lineCode))
             ->when($filters['incident_date'] ?? null, fn (Builder $query, string $incidentDate) => $query->whereDate('incident_date', $incidentDate))
+            ->when($filters['incident_date_from'] ?? null, fn (Builder $query, string $incidentDateFrom) => $query->whereDate('incident_date', '>=', $incidentDateFrom))
+            ->when($filters['incident_date_to'] ?? null, fn (Builder $query, string $incidentDateTo) => $query->whereDate('incident_date', '<=', $incidentDateTo))
             ->when($filters['status'] ?? null, fn (Builder $query, string $status) => $query->where('status', $status))
             ->where('workflow_version', '>=', 2)
             ->whereHas('currentWorkflowStep', fn (Builder $query) => $query

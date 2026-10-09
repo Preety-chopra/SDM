@@ -142,7 +142,13 @@ abstract class MemoRequest extends FormRequest
                     ->where('status', 'published')
                     ->where('contractor_id', $this->integer('contractor_id'))
                     ->where('service_type', $this->string('service_type')->toString())
-                    ->where(fn ($query) => $query->where('station_id', $stationId)->orWhereNull('station_id'))
+                    ->where(fn ($query) => $query
+                        ->whereHas('stations', fn ($stationQuery) => $stationQuery->whereKey($stationId))
+                        ->orWhere(fn ($legacyQuery) => $legacyQuery
+                            ->doesntHave('stations')
+                            ->where(fn ($fallbackQuery) => $fallbackQuery
+                                ->where('station_id', $stationId)
+                                ->orWhereNull('station_id'))))
                     ->whereDate('effective_from', '<=', $incidentDate)
                     ->whereDate('effective_to', '>=', $incidentDate)
                     ->count();

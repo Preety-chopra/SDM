@@ -10,7 +10,6 @@ use App\Models\Contractor;
 use App\Models\Line;
 use App\Models\Station;
 use App\Models\User;
-use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -26,14 +25,10 @@ abstract class ServiceContractRequest extends FormRequest
     {
         return [
             'contractor_id' => ['required', Rule::exists(Contractor::class, 'id')->where('is_active', true)],
-            'line_id' => ['required', 'integer', Rule::exists(Line::class, 'id')->where('is_active', true)],
-            'station_id' => [
-                'required',
-                'integer',
-                Rule::exists(Station::class, 'id')->where(fn (Builder $query) => $query
-                    ->where('is_active', true)
-                    ->where('line_id', $this->input('line_id'))),
-            ],
+            'line_ids' => ['required', 'array', 'min:1'],
+            'line_ids.*' => ['required', 'integer', 'distinct', Rule::exists(Line::class, 'id')->where('is_active', true)],
+            'station_ids' => ['required', 'array', 'min:1'],
+            'station_ids.*' => ['required', 'integer', 'distinct', Rule::exists(Station::class, 'id')->where('is_active', true)],
             'service_type' => ['required', Rule::enum(SdmType::class)],
             'contract_number' => ['required', 'string', 'max:100'],
             'title' => ['required', 'string', 'max:255'],
@@ -57,6 +52,24 @@ abstract class ServiceContractRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
+                $lineIds = $this->collect('line_ids')->map(fn (mixed $id): int => (int) $id)->unique();
+                $stationIds = $this->collect('station_ids')->map(fn (mixed $id): int => (int) $id)->unique();
+
+                if ($lineIds->isNotEmpty() && $stationIds->isNotEmpty()) {
+                    $stationLineIds = Station::query()
+                        ->whereKey($stationIds)
+                        ->pluck('line_id')
+                        ->unique();
+
+                    if ($stationLineIds->diff($lineIds)->isNotEmpty()) {
+                        $validator->errors()->add('station_ids', 'Every selected station must belong to one of the selected lines.');
+                    }
+
+                    if ($lineIds->diff($stationLineIds)->isNotEmpty()) {
+                        $validator->errors()->add('line_ids', 'Select at least one station for every selected line.');
+                    }
+                }
+
                 if (! $this->filled('cmc_staff_id')) {
                     return;
                 }
