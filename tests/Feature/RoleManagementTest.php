@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\UserPermission;
 use App\Enums\UserRole;
+use App\Models\AuditLog;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,6 +33,12 @@ class RoleManagementTest extends TestCase
             'name' => 'auditor',
             'permissions' => [],
         ])->assertForbidden();
+
+        $customRole = Role::findOrCreate('auditor');
+
+        $this->actingAs($stationUser)
+            ->delete(route('roles.destroy', $customRole))
+            ->assertForbidden();
     }
 
     public function test_administrator_can_create_a_role_with_existing_and_new_permissions(): void
@@ -73,6 +80,63 @@ class RoleManagementTest extends TestCase
         ], $role->permissions->pluck('name')->all());
     }
 
+    public function test_roles_page_displays_friendly_permission_labels_and_delete_controls(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $role = Role::findOrCreate('quality_auditor');
+        $role->givePermissionTo([
+            UserPermission::ViewAllMemos->value,
+            Permission::findOrCreate('reports.view'),
+        ]);
+
+        $this->actingAs($administrator)
+            ->get(route('roles.index'))
+            ->assertOk()
+            ->assertSee('View all SDM memos')
+            ->assertSee('View reports')
+            ->assertDontSee(UserPermission::ViewAllMemos->value)
+            ->assertDontSee('reports.view')
+            ->assertSee(route('roles.destroy', $role), false)
+            ->assertSee('Delete role');
+    }
+
+    public function test_administrator_can_delete_an_unused_role_and_the_action_is_audited(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $role = Role::findOrCreate('temporary_auditor');
+        $role->givePermissionTo(UserPermission::ViewAllMemos->value);
+
+        $this->actingAs($administrator)
+            ->delete(route('roles.destroy', $role))
+            ->assertRedirect(route('roles.index'))
+            ->assertSessionHas('status', 'Temporary Auditor was deleted successfully.');
+
+        $this->assertModelMissing($role);
+        $this->assertDatabaseHas((new AuditLog)->getTable(), [
+            'event' => 'role.deleted',
+            'auditable_type' => $role->getMorphClass(),
+            'auditable_id' => $role->id,
+            'actor_id' => $administrator->id,
+        ]);
+    }
+
+    public function test_administrator_cannot_delete_a_role_that_is_assigned_to_users(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $assignedUser = User::factory()->create();
+        $role = Role::findOrCreate('assigned_auditor');
+        $assignedUser->assignRole($role);
+
+        $this->actingAs($administrator)
+            ->delete(route('roles.destroy', $role))
+            ->assertRedirect()
+            ->assertSessionHasErrors([
+                'role' => 'Remove all users from this role before deleting it.',
+            ]);
+
+        $this->assertModelExists($role);
+    }
+
     public function test_administrator_role_cannot_be_modified(): void
     {
         $administrator = $this->userWithRole(UserRole::Administrator);
@@ -86,6 +150,10 @@ class RoleManagementTest extends TestCase
             'name' => 'renamed_administrator',
             'permissions' => [],
         ])->assertForbidden();
+
+        $this->actingAs($administrator)
+            ->delete(route('roles.destroy', $administratorRole))
+            ->assertForbidden();
     }
 
     public function test_custom_role_is_available_when_creating_and_browsing_users(): void

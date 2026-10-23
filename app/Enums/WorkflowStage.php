@@ -14,7 +14,7 @@ enum WorkflowStage: string
         return match ($this) {
             self::StationManager => 'Station Manager',
             self::LineManager => 'Manager/Assistant Manager (O)-Line',
-            self::OperationsManager => 'Manager (Operations)',
+            self::OperationsManager => 'Manager CMC',
             self::DeputyGeneralManager => 'DGM/O',
         };
     }

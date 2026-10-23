@@ -29,6 +29,13 @@ class ServiceDeficiencyMemoPolicy
             && $user->can(UserPermission::ActOnRoutedMemos->value);
     }
 
+    public function bulkCmcAction(User $user): bool
+    {
+        return $user->is_enabled
+            && $user->hasRole(UserRole::CmcTeamLead->value)
+            && $user->can(UserPermission::ActOnRoutedMemos->value);
+    }
+
     public function view(User $user, ServiceDeficiencyMemo $memo): bool
     {
         if ($memo->status === MemoStatus::Draft) {
@@ -98,6 +105,24 @@ class ServiceDeficiencyMemoPolicy
             && $memo->workflow_version >= 2
             && $memo->cmc_staff_id !== null
             && ! in_array($memo->status, [MemoStatus::Closed, MemoStatus::Cancelled], true);
+    }
+
+    public function reassignCmcTeamLead(User $user, ServiceDeficiencyMemo $memo): bool
+    {
+        if (! $user->is_enabled
+            || ! $user->hasRole(UserRole::ManagerOperations->value)
+            || ! $user->can(UserPermission::ActOnRoutedMemos->value)
+            || $memo->status !== MemoStatus::CmcAssignment
+            || $memo->currentWorkflowStep?->stage !== WorkflowStepType::CmcAssignment
+            || $memo->currentWorkflowStep?->decision !== 'pending') {
+            return false;
+        }
+
+        return $memo->workflowSteps()
+            ->where('stage', WorkflowStepType::AmCmcToScrutiny->value)
+            ->where('decision', 'forwarded')
+            ->where('acted_by', $user->id)
+            ->exists();
     }
 
     public function reassignStationManager(User $user, ServiceDeficiencyMemo $memo): bool

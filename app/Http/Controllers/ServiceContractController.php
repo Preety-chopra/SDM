@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateServiceContractRequest;
 use App\Models\ServiceContract;
 use App\Services\MasterDataService;
 use App\Services\ServiceContractService;
+use App\Support\CashMismatchPenalty;
 use App\Support\PenaltyClauseTemplates;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -119,9 +120,12 @@ class ServiceContractController extends Controller
             'serviceType' => $serviceType,
             'serviceTypes' => SdmType::cases(),
             'contractors' => $this->masterData->contractors(true),
-            'lines' => $this->masterData->lines(true),
+            'lines' => $this->masterData->lines(true)
+                ->sortBy('code', SORT_NATURAL | SORT_FLAG_CASE)
+                ->values(),
             'stations' => $stations,
-            'clauses' => $contract?->penaltyClauses?->map->getAttributes()->all() ?? PenaltyClauseTemplates::for($serviceType),
+            'clauses' => $contract?->penaltyClauses?->map->toArray()->all() ?? PenaltyClauseTemplates::for($serviceType),
+            'cashMismatchBands' => CashMismatchPenalty::bands(),
         ]);
     }
 }

@@ -4,6 +4,8 @@
     $lineReviewStage = $currentStep?->stage === \App\Enums\WorkflowStepType::LineReview;
     $assessmentStage = in_array($currentStep?->stage, [\App\Enums\WorkflowStepType::LineReview, \App\Enums\WorkflowStepType::CmcAssessment], true);
     $cmcStage = $currentStep?->stage === \App\Enums\WorkflowStepType::CmcAssessment;
+    $cmcVerificationStage = $currentStep?->stage === \App\Enums\WorkflowStepType::CmcVerification;
+    $amCmcToDgmStage = $currentStep?->stage === \App\Enums\WorkflowStepType::AmCmcToDgm;
     $dgmStage = $currentStep?->stage === \App\Enums\WorkflowStepType::DgmApproval;
     $latestAssessment = $memo->assessments->last();
     $approvedAssessment = $memo->assessments->last(fn ($assessment) => $assessment->status === 'approved');
@@ -26,7 +28,9 @@
     $remarksLabel = match ($currentStep?->stage) {
         \App\Enums\WorkflowStepType::DgmApproval => 'Remarks (mandatory when returning or cancelling)',
         \App\Enums\WorkflowStepType::StationManager => 'Remarks / cancellation request to AM (optional)',
-        \App\Enums\WorkflowStepType::LineReview => 'Remarks (mandatory for cancellation)',
+        \App\Enums\WorkflowStepType::LineReview => 'Counselling remarks (mandatory for cancellation)',
+        \App\Enums\WorkflowStepType::CmcVerification => 'Remarks (mandatory when reverting for rechecking)',
+        \App\Enums\WorkflowStepType::AmCmcToDgm => 'Remarks (mandatory when reverting for rechecking)',
         default => 'Remarks',
     };
     $isStationManagerConfirmation = $currentStep?->stage === \App\Enums\WorkflowStepType::StationManager;
@@ -44,6 +48,7 @@
         ? []
         : [
             ['label' => 'Forward to', 'name' => 'forward_to_employee_number'],
+            ['label' => 'Total proposed amount', 'name' => 'proposed_total'],
             ['label' => 'Negative points', 'name' => 'negative_points'],
             ['label' => 'Staff action', 'name' => 'staff_action'],
             ['label' => 'Bill month', 'name' => 'bill_month'],
@@ -105,11 +110,19 @@
 </section>
 @endif
 
-<section class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-5">
-    <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h3 class="font-semibold text-gray-900 dark:text-white">Case timeline</h3>
-        <p class="text-xs text-gray-500 dark:text-gray-400">Approval levels available to you</p>
-    </div>
+<details data-case-timeline data-default-collapsed="true" class="group rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-5">
+    <summary class="flex cursor-pointer list-none items-center justify-between gap-4 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800">
+        <span class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span class="font-semibold text-gray-900 dark:text-white">Case timeline</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">Approval levels available to you</span>
+        </span>
+        <span class="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+            View timeline
+            <svg aria-hidden="true" class="h-4 w-4 transition-transform duration-200 group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.22 7.22a.75.75 0 0 1 1.06 0L10 10.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+            </svg>
+        </span>
+    </summary>
     <div class="mt-4 flex flex-col gap-4">
         @foreach($timelineSteps->groupBy('round') as $round => $roundSteps)
             <div>
@@ -171,7 +184,7 @@
             </div>
         @endforeach
     </div>
-</section>
+</details>
 
 @if($priorApprovedCases->isNotEmpty())
     <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"><h3 class="font-semibold">Previous approved cases for this staff member</h3><div class="mt-3 flex flex-col gap-2">@foreach($priorApprovedCases as $prior)<a href="{{ route('sdm-memos.show', $prior) }}" class="rounded-lg bg-gray-50 p-3 text-sm hover:bg-emerald-50 dark:bg-gray-900 dark:hover:bg-emerald-950">{{ $prior->service_type->code() }} · {{ $prior->incident_date?->format('d-m-Y') }} · {{ $prior->assessments->first()?->negative_points ?? 0 }} points</a>@endforeach</div></section>
@@ -245,7 +258,15 @@
                 </div>
             @endif
             @if($cmcStage)
-                <div class="grid gap-4 md:grid-cols-2"><div><x-input-label value="Negative points" required/><input name="negative_points" type="number" min="0" value="{{ old('negative_points', $negativePointsPrefill) }}" class="{{ $inputClass }}" required></div><div><x-input-label value="Staff action" required/><select name="staff_action" class="{{ $inputClass }}" required>@foreach(['warning','final_warning','recall'] as $action)<option value="{{ $action }}">{{ str($action)->headline() }}</option>@endforeach</select></div></div>
+                <div class="grid gap-4 md:grid-cols-3">
+                    <div>
+                        <x-input-label value="Total proposed amount" required/>
+                        <input name="proposed_total" type="number" min="0" step="0.01" value="{{ old('proposed_total', $latestAssessment?->proposed_total) }}" class="{{ $inputClass }}" required>
+                        <x-input-error :messages="$errors->get('proposed_total')" class="mt-2"/>
+                    </div>
+                    <div><x-input-label value="Negative points" required/><input name="negative_points" type="number" min="0" value="{{ old('negative_points', $negativePointsPrefill) }}" class="{{ $inputClass }}" required></div>
+                    <div><x-input-label value="Staff action" required/><select name="staff_action" class="{{ $inputClass }}" required>@foreach(['warning','final_warning','recall'] as $action)<option value="{{ $action }}">{{ str($action)->headline() }}</option>@endforeach</select></div>
+                </div>
                 <div>
                     <x-input-label for="assessment_pdf" value="Assessment PDF (optional)"/>
                     <input id="assessment_pdf" name="assessment_pdf" type="file" accept=".pdf,application/pdf" class="{{ $inputClass }} p-2">
@@ -253,7 +274,7 @@
                     <x-input-error :messages="$errors->get('assessment_pdf')" class="mt-2"/>
                 </div>
             @endif
-            @unless($assignmentStage)<div><x-input-label :value="$remarksLabel" :required="$dgmStage"/><textarea name="remarks" rows="3" class="{{ $inputClass }}"></textarea><x-input-error :messages="$errors->get('remarks')" class="mt-2"/></div>@endunless
+            @unless($assignmentStage)<div><x-input-label :value="$remarksLabel" :required="$dgmStage || $cmcVerificationStage || $amCmcToDgmStage"/><textarea name="remarks" rows="3" class="{{ $inputClass }}"></textarea><x-input-error :messages="$errors->get('remarks')" class="mt-2"/></div>@endunless
             @if($currentStep->stage === \App\Enums\WorkflowStepType::StationManager)
                 <div>
                     <x-employee-autocomplete
@@ -270,6 +291,12 @@
                 @if($assignmentStage)
                     <button name="action" value="assign" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Assign for scrutiny</button>
                     <button name="action" value="verify" formnovalidate class="rounded-lg border border-emerald-700 bg-white px-5 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:bg-gray-900 dark:text-emerald-200 dark:hover:bg-emerald-900/50 dark:focus:ring-offset-emerald-950">Verify this SDM directly</button>
+                @elseif($cmcVerificationStage)
+                    <button name="action" value="return" class="rounded-lg border border-amber-600 px-5 py-2.5 text-sm font-semibold text-amber-800 dark:text-amber-300">Revert for rechecking</button>
+                    <button name="action" value="forward" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Forward to Manager CMC</button>
+                @elseif($amCmcToDgmStage)
+                    <button name="action" value="return" class="rounded-lg border border-amber-600 px-5 py-2.5 text-sm font-semibold text-amber-800 dark:text-amber-300">Revert to SM/CMC for rechecking</button>
+                    <button name="action" value="forward" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Forward to DGM/CMC</button>
                 @elseif($dgmStage)
                     <button name="action" value="return" class="rounded-lg border border-amber-600 px-5 py-2.5 text-sm font-semibold text-amber-800 dark:text-amber-300">Return to CMC</button>
                     <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel</button>
@@ -280,7 +307,8 @@
                         <button name="action" value="request_cancellation" data-sdm-confirm data-confirmation-action="Request cancellation" class="rounded-lg border border-rose-600 px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500 dark:text-rose-300 dark:hover:bg-rose-950/40">Request for cancellation</button>
                         <x-memo-station-manager-actions :memo="$memo" />
                     @elseif($currentStep->stage === \App\Enums\WorkflowStepType::LineReview)
-                        <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel SDM</button>
+                        <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg border border-rose-700 bg-white px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:bg-gray-900 dark:text-rose-300 dark:hover:bg-rose-950/40">Cancel SDM</button>
+                        <button name="action" value="cancel_after_counselling" data-sdm-confirm data-confirmation-action="Cancel after counselling" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel after counselling</button>
                     @endif
                 @endif
             </div>

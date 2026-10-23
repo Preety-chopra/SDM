@@ -9,6 +9,7 @@ use App\Models\ContractPenaltyClause;
 use App\Models\MemoAssessment;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
+use App\Support\CashMismatchPenalty;
 use App\Support\DeficiencyCatalog;
 use App\Support\LateReportingPenalty;
 use App\Support\NegativePointCatalog;
@@ -21,7 +22,7 @@ final class MemoAssessmentService
     /** @return Collection<int, array{contract_penalty_clause_id: int, calculation_inputs: null, proposed_amount: string|null, justification: null}> */
     public function lineReviewPrefill(ServiceDeficiencyMemo $memo): Collection
     {
-        $memo->loadMissing('deficiencies.lateReporting');
+        $memo->loadMissing(['deficiencies.lateReporting', 'cashCheck']);
 
         $serialNumbers = $memo->deficiencies
             ->map(fn ($deficiency): ?int => DeficiencyCatalog::serialNumberFor($memo->service_type, $deficiency->type))
@@ -31,11 +32,13 @@ final class MemoAssessmentService
         return ($memo->serviceContract?->penaltyClauses ?? collect())
             ->whereIn('serial_number', $serialNumbers)
             ->mapWithKeys(function (ContractPenaltyClause $clause) use ($memo): array {
-                $amount = $this->lateReportingPenalty($memo, $clause) ?? match ($clause->calculation_type) {
-                    PenaltyCalculationType::Maximum => $clause->maximum_amount,
-                    PenaltyCalculationType::Fixed, PenaltyCalculationType::FixedPlusCost => $clause->suggestedAmount([]),
-                    default => null,
-                };
+                $amount = $this->lateReportingPenalty($memo, $clause)
+                    ?? $this->cashMismatchPenalty($memo, $clause)
+                    ?? match ($clause->calculation_type) {
+                        PenaltyCalculationType::Maximum => $clause->maximum_amount,
+                        PenaltyCalculationType::Fixed, PenaltyCalculationType::FixedPlusCost => $clause->suggestedAmount([]),
+                        default => null,
+                    };
 
                 return [$clause->id => [
                     'contract_penalty_clause_id' => $clause->id,
@@ -49,21 +52,23 @@ final class MemoAssessmentService
     public function negativePointsPrefill(ServiceDeficiencyMemo $memo): ?int
     {
         $points = $memo->deficiencies
-            ->map(function ($deficiency) use ($memo): ?int {
+            ->flatMap(function ($deficiency) use ($memo): array {
                 if ($deficiency->type !== DeficiencyType::CashCheck) {
-                    return NegativePointCatalog::for($deficiency->type);
+                    return [NegativePointCatalog::for($deficiency->type)];
                 }
 
-                return NegativePointCatalog::forCashMismatch((float) ($memo->cashCheck?->difference_amount ?? 0))
-                    + NegativePointCatalog::forHiddenCash(
+                return [
+                    NegativePointCatalog::forCashMismatch((float) ($memo->cashCheck?->difference_amount ?? 0)),
+                    NegativePointCatalog::forHiddenCash(
                         $memo->cashCheck?->hidden_cash_amount === null
                             ? null
                             : (float) $memo->cashCheck->hidden_cash_amount,
-                    );
+                    ),
+                ];
             })
             ->filter(fn (?int $value): bool => $value !== null);
 
-        return $points->isEmpty() ? null : $points->sum();
+        return $points->isEmpty() ? null : $points->max();
     }
 
     public function create(
@@ -81,14 +86,16 @@ final class MemoAssessmentService
 
         $version = ((int) $memo->assessments()->max('version')) + 1;
         $monthlyBill = isset($data['monthly_bill_value']) ? (float) $data['monthly_bill_value'] : null;
-        $memo->loadMissing('deficiencies.lateReporting');
+        $memo->loadMissing(['deficiencies.lateReporting', 'cashCheck']);
         $prepared = $items->map(function (array $item) use ($memo): array {
             $clause = ContractPenaltyClause::query()
                 ->whereBelongsTo($memo->serviceContract, 'contract')
                 ->findOrFail($item['contract_penalty_clause_id']);
             $inputs = $item['calculation_inputs'] ?? [];
             $lateReportingPenalty = $this->lateReportingPenalty($memo, $clause);
-            $suggested = $lateReportingPenalty ?? $clause->suggestedAmount($inputs);
+            $suggested = $lateReportingPenalty
+                ?? $this->cashMismatchPenalty($memo, $clause)
+                ?? $clause->suggestedAmount($inputs);
             $proposed = round((float) $item['proposed_amount'], 2);
 
             if ($proposed < 0) {
@@ -128,7 +135,10 @@ final class MemoAssessmentService
             ];
         });
 
-        $total = round((float) $prepared->sum('proposed_amount'), 2);
+        $calculatedTotal = round((float) $prepared->sum('proposed_amount'), 2);
+        $total = $stage === WorkflowStepType::CmcAssessment && array_key_exists('proposed_total', $data)
+            ? round((float) $data['proposed_total'], 2)
+            : $calculatedTotal;
         $cappedTotal = round((float) $prepared->where('cap_applicable', true)->sum('proposed_amount'), 2);
         $capPercentage = $monthlyBill && $monthlyBill > 0 ? round(($cappedTotal / $monthlyBill) * 100, 3) : null;
 
@@ -161,5 +171,22 @@ final class MemoAssessmentService
         return $lateReportingDeficiency?->lateReporting
             ? LateReportingPenalty::forDelay($lateReportingDeficiency->lateReporting->delayInMinutes())
             : null;
+    }
+
+    private function cashMismatchPenalty(ServiceDeficiencyMemo $memo, ContractPenaltyClause $clause): ?float
+    {
+        $hasCashCheckDeficiency = $memo->deficiencies->contains(
+            fn ($deficiency): bool => $deficiency->type === DeficiencyType::CashCheck
+                && DeficiencyCatalog::serialNumberFor($memo->service_type, $deficiency->type) === $clause->serial_number,
+        );
+
+        if (! $hasCashCheckDeficiency || $memo->cashCheck?->difference_amount === null) {
+            return null;
+        }
+
+        return CashMismatchPenalty::forMismatch(
+            (float) $memo->cashCheck->difference_amount,
+            $clause->parameters['cash_mismatch_penalty_amounts'] ?? null,
+        );
     }
 }

@@ -27,6 +27,7 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
             'deficiencies:id,memo_id,type',
             'latestActedApproval',
             'latestActedWorkflowStep',
+            'latestRevertedWorkflowStep' => fn ($query) => $query->select(['memo_workflow_steps.id', 'memo_workflow_steps.memo_id', 'memo_workflow_steps.remarks', 'memo_workflow_steps.acted_at']),
             'cmcStaff:id,name',
             'cancellationApproval' => fn ($query) => $query->select(['memo_approvals.id', 'memo_approvals.memo_id', 'memo_approvals.role', 'memo_approvals.decision', 'memo_approvals.acted_at']),
             'cancellationWorkflowStep' => fn ($query) => $query->select(['memo_workflow_steps.id', 'memo_workflow_steps.memo_id', 'memo_workflow_steps.stage', 'memo_workflow_steps.decision', 'memo_workflow_steps.acted_at']),
@@ -43,7 +44,7 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
         }
 
         return ServiceDeficiencyMemo::query()
-            ->select(['id', 'service_type', 'serial_number', 'is_urgent', 'station_name', 'line_name', 'incident_date', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'cmc_staff_id', 'created_by', 'submitted_at', 'created_at', 'updated_at'])
+            ->select(['id', 'service_type', 'serial_number', 'is_urgent', 'station_name', 'line_code', 'line_name', 'incident_date', 'status', 'cancellation_type', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'cmc_staff_id', 'created_by', 'submitted_at', 'created_at', 'updated_at'])
             ->with($relations)
             ->where(function (Builder $query) use ($user): void {
                 $query->where('status', '!=', MemoStatus::Draft->value)
@@ -80,6 +81,19 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
             ->when($filters['incident_date_from'] ?? null, fn (Builder $query, string $incidentDateFrom) => $query->whereDate('incident_date', '>=', $incidentDateFrom))
             ->when($filters['incident_date_to'] ?? null, fn (Builder $query, string $incidentDateTo) => $query->whereDate('incident_date', '<=', $incidentDateTo))
             ->when($filters['status'] ?? null, fn (Builder $query, string $status) => $query->where('status', $status))
+            ->where('workflow_version', '>=', 2)
+            ->whereHas('currentWorkflowStep', fn (Builder $query) => $query
+                ->where('stage', $stage->value)
+                ->where('assigned_to', $user->id)
+                ->where('decision', 'pending'))
+            ->orderBy('id')
+            ->get();
+    }
+
+    public function bulkCmcActionableFor(User $user, WorkflowStepType $stage, array $memoIds): Collection
+    {
+        return ServiceDeficiencyMemo::query()
+            ->whereKey($memoIds)
             ->where('workflow_version', '>=', 2)
             ->whereHas('currentWorkflowStep', fn (Builder $query) => $query
                 ->where('stage', $stage->value)

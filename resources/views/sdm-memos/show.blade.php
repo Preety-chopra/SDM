@@ -57,6 +57,27 @@
                     :candidates="$lineManagerHandoverCandidates"
                 />
             @endcan
+            @can('reassignCmcTeamLead', $memo)
+                <section class="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
+                    <h3 class="font-semibold text-amber-950 dark:text-amber-100">Re-send to another SM/CMC</h3>
+                    <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">The SDM is still pending with {{ $memo->currentWorkflowStep->assigned_name }}. Select another active SM/CMC to receive it.</p>
+                    <form method="POST" action="{{ route('sdm-memos.cmc-team-lead.update', $memo) }}" class="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+                        @csrf
+                        @method('PATCH')
+                        <div>
+                            <x-input-label for="cmc_team_lead_id" value="New SM/CMC" required/>
+                            <select id="cmc_team_lead_id" name="cmc_team_lead_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
+                                <option value="">Select SM/CMC</option>
+                                @foreach($cmcTeamLeadCandidates as $cmcTeamLead)
+                                    <option value="{{ $cmcTeamLead->id }}" @selected((string) old('cmc_team_lead_id') === (string) $cmcTeamLead->id)>{{ $cmcTeamLead->name }}@if($cmcTeamLead->employee_number) · {{ $cmcTeamLead->employee_number }}@endif</option>
+                                @endforeach
+                            </select>
+                            <x-input-error :messages="$errors->get('cmc_team_lead_id')" class="mt-2"/>
+                        </div>
+                        <button type="submit" class="rounded-lg bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">Re-send SDM</button>
+                    </form>
+                </section>
+            @endcan
             <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                 <dl class="grid gap-5 md:grid-cols-3">
                     @foreach([
@@ -213,7 +234,11 @@
                         <div>
                             <x-input-label
                                 for="remarks"
-                                :value="$memo->current_stage === \App\Enums\WorkflowStage::StationManager ? 'Remarks / cancellation request to AM (optional)' : 'Remarks (mandatory for cancellation)'"
+                                :value="match ($memo->current_stage) {
+                                    \App\Enums\WorkflowStage::StationManager => 'Remarks / cancellation request to AM (optional)',
+                                    \App\Enums\WorkflowStage::LineManager => 'Counselling remarks (mandatory for cancellation)',
+                                    default => 'Remarks (mandatory for cancellation)',
+                                }"
                                 :required="$memo->current_stage !== \App\Enums\WorkflowStage::StationManager"
                             />
                             <textarea id="remarks" name="remarks" rows="4" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white">{{ old('remarks') }}</textarea>
@@ -245,7 +270,10 @@
                                     <x-memo-station-manager-actions :memo="$memo" />
                                 @endif
                             @endif
-                            @if($memo->current_stage !== \App\Enums\WorkflowStage::StationManager)
+                            @if($memo->current_stage === \App\Enums\WorkflowStage::LineManager)
+                                <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg border border-rose-700 bg-white px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:bg-gray-900 dark:text-rose-300 dark:hover:bg-rose-950/40">Cancel SDM</button>
+                                <button name="action" value="cancel_after_counselling" data-sdm-confirm data-confirmation-action="Cancel after counselling" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel after counselling</button>
+                            @elseif($memo->current_stage !== \App\Enums\WorkflowStage::StationManager)
                                 <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel SDM</button>
                             @endif
                         </div>

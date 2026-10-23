@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreRoleRequest;
 use App\Http\Requests\UpdateRoleRequest;
 use App\Services\RoleService;
+use App\Support\RoleLabel;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
 use Spatie\Permission\Models\Role;
@@ -51,5 +53,14 @@ class RoleController extends Controller
         $role = $this->roles->update($role, $request->validated());
 
         return redirect()->route('roles.index')->with('status', "{$role->name} was updated successfully.");
+    }
+
+    public function destroy(Request $request, Role $role): RedirectResponse
+    {
+        Gate::authorize('delete', $role);
+        $label = RoleLabel::singular($role->name);
+        $this->roles->delete($role, $request->user());
+
+        return redirect()->route('roles.index')->with('status', "{$label} was deleted successfully.");
     }
 }

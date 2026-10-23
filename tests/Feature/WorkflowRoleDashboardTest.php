@@ -57,14 +57,14 @@ class WorkflowRoleDashboardTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertViewHas('workflowRoleDashboard', function (array $dashboard): bool {
-                return $dashboard['title'] === 'AM/CMC Dashboard'
+                return $dashboard['title'] === 'Manager CMC Dashboard'
                     && $dashboard['total_received'] === 2
                     && $dashboard['pending_count'] === 1
                     && $dashboard['completed_count'] === 1
                     && $dashboard['service_distribution']['counts'] === [1, 1, 0, 0]
                     && count($dashboard['recent_sdms']) === 2;
             })
-            ->assertSee('AM/CMC Dashboard')
+            ->assertSee('Manager CMC Dashboard')
             ->assertSee('Select a bar to view its SDMs.')
             ->assertSee('chartMemosUrl', false)
             ->assertSee('Select an SDM below to open its full details.')

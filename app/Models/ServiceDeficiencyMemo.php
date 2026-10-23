@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\MemoCancellationType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\WorkflowStage;
@@ -16,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['service_type', 'serial_number', 'is_urgent', 'station_id', 'station_name', 'line_name', 'line_code', 'contractor_id', 'service_contract_id', 'cmc_staff_id', 'contractor_name', 'staff_name', 'employee_number', 'incident_date', 'incident_time', 'station_record_brief_remarks', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'created_by', 'updated_by', 'submitted_at'])]
+#[Fillable(['service_type', 'serial_number', 'is_urgent', 'station_id', 'station_name', 'line_name', 'line_code', 'contractor_id', 'service_contract_id', 'cmc_staff_id', 'contractor_name', 'staff_name', 'employee_number', 'incident_date', 'incident_time', 'station_record_brief_remarks', 'status', 'cancellation_type', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'created_by', 'updated_by', 'submitted_at'])]
 class ServiceDeficiencyMemo extends Model
 {
     use HasFactory, SoftDeletes;
@@ -161,6 +162,13 @@ class ServiceDeficiencyMemo extends Model
             ->latestOfMany('acted_at');
     }
 
+    public function latestRevertedWorkflowStep(): HasOne
+    {
+        return $this->hasOne(MemoWorkflowStep::class, 'memo_id')
+            ->where('decision', 'returned')
+            ->latestOfMany('acted_at');
+    }
+
     public function latestActedApproval(): HasOne
     {
         return $this->hasOne(MemoApproval::class, 'memo_id')
@@ -200,7 +208,7 @@ class ServiceDeficiencyMemo extends Model
 
         return match ($stage) {
             WorkflowStage::StationManager, WorkflowStepType::StationManager => 'Cancelled by SM',
-            WorkflowStage::LineManager, WorkflowStepType::LineReview => 'Cancelled by AM/Line',
+            WorkflowStage::LineManager, WorkflowStepType::LineReview => $this->lineCancellationLabel(),
             default => $stage ? 'Cancelled by '.$stage->label() : 'Cancelled',
         };
     }
@@ -218,7 +226,7 @@ class ServiceDeficiencyMemo extends Model
 
             return match ($stage) {
                 WorkflowStage::StationManager, WorkflowStepType::StationManager => 'Cancelled by SM',
-                WorkflowStage::LineManager, WorkflowStepType::LineReview => 'Cancelled by AM',
+                WorkflowStage::LineManager, WorkflowStepType::LineReview => $this->lineCancellationLabel(),
                 default => $stage ? 'Forwarded' : 'Cancelled',
             };
         }
@@ -246,7 +254,7 @@ class ServiceDeficiencyMemo extends Model
                 : $this->cancellationApproval?->role;
 
             return match ($stage) {
-                WorkflowStage::LineManager, WorkflowStepType::LineReview => 'Cancelled by AM',
+                WorkflowStage::LineManager, WorkflowStepType::LineReview => $this->lineCancellationLabel(),
                 WorkflowStage::StationManager, WorkflowStepType::StationManager => 'Cancelled by SM',
                 default => 'Cancelled',
             };
@@ -295,11 +303,19 @@ class ServiceDeficiencyMemo extends Model
             : 'Processed by SM';
     }
 
+    private function lineCancellationLabel(): string
+    {
+        return $this->cancellation_type === MemoCancellationType::AfterCounselling
+            ? 'Cancelled after counselling by AM/Line'
+            : 'Cancelled by AM/Line';
+    }
+
     protected function casts(): array
     {
         return [
             'service_type' => SdmType::class,
             'status' => MemoStatus::class,
+            'cancellation_type' => MemoCancellationType::class,
             'is_urgent' => 'boolean',
             'current_stage' => WorkflowStage::class,
             'incident_date' => 'date',

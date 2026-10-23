@@ -457,7 +457,7 @@ final class ServiceDeficiencyMemoService
         $cmcTeamLeads = $this->users->enabledForRole(UserRole::CmcTeamLead->value);
         if ($cmcTeamLeads->count() !== 1) {
             throw ValidationException::withMessages([
-                'contractor_id' => 'Exactly one enabled CMC Team Lead must be configured before an SDM can be submitted.',
+                'contractor_id' => 'Exactly one enabled CMC SM must be configured before an SDM can be submitted.',
             ]);
         }
         $cmcTeamLead = $cmcTeamLeads->sole();
@@ -468,6 +468,7 @@ final class ServiceDeficiencyMemoService
             WorkflowStepType::AmCmcToScrutiny->value => $legacyAssignments[WorkflowStage::OperationsManager->value],
             WorkflowStepType::CmcAssignment->value => $cmcTeamLead,
             WorkflowStepType::CmcAssessment->value => null,
+            WorkflowStepType::CmcVerification->value => $cmcTeamLead,
             WorkflowStepType::AmCmcToDgm->value => $legacyAssignments[WorkflowStage::OperationsManager->value],
             WorkflowStepType::DgmApproval->value => $legacyAssignments[WorkflowStage::DeputyGeneralManager->value],
         ];
@@ -483,7 +484,7 @@ final class ServiceDeficiencyMemoService
                 'assigned_to' => $assignee?->id,
                 'assigned_name' => $assignee?->name ?? match ($stage) {
                     WorkflowStepType::LineReview => 'Awaiting Station Manager forwarding',
-                    WorkflowStepType::CmcAssessment => 'Awaiting CMC Team Lead assignment',
+                    WorkflowStepType::CmcAssessment => 'Awaiting CMC SM assignment',
                     default => 'Awaiting assignment',
                 },
                 'assigned_employee_number' => $assignee?->employee_number,
@@ -639,7 +640,7 @@ final class ServiceDeficiencyMemoService
         return [
             WorkflowStage::StationManager->value => $stationManager,
             WorkflowStage::LineManager->value => $lineManager,
-            WorkflowStage::OperationsManager->value => $this->resolveDefaultAssignee(UserRole::ManagerOperations, 'AM/CMC'),
+            WorkflowStage::OperationsManager->value => $this->resolveDefaultAssignee(UserRole::ManagerOperations, 'Manager CMC'),
             WorkflowStage::DeputyGeneralManager->value => $this->resolveDefaultAssignee(UserRole::DeputyGeneralManager, 'DGM/CMC'),
         ];
     }

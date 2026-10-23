@@ -22,6 +22,10 @@ interface RoleRepositoryInterface
 
     public function update(Role $role, string $name): Role;
 
+    public function hasUsers(Role $role): bool;
+
+    public function delete(Role $role): void;
+
     public function findOrCreatePermission(string $name): Permission;
 
     /** @param list<string> $permissions */

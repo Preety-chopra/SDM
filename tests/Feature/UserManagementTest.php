@@ -94,10 +94,10 @@ class UserManagementTest extends TestCase
         $this->actingAs($administrator)
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertViewHas('workflowStepTypes', fn (array $stepTypes): bool => count($stepTypes) === 7)
+            ->assertViewHas('workflowStepTypes', fn (array $stepTypes): bool => count($stepTypes) === 8)
             ->assertSee('data-workflow-board', false)
             ->assertSee('data-workflow-stage="station_manager_signoff"', false)
-            ->assertSee('aria-label="Stage 1 of 7"', false)
+            ->assertSee('aria-label="Stage 1 of 8"', false)
             ->assertSee('Queue clear');
     }
 
@@ -244,12 +244,21 @@ class UserManagementTest extends TestCase
     {
         $administrator = $this->userWithRole(UserRole::Administrator);
 
-        $this->actingAs($administrator)
+        $response = $this->actingAs($administrator)
             ->get(route('users.create_any'))
             ->assertOk()
             ->assertSee('Create user')
             ->assertSee('Station Manager')
-            ->assertSee('Assistant Manager');
+            ->assertSee('Assistant Manager')
+            ->assertSee('Manager CMC')
+            ->assertDontSee('Manager (Operations)');
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $roleOptions = (new \DOMXPath($document))->query('//select[@name="role"]/option');
+        $roleValues = collect($roleOptions)->map(fn (\DOMElement $option): string => $option->getAttribute('value'));
+
+        $this->assertNotContains(UserRole::Station->value, $roleValues);
 
         $this->actingAs($administrator)
             ->get(route('dashboard'))
@@ -271,7 +280,8 @@ class UserManagementTest extends TestCase
         $response = $this->actingAs($administrator)
             ->get(route('users.create', UserRole::CmcTeamLead->value))
             ->assertOk()
-            ->assertSee('Create CMC Team Lead');
+            ->assertSee('Create CMC SM')
+            ->assertDontSee('CMC Team Lead');
 
         $document = new \DOMDocument;
         @$document->loadHTML($response->getContent());

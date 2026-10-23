@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Contracts\Repositories\ServiceDeficiencyMemoRepositoryInterface;
 use App\Contracts\Repositories\UserRepositoryInterface;
+use App\Enums\MemoCancellationType;
 use App\Enums\MemoStatus;
 use App\Enums\UserPermission;
 use App\Enums\UserRole;
@@ -51,12 +52,42 @@ final class MemoWorkflowService
 
             if ($memos->isEmpty() || (! $selectAll && $memos->count() !== count($memoIds))) {
                 throw ValidationException::withMessages([
-                    'memo_ids' => 'Select only SDMs currently assigned to you at the chosen AM/CMC stage.',
+                    'memo_ids' => 'Select only SDMs currently assigned to you at the chosen Manager CMC stage.',
                 ]);
             }
 
             foreach ($memos as $memo) {
                 $this->act($memo, $actor, ['action' => 'forward']);
+            }
+
+            return $memos->count();
+        });
+    }
+
+    /** @param list<int> $memoIds */
+    public function bulkCmcAction(User $actor, string $action, array $memoIds, ?int $cmcStaffId = null, ?string $remarks = null): int
+    {
+        $stage = $action === 'assign'
+            ? WorkflowStepType::CmcAssignment
+            : WorkflowStepType::CmcVerification;
+
+        return DB::transaction(function () use ($actor, $action, $memoIds, $cmcStaffId, $remarks, $stage): int {
+            $memos = $this->memos->bulkCmcActionableFor($actor, $stage, $memoIds);
+            if ($memos->isEmpty() || $memos->count() !== count($memoIds)) {
+                throw ValidationException::withMessages([
+                    'memo_ids' => 'Select only SDMs currently assigned to you for the chosen CMC SM action.',
+                ]);
+            }
+
+            foreach ($memos as $memo) {
+                $data = ['action' => $action];
+                if ($action === 'assign') {
+                    $data['cmc_staff_id'] = $cmcStaffId;
+                }
+                if ($action === 'return') {
+                    $data['remarks'] = $remarks;
+                }
+                $this->act($memo, $actor, $data);
             }
 
             return $memos->count();
@@ -78,6 +109,7 @@ final class MemoWorkflowService
                 $approval = $memo->approvals()->where('role', $stage->value)->lockForUpdate()->firstOrFail();
                 $action = $data['action'];
                 $isCancellationRequest = $action === 'request_cancellation';
+                $isCancellation = in_array($action, ['cancel', 'cancel_after_counselling'], true);
 
                 if ($approval->assigned_to !== $actor->id || $approval->decision !== 'pending') {
                     abort(403);
@@ -87,6 +119,9 @@ final class MemoWorkflowService
                 }
                 if ($isCancellationRequest && $stage !== WorkflowStage::StationManager) {
                     throw ValidationException::withMessages(['action' => 'Only the Station Manager can request cancellation from AM/Line.']);
+                }
+                if ($action === 'cancel_after_counselling' && $stage !== WorkflowStage::LineManager) {
+                    throw ValidationException::withMessages(['action' => 'Only AM/Line can cancel an SDM after counselling.']);
                 }
                 if ($stage === WorkflowStage::DeputyGeneralManager && $action === 'forward') {
                     throw ValidationException::withMessages(['action' => 'DGM/O must approve or cancel the SDM.']);
@@ -100,7 +135,7 @@ final class MemoWorkflowService
                 }
 
                 $approval->update([
-                    'decision' => $action === 'cancel' ? 'rejected' : 'approved',
+                    'decision' => $isCancellation ? 'rejected' : 'approved',
                     'acted_by' => $actor->id,
                     'signer_name' => $actor->name,
                     'signer_employee_number' => $actor->employee_number,
@@ -124,14 +159,26 @@ final class MemoWorkflowService
                     }
                 }
 
-                if ($action === 'cancel') {
-                    $memo->update(['status' => MemoStatus::Cancelled->value]);
+                if ($isCancellation) {
+                    $memo->update([
+                        'status' => MemoStatus::Cancelled->value,
+                        'cancellation_type' => $action === 'cancel_after_counselling'
+                            ? MemoCancellationType::AfterCounselling->value
+                            : MemoCancellationType::Cancelled->value,
+                    ]);
                 } elseif ($action === 'approve') {
                     $memo->update(['status' => MemoStatus::Closed->value]);
                 } else {
                     $memo->update([
                         'status' => MemoStatus::UnderReview->value,
                         'current_stage' => $stage->next()->value,
+                    ]);
+                }
+
+                if ($isCancellation) {
+                    $this->audit->record($memo, $actor, 'memo.workflow.'.$action, [], [
+                        'approval_id' => $approval->id,
+                        'stage' => $stage->value,
                     ]);
                 }
 
@@ -148,6 +195,7 @@ final class MemoWorkflowService
         $step = MemoWorkflowStep::query()->lockForUpdate()->findOrFail($memo->current_workflow_step_id);
         $action = $data['action'];
         $isCancellationRequest = $action === 'request_cancellation';
+        $isCancellation = in_array($action, ['cancel', 'cancel_after_counselling'], true);
         $isCmcTeamLeadVerification = $step->stage === WorkflowStepType::CmcAssessment
             && $actor->is_enabled
             && $actor->hasRole(UserRole::CmcTeamLead->value)
@@ -159,6 +207,8 @@ final class MemoWorkflowService
 
         $isCmcAssignment = $step->stage === WorkflowStepType::CmcAssignment;
         $isDgm = $step->stage === WorkflowStepType::DgmApproval;
+        $isCmcVerification = $step->stage === WorkflowStepType::CmcVerification;
+        $isAmCmcToDgm = $step->stage === WorkflowStepType::AmCmcToDgm;
         $canCancel = $step->stage === WorkflowStepType::LineReview;
         if ($step->stage === WorkflowStepType::StationManager && $action === 'cancel') {
             throw ValidationException::withMessages(['action' => 'Station Manager must request cancellation from AM/Line.']);
@@ -166,13 +216,18 @@ final class MemoWorkflowService
         if ($isCancellationRequest && $step->stage !== WorkflowStepType::StationManager) {
             throw ValidationException::withMessages(['action' => 'Only the Station Manager can request cancellation from AM/Line.']);
         }
+        if ($action === 'cancel_after_counselling' && $step->stage !== WorkflowStepType::LineReview) {
+            throw ValidationException::withMessages(['action' => 'Only AM/Line can cancel an SDM after counselling.']);
+        }
         if ($isCmcAssignment && ! in_array($action, ['assign', 'verify'], true)) {
-            throw ValidationException::withMessages(['action' => 'The CMC Team Lead must assign CMC Staff or verify the SDM directly.']);
+            throw ValidationException::withMessages(['action' => 'The CMC SM must assign CMC Staff or verify the SDM directly.']);
         }
         if (! $isCmcAssignment && $isDgm && ! in_array($action, ['approve', 'return', 'cancel'], true)) {
             throw ValidationException::withMessages(['action' => 'DGM must approve, return, or cancel the SDM.']);
         }
-        if (! $isCmcAssignment && ! $isDgm && ! (in_array($action, ['forward', 'request_cancellation'], true) || ($canCancel && $action === 'cancel'))) {
+        if (! $isCmcAssignment && ! $isDgm && ! (in_array($action, ['forward', 'request_cancellation'], true)
+            || ($canCancel && $isCancellation)
+            || (($isCmcVerification || $isAmCmcToDgm) && $action === 'return'))) {
             throw ValidationException::withMessages(['action' => 'This stage must forward the SDM.']);
         }
 
@@ -234,7 +289,7 @@ final class MemoWorkflowService
         $step->update([
             'decision' => match ($action) {
                 'return' => 'returned',
-                'cancel' => 'cancelled',
+                'cancel', 'cancel_after_counselling' => 'cancelled',
                 default => $action === 'approve' ? 'approved' : 'forwarded',
             },
             'acted_by' => $actor->id,
@@ -246,12 +301,21 @@ final class MemoWorkflowService
             'acted_at' => now(),
         ]);
 
-        if ($action === 'cancel') {
-            $memo->update(['status' => MemoStatus::Cancelled->value, 'current_workflow_step_id' => null]);
+        if ($isCancellation) {
+            $memo->update([
+                'status' => MemoStatus::Cancelled->value,
+                'cancellation_type' => $action === 'cancel_after_counselling'
+                    ? MemoCancellationType::AfterCounselling->value
+                    : MemoCancellationType::Cancelled->value,
+                'current_workflow_step_id' => null,
+            ]);
         } elseif ($action === 'approve') {
             $memo->update(['status' => MemoStatus::PendingPenaltyLetter->value, 'current_workflow_step_id' => null]);
         } elseif ($action === 'return') {
-            $this->createReviewRound($memo);
+            $this->createReviewRound(
+                $memo,
+                $isAmCmcToDgm ? WorkflowStepType::CmcVerification : WorkflowStepType::CmcAssessment,
+            );
         } else {
             $next = $memo->workflowSteps()->where('sequence', '>', $step->sequence)->where('decision', 'pending')->firstOrFail();
             $memo->update([
@@ -271,11 +335,15 @@ final class MemoWorkflowService
         return $memo->refresh()->load(['currentWorkflowStep', 'workflowSteps', 'assessments.items', 'attachments']);
     }
 
-    public function createReviewRound(ServiceDeficiencyMemo $memo): void
-    {
+    public function createReviewRound(
+        ServiceDeficiencyMemo $memo,
+        WorkflowStepType $startingStage = WorkflowStepType::CmcAssessment,
+    ): void {
         $round = ((int) $memo->workflowSteps()->max('round')) + 1;
         $sequence = (int) $memo->workflowSteps()->max('sequence');
-        $stages = [WorkflowStepType::CmcAssessment, WorkflowStepType::AmCmcToDgm, WorkflowStepType::DgmApproval];
+        $stages = [WorkflowStepType::CmcAssessment, WorkflowStepType::CmcVerification, WorkflowStepType::AmCmcToDgm, WorkflowStepType::DgmApproval];
+        $startingIndex = array_search($startingStage, $stages, true);
+        $stages = array_slice($stages, $startingIndex === false ? 0 : $startingIndex);
         $created = collect();
 
         foreach ($stages as $stage) {
@@ -320,6 +388,74 @@ final class MemoWorkflowService
         });
     }
 
+    public function reassignCmcTeamLead(ServiceDeficiencyMemo $memo, User $actor, int $cmcTeamLeadId): ServiceDeficiencyMemo
+    {
+        return DB::transaction(function () use ($memo, $actor, $cmcTeamLeadId): ServiceDeficiencyMemo {
+            $memo = ServiceDeficiencyMemo::query()->lockForUpdate()->findOrFail($memo->id);
+            $step = $memo->workflowSteps()
+                ->whereKey($memo->current_workflow_step_id)
+                ->where('stage', WorkflowStepType::CmcAssignment->value)
+                ->where('decision', 'pending')
+                ->lockForUpdate()
+                ->first();
+            $wasForwardedByActor = $memo->workflowSteps()
+                ->where('stage', WorkflowStepType::AmCmcToScrutiny->value)
+                ->where('decision', 'forwarded')
+                ->where('acted_by', $actor->id)
+                ->exists();
+
+            if ($memo->status !== MemoStatus::CmcAssignment || ! $step || ! $wasForwardedByActor) {
+                throw ValidationException::withMessages([
+                    'cmc_team_lead_id' => 'This SDM can no longer be re-sent by this Manager CMC.',
+                ]);
+            }
+
+            $cmcTeamLead = $this->users->enabledForRole(UserRole::CmcTeamLead->value)
+                ->firstWhere('id', $cmcTeamLeadId);
+            if (! $cmcTeamLead) {
+                throw ValidationException::withMessages([
+                    'cmc_team_lead_id' => 'Select an enabled SM/CMC user.',
+                ]);
+            }
+            if ($step->assigned_to === $cmcTeamLead->id) {
+                throw ValidationException::withMessages([
+                    'cmc_team_lead_id' => 'Select a different SM/CMC user.',
+                ]);
+            }
+
+            $before = [
+                'cmc_team_lead_id' => $step->assigned_to,
+                'cmc_team_lead_name' => $step->assigned_name,
+                'cmc_team_lead_employee_number' => $step->assigned_employee_number,
+            ];
+
+            $step->update([
+                'assigned_to' => $cmcTeamLead->id,
+                'assigned_name' => $cmcTeamLead->name,
+                'assigned_employee_number' => $cmcTeamLead->employee_number,
+                'assignment_source' => 'reassignment',
+            ]);
+            $memo->workflowSteps()
+                ->where('round', $step->round)
+                ->where('stage', WorkflowStepType::CmcVerification->value)
+                ->where('decision', 'pending')
+                ->update([
+                    'assigned_to' => $cmcTeamLead->id,
+                    'assigned_name' => $cmcTeamLead->name,
+                    'assigned_employee_number' => $cmcTeamLead->employee_number,
+                    'assignment_source' => 'reassignment',
+                ]);
+
+            $this->audit->record($memo, $actor, 'memo.cmc_team_lead.reassigned', $before, [
+                'cmc_team_lead_id' => $cmcTeamLead->id,
+                'cmc_team_lead_name' => $cmcTeamLead->name,
+                'cmc_team_lead_employee_number' => $cmcTeamLead->employee_number,
+            ]);
+
+            return $memo->refresh()->load(['currentWorkflowStep', 'workflowSteps.assignee']);
+        });
+    }
+
     private function statusFor(WorkflowStepType $stage): MemoStatus
     {
         return match ($stage) {
@@ -327,7 +463,7 @@ final class MemoWorkflowService
             WorkflowStepType::LineReview => MemoStatus::LineReview,
             WorkflowStepType::AmCmcToScrutiny, WorkflowStepType::AmCmcToDgm => MemoStatus::AmCmcReview,
             WorkflowStepType::CmcAssignment => MemoStatus::CmcAssignment,
-            WorkflowStepType::CmcAssessment => MemoStatus::CmcScrutiny,
+            WorkflowStepType::CmcAssessment, WorkflowStepType::CmcVerification => MemoStatus::CmcScrutiny,
             WorkflowStepType::DgmApproval => MemoStatus::DgmApproval,
         };
     }

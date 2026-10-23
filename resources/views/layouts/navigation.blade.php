@@ -76,12 +76,12 @@
                     <span x-show="! collapsed || mobileOpen">Add user</span>
                 </a>
             @endcan
-            @foreach ($navigationRoles as $role)
+            {{-- @foreach ($navigationRoles as $role)
                 <a href="{{ route('users.index', $role->name) }}" title="{{ \App\Support\RoleLabel::plural($role->name) }}" class="{{ $baseClasses }} {{ request()->routeIs('users.*') && request()->route('role') === $role->name ? $activeClasses : $idleClasses }}">
                     <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 20v-1.5a4.5 4.5 0 0 0-4.5-4.5h-4A4.5 4.5 0 0 0 3 18.5V20M9.5 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM17 11a3 3 0 0 0 0-6M21 20v-1.5a4 4 0 0 0-3-3.87" /></svg>
                     <span x-show="! collapsed || mobileOpen" class="truncate">{{ \App\Support\RoleLabel::plural($role->name) }}</span>
                 </a>
-            @endforeach
+            @endforeach --}}
         @endcan
 
         @canany([\App\Enums\UserPermission::ManageRoles->value, \App\Enums\UserPermission::ManageSdmHierarchy->value, \App\Enums\UserPermission::ManageLines->value, \App\Enums\UserPermission::ManageStations->value, \App\Enums\UserPermission::ManageContractors->value, \App\Enums\UserPermission::ManageContracts->value])

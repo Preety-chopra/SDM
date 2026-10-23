@@ -26,21 +26,24 @@ class StoreMemoWorkflowActionRequest extends FormRequest
             return $this->versionTwoRules($memo);
         }
 
-        $isCancel = $this->string('action')->toString() === 'cancel';
+        $action = $this->string('action')->toString();
+        $isCancellation = in_array($action, ['cancel', 'cancel_after_counselling'], true);
         $stage = $memo->current_stage;
-        $allowedActions = $stage === WorkflowStage::StationManager
-            ? ['forward', 'request_cancellation']
-            : ['forward', 'approve', 'cancel', 'request_cancellation'];
+        $allowedActions = match ($stage) {
+            WorkflowStage::StationManager => ['forward', 'request_cancellation'],
+            WorkflowStage::LineManager => ['forward', 'cancel', 'cancel_after_counselling'],
+            default => ['forward', 'approve', 'cancel', 'request_cancellation'],
+        };
 
         return [
             'action' => ['required', Rule::in($allowedActions)],
             'forward_to_employee_number' => [
-                Rule::requiredIf($stage === WorkflowStage::StationManager && in_array($this->string('action')->toString(), ['forward', 'request_cancellation'], true)),
+                Rule::requiredIf($stage === WorkflowStage::StationManager && in_array($action, ['forward', 'request_cancellation'], true)),
                 'nullable',
                 'string',
                 'max:100',
             ],
-            'remarks' => [Rule::requiredIf($isCancel), 'nullable', 'string', 'max:5000'],
+            'remarks' => [Rule::requiredIf($isCancellation), 'nullable', 'string', 'max:5000'],
             'evidence' => ['nullable', 'array', 'max:10'],
             'evidence.*' => ['file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
         ];
@@ -65,9 +68,11 @@ class StoreMemoWorkflowActionRequest extends FormRequest
         $requiresAssessment = in_array($stage, [WorkflowStepType::LineReview, WorkflowStepType::CmcAssessment], true)
             && $action === 'forward';
         $requiresCmcAssessment = $stage === WorkflowStepType::CmcAssessment && $action === 'forward';
-        $allowedActions = $stage === WorkflowStepType::StationManager
-            ? ['forward', 'request_cancellation']
-            : ['forward', 'approve', 'return', 'cancel', 'request_cancellation'];
+        $allowedActions = match ($stage) {
+            WorkflowStepType::StationManager => ['forward', 'request_cancellation'],
+            WorkflowStepType::LineReview => ['forward', 'cancel', 'cancel_after_counselling'],
+            default => ['forward', 'approve', 'return', 'cancel', 'request_cancellation'],
+        };
 
         return [
             'action' => ['required', Rule::in($allowedActions)],
@@ -77,7 +82,7 @@ class StoreMemoWorkflowActionRequest extends FormRequest
                 'string',
                 'max:100',
             ],
-            'remarks' => [Rule::requiredIf(in_array($action, ['return', 'cancel'], true)), 'nullable', 'string', 'max:5000'],
+            'remarks' => [Rule::requiredIf(in_array($action, ['return', 'cancel', 'cancel_after_counselling'], true)), 'nullable', 'string', 'max:5000'],
             'items' => [Rule::requiredIf($requiresAssessment), 'nullable', 'array', 'min:1'],
             'items.*.contract_penalty_clause_id' => ['required', 'integer', 'distinct', 'exists:contract_penalty_clauses,id'],
             'items.*.proposed_amount' => ['required', 'numeric', 'min:0'],
@@ -86,6 +91,7 @@ class StoreMemoWorkflowActionRequest extends FormRequest
             'items.*.calculation_inputs.days' => ['nullable', 'integer', 'min:0'],
             'items.*.calculation_inputs.workers' => ['nullable', 'integer', 'min:0'],
             'items.*.calculation_inputs.additional_cost' => ['nullable', 'numeric', 'min:0'],
+            'proposed_total' => [Rule::requiredIf($requiresCmcAssessment), 'nullable', 'numeric', 'min:0'],
             'negative_points' => [Rule::requiredIf($requiresCmcAssessment), 'nullable', 'integer', 'min:0'],
             'staff_action' => [Rule::requiredIf($requiresCmcAssessment), 'nullable', Rule::in(['warning', 'final_warning', 'recall'])],
             'bill_month' => ['nullable', 'date_format:Y-m'],

@@ -84,7 +84,7 @@ final class WorkflowRoleDashboardService
     {
         return match ($role) {
             UserRole::ManagerOperations => [
-                'title' => 'AM/CMC Dashboard',
+                'title' => 'Manager CMC Dashboard',
                 'eyebrow' => 'My CMC review portfolio',
                 'description' => 'Track SDMs routed to you for scrutiny coordination and onward submission.',
                 'completed_label' => 'Forwarded onward',

@@ -21,6 +21,12 @@ interface ServiceDeficiencyMemoRepositoryInterface
      */
     public function bulkForwardableFor(User $user, WorkflowStepType $stage, array $filters = [], array $memoIds = []): Collection;
 
+    /**
+     * @param  list<int>  $memoIds
+     * @return Collection<int, ServiceDeficiencyMemo>
+     */
+    public function bulkCmcActionableFor(User $user, WorkflowStepType $stage, array $memoIds): Collection;
+
     /** @return Collection<int, ServiceDeficiencyMemo> */
     public function recentSubmittedBy(User $user, int $limit = 10): Collection;
 

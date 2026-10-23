@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Contracts\Repositories\StationRepositoryInterface;
+use App\Enums\UserRole;
 use App\Http\Requests\ListUsersRequest;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
@@ -53,7 +54,9 @@ class UserController extends Controller
     public function createAny(): View
     {
         Gate::authorize('create', User::class);
-        $roles = $this->roles->managedRoles();
+        $roles = $this->roles->managedRoles()
+            ->reject(fn (Role $role): bool => $role->name === UserRole::Station->value)
+            ->values();
         $selectedRole = $roles->first();
 
         abort_if($selectedRole === null, 404, 'Create a role before creating a user.');

@@ -4,7 +4,9 @@ import Alpine from 'alpinejs';
 import { createDashboardCharts, createLineManagerDashboardCharts, createStationManagerDashboardCharts, createWorkflowRoleDashboardCharts } from './dashboard-charts';
 import { createSdmConfirmation } from './sdm-confirmation';
 import { createBulkMemoSelection } from './bulk-memo-selection';
+import { createCmcMemoSelection } from './cmc-memo-selection';
 import { createMemoCancellationDialog } from './memo-cancellation-dialog';
+import { createContractForm } from './contract-form';
 
 window.Alpine = Alpine;
 
@@ -34,24 +36,7 @@ Alpine.data('userForm', () => ({
     },
 }));
 
-Alpine.data('contractForm', () => ({
-    lineIds: [],
-    stationIds: [],
-    stations: [],
-    init() {
-        this.lineIds = JSON.parse(this.$el.dataset.lineIds || '[]').map(String);
-        this.stationIds = JSON.parse(this.$el.dataset.stationIds || '[]').map(String);
-        this.stations = JSON.parse(this.$el.dataset.stations || '[]');
-    },
-    stationMatchesSelectedLine(stationId) {
-        const station = this.stations.find((item) => String(item.id) === String(stationId));
-
-        return station && this.lineIds.includes(String(station.line_id));
-    },
-    pruneStations() {
-        this.stationIds = this.stationIds.filter((stationId) => this.stationMatchesSelectedLine(stationId));
-    },
-}));
+Alpine.data('contractForm', () => createContractForm());
 
 Alpine.data('employeeAutocomplete', () => ({
     candidates: [],
@@ -152,6 +137,7 @@ Alpine.data('memoForm', () => ({
 
 Alpine.data('sdmActionForm', () => createSdmConfirmation());
 Alpine.data('bulkMemoSelection', () => createBulkMemoSelection());
+Alpine.data('cmcMemoSelection', () => createCmcMemoSelection());
 Alpine.data('memoCancellationDialog', () => createMemoCancellationDialog());
 Alpine.data('dashboardCharts', (config) => createDashboardCharts(config));
 Alpine.data('stationManagerDashboardCharts', (config) => createStationManagerDashboardCharts(config));

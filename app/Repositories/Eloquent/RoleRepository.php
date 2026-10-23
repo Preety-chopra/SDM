@@ -61,6 +61,16 @@ final class RoleRepository implements RoleRepositoryInterface
         return $role->refresh();
     }
 
+    public function hasUsers(Role $role): bool
+    {
+        return $role->users()->exists();
+    }
+
+    public function delete(Role $role): void
+    {
+        $role->delete();
+    }
+
     public function findOrCreatePermission(string $name): Permission
     {
         return Permission::findOrCreate($name, 'web');

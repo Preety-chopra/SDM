@@ -9,6 +9,7 @@ enum WorkflowStepType: string
     case AmCmcToScrutiny = 'am_cmc_to_scrutiny';
     case CmcAssignment = 'cmc_assignment';
     case CmcAssessment = 'cmc_assessment';
+    case CmcVerification = 'cmc_verification';
     case AmCmcToDgm = 'am_cmc_to_dgm';
     case DgmApproval = 'dgm_cmc_approval';
 
@@ -17,10 +18,11 @@ enum WorkflowStepType: string
         return match ($this) {
             self::StationManager => 'Station Manager review',
             self::LineReview => 'Assistant Manager/Manager(Line) review',
-            self::AmCmcToScrutiny => 'AM/CMC forwarding for scrutiny',
+            self::AmCmcToScrutiny => 'Manager CMC forwarding for scrutiny',
             self::CmcAssignment => 'CMC SM- staff assignment',
             self::CmcAssessment => 'CMC Staff scrutiny and assessment',
-            self::AmCmcToDgm => 'AM/CMC forwarding to DGM/CMC',
+            self::CmcVerification => 'CMC SM verification',
+            self::AmCmcToDgm => 'Manager CMC forwarding to DGM/CMC',
             self::DgmApproval => 'DGM/CMC approval',
         };
     }
@@ -31,7 +33,7 @@ enum WorkflowStepType: string
             self::StationManager => UserRole::StationManager,
             self::LineReview => UserRole::AssistantManager,
             self::AmCmcToScrutiny, self::AmCmcToDgm => UserRole::ManagerOperations,
-            self::CmcAssignment => UserRole::CmcTeamLead,
+            self::CmcAssignment, self::CmcVerification => UserRole::CmcTeamLead,
             self::CmcAssessment => UserRole::CmcStaff,
             self::DgmApproval => UserRole::DeputyGeneralManager,
         };

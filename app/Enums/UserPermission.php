@@ -26,4 +26,32 @@ enum UserPermission: string
     case ManagePenaltyLetters = 'sdm_memos.penalty_letters.manage';
     case ManageObjections = 'sdm_memos.objections.manage';
     case RecordDeductions = 'sdm_memos.deductions.record';
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::ViewUsers => 'View user accounts',
+            self::CreateUsers => 'Create user accounts',
+            self::UpdateUsers => 'Edit user accounts',
+            self::ChangeUserStatus => 'Enable or disable user accounts',
+            self::ManageRoles => 'Manage roles and permissions',
+            self::CreateMemos => 'Create SDM memos',
+            self::ViewOwnMemos => 'View own SDM memos',
+            self::UpdateOwnDraftMemos => 'Edit own draft SDM memos',
+            self::SubmitOwnDraftMemos => 'Submit own draft SDM memos',
+            self::ViewAllMemos => 'View all SDM memos',
+            self::ViewRoutedMemos => 'View assigned SDM memos',
+            self::ActOnRoutedMemos => 'Act on assigned SDM memos',
+            self::AssignCmcStaff => 'Assign CMC staff',
+            self::ManageSdmHierarchy => 'Manage SDM reporting hierarchy',
+            self::ManageLines => 'Manage lines',
+            self::ManageStations => 'Manage stations',
+            self::ManageContractors => 'Manage contractors',
+            self::ManageContracts => 'Manage service contracts',
+            self::AssessMemos => 'Assess SDM memos',
+            self::ManagePenaltyLetters => 'Manage penalty letters',
+            self::ManageObjections => 'Manage objections',
+            self::RecordDeductions => 'Record deductions',
+        };
+    }
 }

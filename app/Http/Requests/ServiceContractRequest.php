@@ -10,6 +10,7 @@ use App\Models\Contractor;
 use App\Models\Line;
 use App\Models\Station;
 use App\Models\User;
+use App\Support\CashMismatchPenalty;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -44,6 +45,8 @@ abstract class ServiceContractRequest extends FormRequest
             'clauses.*.maximum_amount' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99'],
             'clauses.*.cap_applicable' => ['required_with:clauses', 'boolean'],
             'clauses.*.parameters' => ['nullable', 'array'],
+            'clauses.*.parameters.cash_mismatch_penalty_amounts' => ['nullable', 'array', 'size:'.count(CashMismatchPenalty::defaultAmounts())],
+            'clauses.*.parameters.cash_mismatch_penalty_amounts.*' => ['required', 'numeric', 'min:0', 'max:999999999999.99'],
             'clauses.*.sort_order' => ['required_with:clauses', 'integer', 'min:1'],
         ];
     }
@@ -71,6 +74,8 @@ abstract class ServiceContractRequest extends FormRequest
                 }
 
                 if (! $this->filled('cmc_staff_id')) {
+                    $this->validateCashMismatchSlabs($validator);
+
                     return;
                 }
 
@@ -78,7 +83,42 @@ abstract class ServiceContractRequest extends FormRequest
                 if ($cmcStaff && ! $cmcStaff->hasRole(UserRole::CmcStaff->value)) {
                     $validator->errors()->add('cmc_staff_id', 'Select an enabled CMC Staff user.');
                 }
+
+                $this->validateCashMismatchSlabs($validator);
             },
         ];
+    }
+
+    private function validateCashMismatchSlabs(Validator $validator): void
+    {
+        if (SdmType::tryFrom($this->string('service_type')->toString()) !== SdmType::Ticketing) {
+            return;
+        }
+
+        foreach ($this->input('clauses', []) as $index => $clause) {
+            if ((int) ($clause['serial_number'] ?? 0) !== 10) {
+                continue;
+            }
+
+            $amounts = $clause['parameters']['cash_mismatch_penalty_amounts'] ?? null;
+            if (! is_array($amounts) || count($amounts) !== count(CashMismatchPenalty::defaultAmounts())) {
+                $validator->errors()->add(
+                    "clauses.$index.parameters.cash_mismatch_penalty_amounts",
+                    'Enter a penalty amount for every cash mismatch slab.',
+                );
+
+                return;
+            }
+
+            $maximumAmount = isset($clause['maximum_amount']) ? (float) $clause['maximum_amount'] : null;
+            if ($maximumAmount !== null && collect($amounts)->contains(fn (mixed $amount): bool => (float) $amount > $maximumAmount)) {
+                $validator->errors()->add(
+                    "clauses.$index.parameters.cash_mismatch_penalty_amounts",
+                    'Cash mismatch slab amounts cannot exceed the clause maximum amount.',
+                );
+            }
+
+            return;
+        }
     }
 }

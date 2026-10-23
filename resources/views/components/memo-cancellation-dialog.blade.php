@@ -1,6 +1,15 @@
-@props(['memo'])
+@props(['memo', 'action'])
 
-@php($dialogId = 'cancel-memo-'.$memo->getKey())
+@php
+    $afterCounselling = $action === 'cancel_after_counselling';
+    $dialogId = $afterCounselling ? 'cancel-after-counselling-memo-'.$memo->getKey() : 'cancel-memo-'.$memo->getKey();
+    $triggerLabel = $afterCounselling ? 'Cancel after counselling' : 'Cancel';
+    $remarksLabel = $afterCounselling ? 'Counselling remarks' : 'Cancellation remarks';
+    $remarksDescription = $afterCounselling ? 'Enter the counselling details before cancelling this SDM.' : 'Enter the reason for cancelling this SDM.';
+    $confirmationTitle = $afterCounselling ? 'Confirm cancellation after counselling?' : 'Confirm SDM cancellation?';
+    $confirmationDescription = $afterCounselling ? 'This action will cancel the SDM after counselling and cannot be undone.' : 'This action will cancel the SDM and cannot be undone.';
+    $confirmLabel = $afterCounselling ? 'Confirm cancellation after counselling' : 'Confirm cancellation';
+@endphp
 
 <div
     x-data="memoCancellationDialog"
@@ -16,7 +25,7 @@
         :aria-expanded="cancellationOpen.toString()"
         aria-controls="{{ $dialogId }}"
         class="font-semibold text-rose-700 hover:underline focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:text-rose-400 dark:focus:ring-offset-gray-800"
-    >Cancel</button>
+    >{{ $triggerLabel }}</button>
 
     <template x-teleport="body">
         <div
@@ -44,11 +53,11 @@
                 >
                     @csrf
                     <div x-show="!confirmationOpen">
-                        <h2 id="{{ $dialogId }}-remarks-title" class="text-lg font-semibold text-gray-950 dark:text-white">Cancellation remarks</h2>
-                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Enter the reason for cancelling this SDM.</p>
+                        <h2 id="{{ $dialogId }}-remarks-title" class="text-lg font-semibold text-gray-950 dark:text-white">{{ $remarksLabel }}</h2>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">{{ $remarksDescription }}</p>
 
                         <div class="mt-5">
-                            <label for="{{ $dialogId }}-remarks" class="block text-sm font-semibold text-gray-700 dark:text-gray-200">Cancellation remarks</label>
+                            <label for="{{ $dialogId }}-remarks" class="block text-sm font-semibold text-gray-700 dark:text-gray-200">{{ $remarksLabel }}</label>
                             <textarea
                                 x-ref="cancellationRemarks"
                                 id="{{ $dialogId }}-remarks"
@@ -66,17 +75,17 @@
                     </div>
 
                     <div x-cloak x-show="confirmationOpen" x-effect="if (confirmationOpen) $nextTick(() => $refs.confirmCancellation.focus())">
-                        <h2 id="{{ $dialogId }}-confirmation-title" class="text-lg font-semibold text-gray-950 dark:text-white">Confirm SDM cancellation?</h2>
-                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">This action will cancel the SDM and cannot be undone.</p>
+                        <h2 id="{{ $dialogId }}-confirmation-title" class="text-lg font-semibold text-gray-950 dark:text-white">{{ $confirmationTitle }}</h2>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">{{ $confirmationDescription }}</p>
 
                         <div class="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950/40">
-                            <p class="text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">Cancellation remarks</p>
+                            <p class="text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">{{ $remarksLabel }}</p>
                             <p class="mt-1 whitespace-pre-wrap break-words text-sm text-gray-800 dark:text-gray-100" x-text="$refs.cancellationRemarks.value"></p>
                         </div>
 
                         <div class="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                             <button type="button" @click="editCancellationRemarks" class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">Back</button>
-                            <button x-ref="confirmCancellation" name="action" value="cancel" class="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-800 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">Confirm cancellation</button>
+                            <button x-ref="confirmCancellation" name="action" value="{{ $action }}" class="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-800 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">{{ $confirmLabel }}</button>
                         </div>
                     </div>
                 </form>

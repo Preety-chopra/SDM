@@ -26,6 +26,11 @@
     ];
     $pageTitle = $memo ? ($isDraft ? 'Edit SDM draft' : 'Edit submitted SDM') : 'Create Service Deficiency Memo';
     $memoLocation = collect([$station?->metroLine?->code, $station?->name])->filter()->join(' · ');
+    $checkingOfficialDefaults = [
+        'checking_official_name' => request()->user()->name,
+        'checking_official_designation' => request()->user()->designation,
+        'checking_official_employee_number' => request()->user()->employee_number,
+    ];
 @endphp
 <x-app-layout :title="$pageTitle">
     <x-slot name="header">
@@ -240,7 +245,7 @@
                         @foreach(['checking_official_name'=>'Checking official name','checking_official_designation'=>'Checking official designation','checking_official_employee_number'=>'Checking official employee number'] as $name=>$label)
                             <div>
                                 <x-input-label :for="$name" :value="$label"/>
-                                <x-text-input :id="$name" :name="'cash_check['.$name.']'" class="mt-1 block w-full" :value="old('cash_check.'.$name,$memo?->cashCheck?->$name)"/>
+                                <x-text-input :id="$name" :name="'cash_check['.$name.']'" class="mt-1 block w-full" :value="old('cash_check.'.$name, $memo?->cashCheck?->$name ?? $checkingOfficialDefaults[$name])"/>
                                 <x-input-error :messages="$errors->get('cash_check.'.$name)" class="mt-2"/>
                             </div>
                         @endforeach

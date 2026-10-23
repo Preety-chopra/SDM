@@ -58,6 +58,15 @@ class ServiceDeficiencyMemoController extends Controller
         $filters = $request->filters();
         $isStationManager = $request->user()->hasRole(UserRole::StationManager->value);
         $isLineManager = $request->user()->hasRole(UserRole::AssistantManager->value);
+        $isCmcTeamLead = $request->user()->hasRole(UserRole::CmcTeamLead->value);
+        $usesHeaderFilterTable = $request->user()->hasAnyRole([
+            UserRole::StationManager->value,
+            UserRole::AssistantManager->value,
+            UserRole::ManagerOperations->value,
+            UserRole::CmcTeamLead->value,
+            UserRole::CmcStaff->value,
+            UserRole::DeputyGeneralManager->value,
+        ]);
         $isDownstreamWorkflowUser = $request->user()->hasAnyRole([
             UserRole::ManagerOperations->value,
             UserRole::CmcTeamLead->value,
@@ -97,6 +106,29 @@ class ServiceDeficiencyMemoController extends Controller
                     (string) $memo->id => $memo->currentWorkflowStep->stage->value,
                 ])
             : collect();
+        $bulkCmcActionsEnabled = $category === null
+            && $request->user()->can('bulkCmcAction', ServiceDeficiencyMemo::class);
+        $bulkCmcActions = $bulkCmcActionsEnabled
+            ? $memos->getCollection()->mapWithKeys(function (ServiceDeficiencyMemo $memo) use ($request): array {
+                $step = $memo->currentWorkflowStep;
+                $actions = match (true) {
+                    $step?->assigned_to !== $request->user()->id || $step?->decision !== 'pending' => [],
+                    $step->stage === WorkflowStepType::CmcAssignment => ['assign'],
+                    $step->stage === WorkflowStepType::CmcVerification => ['forward', 'return'],
+                    default => [],
+                };
+
+                return [(string) $memo->id => $actions];
+            })
+            : collect();
+        $showActionColumn = ! $isStationManager
+            && $memos->getCollection()->contains(
+                fn (ServiceDeficiencyMemo $memo): bool => $this->hasVisibleTableAction(
+                    $request->user(),
+                    $memo,
+                    $isCmcTeamLead,
+                ),
+            );
 
         return view('sdm-memos.index', [
             'memos' => $memos,
@@ -105,14 +137,44 @@ class ServiceDeficiencyMemoController extends Controller
             'filters' => $filters,
             'stationManagerStatusView' => $isStationManager,
             'lineManagerStatusView' => $isLineManager,
+            'cmcTeamLeadTable' => $isCmcTeamLead,
+            'headerFilterTable' => $usesHeaderFilterTable,
             'sdmTypes' => SdmType::cases(),
             'statuses' => $statuses,
             'stations' => $this->masterData->stations(),
             'lines' => $this->masterData->lines(),
             'bulkForwardingEnabled' => $bulkForwardingEnabled,
             'bulkForwardDestinations' => $bulkForwardDestinations,
+            'bulkCmcActionsEnabled' => $bulkCmcActionsEnabled,
+            'bulkCmcActions' => $bulkCmcActions,
+            'showActionColumn' => $showActionColumn,
+            'cmcStaffUsers' => $bulkCmcActionsEnabled
+                ? $this->users->enabledForRole(UserRole::CmcStaff)
+                : collect(),
             'memoCategoryTabs' => $memoCategoryTabs,
         ]);
+    }
+
+    private function hasVisibleTableAction(User $user, ServiceDeficiencyMemo $memo, bool $isCmcTeamLead): bool
+    {
+        $currentStep = $memo->currentWorkflowStep;
+
+        if ($isCmcTeamLead
+            && $currentStep?->assigned_to === $user->id
+            && $currentStep->decision === 'pending'
+            && in_array($currentStep->stage, [WorkflowStepType::CmcAssignment, WorkflowStepType::CmcVerification], true)) {
+            return true;
+        }
+
+        if ($user->can('delete', $memo)) {
+            return true;
+        }
+
+        $isDirectCancellationStage = $memo->workflow_version >= 2
+            ? $currentStep?->stage === WorkflowStepType::LineReview
+            : $memo->current_stage === WorkflowStage::LineManager;
+
+        return $isDirectCancellationStage && $user->can('act', $memo);
     }
 
     public function drafts(Request $request): View
@@ -220,6 +282,11 @@ class ServiceDeficiencyMemoController extends Controller
             'lineManagerHandoverCandidates' => $request->user()->can('handoverLineManager', $sdmMemo)
                 ? $this->users->enabledForRole(UserRole::AssistantManager)
                     ->filter(fn (User $user): bool => filled($user->employee_number) && $user->id !== $request->user()->id)
+                    ->values()
+                : collect(),
+            'cmcTeamLeadCandidates' => $request->user()->can('reassignCmcTeamLead', $sdmMemo)
+                ? $this->users->enabledForRole(UserRole::CmcTeamLead)
+                    ->reject(fn (User $user): bool => $user->id === $sdmMemo->currentWorkflowStep?->assigned_to)
                     ->values()
                 : collect(),
             'cmcStaffUsers' => ($sdmMemo->currentWorkflowStep?->stage === WorkflowStepType::CmcAssignment

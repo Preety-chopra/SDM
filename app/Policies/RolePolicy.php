@@ -24,4 +24,10 @@ class RolePolicy
         return $user->can(UserPermission::ManageRoles->value)
             && $role->name !== UserRole::Administrator->value;
     }
+
+    public function delete(User $user, Role $role): bool
+    {
+        return $user->can(UserPermission::ManageRoles->value)
+            && $role->name !== UserRole::Administrator->value;
+    }
 }

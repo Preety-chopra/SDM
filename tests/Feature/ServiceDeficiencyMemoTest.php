@@ -150,6 +150,37 @@ class ServiceDeficiencyMemoTest extends TestCase
             ], false);
     }
 
+    public function test_cash_check_official_fields_default_to_the_logged_in_user_and_remain_editable(): void
+    {
+        [$user] = $this->stationUserWithLine();
+        $user->update([
+            'name' => 'Inspecting Officer',
+            'designation' => 'Station Controller',
+            'employee_number' => 'EMP-INSPECT-01',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('sdm-memos.create'))
+            ->assertOk();
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+
+        foreach ([
+            'cash_check[checking_official_name]' => $user->name,
+            'cash_check[checking_official_designation]' => $user->designation,
+            'cash_check[checking_official_employee_number]' => $user->employee_number,
+        ] as $name => $expectedValue) {
+            $input = $xpath->query(sprintf('//input[@name="%s"]', $name))->item(0);
+
+            $this->assertInstanceOf(\DOMElement::class, $input);
+            $this->assertSame($expectedValue, $input->getAttribute('value'));
+            $this->assertFalse($input->hasAttribute('readonly'));
+            $this->assertFalse($input->hasAttribute('disabled'));
+        }
+    }
+
     public function test_create_form_provides_every_ssc_penalty_clause_for_each_sdm_type(): void
     {
         [$user] = $this->stationUserWithLine();

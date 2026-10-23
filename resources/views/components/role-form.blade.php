@@ -20,7 +20,7 @@
             @foreach ($permissions as $permission)
                 <label class="flex items-start gap-3 rounded-xl border border-gray-200 p-3 dark:border-gray-700">
                     <input name="permissions[]" type="checkbox" value="{{ $permission->name }}" @checked(in_array($permission->name, old('permissions', $managedRole?->permissions->pluck('name')->all() ?? []), true)) class="mt-0.5 h-4 w-4 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500">
-                    <span class="text-sm text-gray-700 dark:text-gray-300">{{ \Illuminate\Support\Str::headline(str_replace('.', ' ', $permission->name)) }}</span>
+                    <span class="text-sm text-gray-700 dark:text-gray-300">{{ \App\Support\PermissionLabel::for($permission->name) }}</span>
                 </label>
             @endforeach
         </div>

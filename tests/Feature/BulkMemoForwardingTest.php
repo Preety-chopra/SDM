@@ -46,7 +46,7 @@ class BulkMemoForwardingTest extends TestCase
         $this->actingAs($amCmc)
             ->get(route('sdm-memos.index'))
             ->assertOk()
-            ->assertSee('Bulk forward AM/CMC memos')
+            ->assertSee('Bulk forward Manager CMC memos')
             ->assertSee('name="memo_ids[]"', false)
             ->assertSee('Select every matching memo across all pages');
 
@@ -158,6 +158,67 @@ class BulkMemoForwardingTest extends TestCase
 
         $this->assertSame(MemoStatus::AmCmcReview, $memo->fresh()->status);
         $this->assertDatabaseCount('audit_logs', 0);
+    }
+
+    public function test_am_cmc_can_resend_a_forwarded_sdm_to_another_cmc_sm_before_it_is_acted_on(): void
+    {
+        $amCmc = $this->user(UserRole::ManagerOperations);
+        $originalCmcSm = $this->user(UserRole::CmcTeamLead);
+        $replacementCmcSm = $this->user(UserRole::CmcTeamLead);
+        $memo = $this->memoAtAmStage('CMC-SM-REASSIGN', $amCmc, WorkflowStepType::AmCmcToScrutiny, $originalCmcSm);
+        $memo->update(['created_by' => $amCmc->id]);
+        $this->step($memo, $originalCmcSm, WorkflowStepType::CmcVerification, 6);
+
+        $this->actingAs($amCmc)->post(route('sdm-memos.bulk-forward'), [
+            'destination' => WorkflowStepType::AmCmcToScrutiny->value,
+            'memo_ids' => [$memo->id],
+        ])->assertSessionHasNoErrors();
+
+        $this->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('Re-send to another SM/CMC')
+            ->assertSee($replacementCmcSm->name);
+
+        $this->patch(route('sdm-memos.cmc-team-lead.update', $memo), [
+            'cmc_team_lead_id' => $replacementCmcSm->id,
+        ])->assertRedirect(route('sdm-memos.show', $memo))
+            ->assertSessionHas('status', 'SDM re-sent to another SM/CMC.')
+            ->assertSessionHasNoErrors();
+
+        $currentStep = $memo->fresh()->currentWorkflowStep;
+        $this->assertSame($replacementCmcSm->id, $currentStep->assigned_to);
+        $this->assertSame($replacementCmcSm->name, $currentStep->assigned_name);
+        $this->assertSame($replacementCmcSm->employee_number, $currentStep->assigned_employee_number);
+        $this->assertSame(
+            $replacementCmcSm->id,
+            $memo->workflowSteps()->where('stage', WorkflowStepType::CmcVerification->value)->value('assigned_to'),
+        );
+        $this->assertDatabaseHas('audit_logs', [
+            'auditable_type' => ServiceDeficiencyMemo::class,
+            'auditable_id' => $memo->id,
+            'event' => 'memo.cmc_team_lead.reassigned',
+            'actor_id' => $amCmc->id,
+        ]);
+    }
+
+    public function test_only_the_am_cmc_who_forwarded_a_pending_sdm_can_resend_it_to_another_cmc_sm(): void
+    {
+        $amCmc = $this->user(UserRole::ManagerOperations);
+        $otherAmCmc = $this->user(UserRole::ManagerOperations);
+        $originalCmcSm = $this->user(UserRole::CmcTeamLead);
+        $replacementCmcSm = $this->user(UserRole::CmcTeamLead);
+        $memo = $this->memoAtAmStage('CMC-SM-REASSIGN-DENIED', $amCmc, WorkflowStepType::AmCmcToScrutiny, $originalCmcSm);
+
+        $this->actingAs($amCmc)->post(route('sdm-memos.bulk-forward'), [
+            'destination' => WorkflowStepType::AmCmcToScrutiny->value,
+            'memo_ids' => [$memo->id],
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($otherAmCmc)->patch(route('sdm-memos.cmc-team-lead.update', $memo), [
+            'cmc_team_lead_id' => $replacementCmcSm->id,
+        ])->assertForbidden();
+
+        $this->assertSame($originalCmcSm->id, $memo->fresh()->currentWorkflowStep->assigned_to);
     }
 
     private function user(UserRole $role): User

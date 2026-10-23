@@ -50,7 +50,9 @@ final class PenaltyClauseTemplates
             self::maximum(7, 'Breach of instructions', 500, true),
             self::maximum(8, 'Violation of business rules', 500, true),
             self::fixed(9, 'Loss of login ID or card', 500, true),
-            self::maximum(10, 'Cash mismatch during inspection or otherwise', 1000, true),
+            self::maximum(10, 'Cash mismatch during inspection or otherwise', 1000, true, [
+                'cash_mismatch_penalty_amounts' => CashMismatchPenalty::defaultAmounts(),
+            ]),
             self::fixed(11, 'Issue of undervalued tickets in proved cases', 1000, true),
             self::fixed(12, 'Overcharging in proved cases', 1000, true),
             self::discretionary(13, 'Violation of terms and conditions of the contract', true),
@@ -99,9 +101,9 @@ final class PenaltyClauseTemplates
         ];
     }
 
-    private static function maximum(int $serial, string $description, int $amount, bool $capped): array
+    private static function maximum(int $serial, string $description, int $amount, bool $capped, ?array $parameters = null): array
     {
-        return self::row($serial, $description, PenaltyCalculationType::Maximum, null, $amount, $capped);
+        return self::row($serial, $description, PenaltyCalculationType::Maximum, null, $amount, $capped, $parameters);
     }
 
     private static function fixed(int $serial, string $description, int $amount, bool $capped): array

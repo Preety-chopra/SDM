@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\DeficiencyType;
+use App\Enums\MemoCancellationType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\UserPermission;
@@ -140,8 +141,8 @@ class SdmWorkflowTest extends TestCase
         $this->actingAs($administrator)->get(route('hierarchies.index'))
             ->assertOk()
             ->assertSee('Station Managers → Assistant Managers')
-            ->assertSee('Assistant Managers → Managers (Operations)')
-            ->assertSee('Managers (Operations) → DGM/O')
+            ->assertSee('Assistant Managers → Manager CMC')
+            ->assertSee('Manager CMC → DGM/O')
             ->assertDontSee('Stations → Station Managers')
             ->assertDontSee('name="station_id"', false);
     }
@@ -689,8 +690,9 @@ class SdmWorkflowTest extends TestCase
             $this->actingAs($stationManager)->get(route('sdm-memos.index', $parameters))
                 ->assertOk()
                 ->assertDontSee('id="cancel-memo-'.$memo->id.'"', false)
-                ->assertDontSee('Cancellation remarks')
-                ->assertDontSee('name="action" value="cancel"', false);
+                ->assertDontSee('id="cancel-after-counselling-memo-'.$memo->id.'"', false)
+                ->assertDontSee('Counselling remarks')
+                ->assertDontSee('name="action" value="cancel_after_counselling"', false);
         }
 
         $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
@@ -704,11 +706,17 @@ class SdmWorkflowTest extends TestCase
                 ->assertSee('@click="openCancellation"', false)
                 ->assertSee('x-teleport="body"', false)
                 ->assertSee('id="cancel-memo-'.$memo->id.'"', false)
+                ->assertSee('id="cancel-after-counselling-memo-'.$memo->id.'"', false)
                 ->assertSee('fixed inset-0 z-50 grid place-items-center', false)
                 ->assertSee(route('sdm-memos.workflow.store', $memo), false)
                 ->assertSee('Cancellation remarks')
-                ->assertSee('Review cancellation')
                 ->assertSee('Confirm SDM cancellation?')
+                ->assertSee('name="action" value="cancel"', false)
+                ->assertSee('Cancel after counselling')
+                ->assertSee('Counselling remarks')
+                ->assertSee('Review cancellation')
+                ->assertSee('Confirm cancellation after counselling?')
+                ->assertSee('name="action" value="cancel_after_counselling"', false)
                 ->assertSee('@click="reviewCancellation($refs.cancellationForm)"', false)
                 ->assertSee('x-show="confirmationOpen"', false)
                 ->assertDontSee('<details class="relative">', false);
@@ -916,7 +924,7 @@ class SdmWorkflowTest extends TestCase
         $this->assertNotSame($lineManager->id, $selectedLineManager->id);
     }
 
-    public function test_station_manager_can_only_request_cancellation_and_am_line_can_cancel_with_mandatory_remarks(): void
+    public function test_station_manager_can_only_request_cancellation_and_am_line_can_cancel_after_counselling_with_mandatory_remarks(): void
     {
         [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
         $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), $this->validMemoData());
@@ -936,16 +944,25 @@ class SdmWorkflowTest extends TestCase
         ])->assertRedirect();
         $this->actingAs($lineManager)->get(route('sdm-memos.show', $memo))
             ->assertOk()
-            ->assertSee('name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM"', false);
+            ->assertSee('name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM"', false)
+            ->assertSee('name="action" value="cancel_after_counselling" data-sdm-confirm data-confirmation-action="Cancel after counselling"', false);
         $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'cancel'])
             ->assertSessionHasErrors('remarks');
+        $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'cancel_after_counselling'])
+            ->assertSessionHasErrors('remarks');
         $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), [
-            'action' => 'cancel',
-            'remarks' => 'AM/Line cancelled after review.',
-        ])->assertRedirect();
+            'action' => 'cancel_after_counselling',
+            'remarks' => 'Counselling completed with the staff member.',
+        ])->assertRedirect(route('sdm-memos.index'))
+            ->assertSessionHas('status', 'SDM cancelled after counselling.');
+        $this->assertDatabaseHas('audit_logs', [
+            'auditable_id' => $memo->id,
+            'event' => 'memo.workflow.cancel_after_counselling',
+        ]);
+        $this->assertSame(MemoCancellationType::AfterCounselling, $memo->fresh()->cancellation_type);
         $this->actingAs($stationUser)->get(route('sdm-memos.show', $memo))
             ->assertOk()
-            ->assertSee('Cancelled by AM/Line');
+            ->assertSee('Cancelled after counselling by AM/Line');
     }
 
     public function test_station_manager_reporting_line_can_be_changed_without_station_mapping(): void

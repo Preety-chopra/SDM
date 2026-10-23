@@ -5,14 +5,19 @@ namespace App\Services;
 use App\Contracts\Repositories\RoleRepositoryInterface;
 use App\Enums\UserPermission;
 use App\Enums\UserRole;
+use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
 final class RoleService
 {
-    public function __construct(private RoleRepositoryInterface $roles) {}
+    public function __construct(
+        private RoleRepositoryInterface $roles,
+        private AuditService $audit,
+    ) {}
 
     /** @return Collection<int, Role> */
     public function managedRoles(): Collection
@@ -68,6 +73,24 @@ final class RoleService
             $role = $this->roles->update($role, $data['name']);
 
             return $this->syncPermissions($role, $data);
+        });
+    }
+
+    public function delete(Role $role, User $actor): void
+    {
+        DB::transaction(function () use ($role, $actor): void {
+            if ($this->roles->hasUsers($role)) {
+                throw ValidationException::withMessages([
+                    'role' => 'Remove all users from this role before deleting it.',
+                ]);
+            }
+
+            $role->loadMissing('permissions');
+            $this->audit->record($role, $actor, 'role.deleted', before: [
+                'name' => $role->name,
+                'permissions' => $role->permissions->pluck('name')->values()->all(),
+            ]);
+            $this->roles->delete($role);
         });
     }
 

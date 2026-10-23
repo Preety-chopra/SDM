@@ -22,7 +22,7 @@
 
             <div class="overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/30">
                 <div class="grid divide-y divide-emerald-200 text-center text-sm font-semibold text-emerald-950 lg:grid-cols-4 lg:divide-x lg:divide-y-0 dark:divide-emerald-900 dark:text-emerald-100">
-                    @foreach(['Station Manager', 'Assistant Manager', 'Manager (Operations)', 'DGM/O'] as $step)
+                    @foreach(['Station Manager', 'Assistant Manager', 'Manager CMC', 'DGM/O'] as $step)
                         @if(!$loop->last)
                             <div class="flex items-center justify-center gap-2 px-3 py-3">
                                 <span>{{ $step }}</span>
@@ -39,8 +39,8 @@
                     @php
                         $title = match($level['subordinateRole']) {
                             \App\Enums\UserRole::StationManager => 'Station Managers → Assistant Managers',
-                            \App\Enums\UserRole::AssistantManager => 'Assistant Managers → Managers (Operations)',
-                            \App\Enums\UserRole::ManagerOperations => 'Managers (Operations) → DGM/O',
+                            \App\Enums\UserRole::AssistantManager => 'Assistant Managers → Manager CMC',
+                            \App\Enums\UserRole::ManagerOperations => 'Manager CMC → DGM/O',
                             default => '',
                         };
                     @endphp

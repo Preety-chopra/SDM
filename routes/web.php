@@ -38,7 +38,7 @@ Route::get('/dashboard/chart-sdms', DashboardChartMemosController::class)
 Route::middleware(['auth', 'enabled'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
 
-    Route::resource('roles', RoleController::class)->except(['show', 'destroy']);
+    Route::resource('roles', RoleController::class)->except('show');
 
     Route::get('/sdm-hierarchy', [StationHierarchyController::class, 'index'])->name('hierarchies.index');
     Route::put('/sdm-hierarchy', [StationHierarchyController::class, 'update'])->name('hierarchies.update');
@@ -53,6 +53,7 @@ Route::middleware(['auth', 'enabled'])->group(function () {
 
     Route::post('/sdm-memos/submit', [ServiceDeficiencyMemoController::class, 'storeAndSubmit'])->name('sdm-memos.store-and-submit');
     Route::post('/sdm-memos/bulk-forward', [MemoWorkflowController::class, 'bulkForward'])->name('sdm-memos.bulk-forward');
+    Route::post('/sdm-memos/bulk-cmc-action', [MemoWorkflowController::class, 'bulkCmcAction'])->name('sdm-memos.bulk-cmc-action');
     Route::get('/sdm-memos/drafts', [ServiceDeficiencyMemoController::class, 'drafts'])->name('sdm-memos.drafts');
     Route::resource('sdm-memos', ServiceDeficiencyMemoController::class)->except('update');
     Route::post('/sdm-memos/{sdm_memo}', [ServiceDeficiencyMemoController::class, 'update'])->name('sdm-memos.update');
@@ -60,6 +61,7 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::patch('/sdm-memos/{sdm_memo}/line-manager', [ServiceDeficiencyMemoController::class, 'updateLineManager'])->name('sdm-memos.line-manager.update');
     Route::post('/sdm-memos/{sdm_memo}/submit', [ServiceDeficiencyMemoController::class, 'submit'])->name('sdm-memos.submit');
     Route::post('/sdm-memos/{sdm_memo}/workflow', [MemoWorkflowController::class, 'store'])->name('sdm-memos.workflow.store');
+    Route::patch('/sdm-memos/{sdm_memo}/cmc-team-lead', [MemoWorkflowController::class, 'reassignCmcTeamLead'])->name('sdm-memos.cmc-team-lead.update');
     Route::patch('/sdm-memos/{sdm_memo}/cmc-assignment', [MemoWorkflowController::class, 'reassign'])->name('sdm-memos.cmc-assignment.update');
     Route::post('/sdm-memos/{sdm_memo}/penalty-letter', [MemoPenaltyLifecycleController::class, 'letter'])->name('sdm-memos.penalty-letter.store');
     Route::post('/sdm-memos/{sdm_memo}/objection', [MemoPenaltyLifecycleController::class, 'objection'])->name('sdm-memos.objection.store');

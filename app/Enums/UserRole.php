@@ -20,10 +20,10 @@ enum UserRole: string
             self::Station => 'Station',
             self::StationManager => 'Station Manager',
             self::AssistantManager => 'Manager/Assistant Manager (O)-Line',
-            self::ManagerOperations => 'Manager (Operations)',
-            self::CmcTeamLead => 'CMC Team Lead',
+            self::ManagerOperations => 'Manager CMC',
+            self::CmcTeamLead => 'CMC SM',
             self::CmcStaff => 'CMC Staff',
-            self::DeputyGeneralManager => 'DGM/O',
+            self::DeputyGeneralManager => 'DGM/CMC',
         };
     }
 
@@ -34,10 +34,10 @@ enum UserRole: string
             self::Station => 'Station Users',
             self::StationManager => 'Station Managers',
             self::AssistantManager => 'Managers/Assistant Managers (O)-Line',
-            self::ManagerOperations => 'Managers (Operations)',
-            self::CmcTeamLead => 'CMC Team Leads',
+            self::ManagerOperations => 'Manager CMC Users',
+            self::CmcTeamLead => 'CMC SMs',
             self::CmcStaff => 'CMC Staff Users',
-            self::DeputyGeneralManager => 'DGM/O Users',
+            self::DeputyGeneralManager => 'DGM/CMC Users',
         };
     }
 
