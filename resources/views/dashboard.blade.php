@@ -1,13 +1,13 @@
 <x-app-layout title="Dashboard">
-    {{-- <x-slot name="header"> --}}
-        {{-- <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+    <x-slot name="header">
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
             <div>
                 <p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-400">SDM Workspace</p>
                 <h1 class="mt-1 text-2xl font-bold tracking-tight text-gray-950 dark:text-white">Good to see you, {{ auth()->user()->name }}</h1>
             </div>
             <p class="text-sm text-gray-500 dark:text-gray-400">Choose an action and get straight to work.</p>
-        </div> --}}
-    {{-- </x-slot> --}}
+        </div>
+    </x-slot>
 
     <div class="py-8 sm:py-10">
         <div class="mx-auto flex max-w-7xl flex-col gap-8 px-4 sm:px-6 lg:px-8">
@@ -81,6 +81,34 @@
 
             @if ($isWorkflowDashboardUser)
                 <x-workflow-role-dashboard :dashboard="$workflowRoleDashboard" />
+            @endif
+
+            @if (!empty($workflowStages))
+                <section aria-labelledby="approval-level-heading">
+                    <div class="mb-4">
+                        <h2 id="approval-level-heading" class="text-lg font-bold text-gray-950 dark:text-white">Pending memos by approval level</h2>
+                    </div>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        @foreach ($workflowStages as $stage)
+                            @php
+                                $queue = $pendingMemoStages[$stage->value];
+                            @endphp
+                            <a href="{{ route('sdm-memos.index', ['pending_stage' => $stage->value]) }}" class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-emerald-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+                                <div class="flex items-center justify-between gap-3">
+                                    <h3 class="font-bold text-gray-950 dark:text-white">{{ $stage->levelLabel() }}</h3>
+                                    <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900 dark:bg-amber-950 dark:text-amber-200">{{ $queue['total'] }}</span>
+                                </div>
+                                <div class="mt-4 space-y-2">
+                                    @forelse ($queue['memos'] as $memo)
+                                        <p class="truncate text-sm text-gray-600 dark:text-gray-300">{{ $memo->serial_number }}</p>
+                                    @empty
+                                        <p class="text-sm text-gray-500 dark:text-gray-400">No pending memos</p>
+                                    @endforelse
+                                </div>
+                            </a>
+                        @endforeach
+                    </div>
+                </section>
             @endif
 
             @if (!empty($workflowStepTypes))
@@ -168,7 +196,6 @@
                     </div>
                 </section>
             @endif
-{{--
             @if ($canManageUsers)
                 <section aria-labelledby="user-management-heading">
                     <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -199,7 +226,7 @@
                         @endforeach
                     </div>
                 </section>
-            @endif --}}
+            @endif
         </div>
     </div>
 </x-app-layout>

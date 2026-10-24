@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\Repositories\DesignationRepositoryInterface;
 use App\Contracts\Repositories\LineManagerDashboardRepositoryInterface;
 use App\Contracts\Repositories\MasterDataRepositoryInterface;
 use App\Contracts\Repositories\RoleRepositoryInterface;
@@ -20,6 +21,7 @@ use App\Policies\RolePolicy;
 use App\Policies\ServiceContractPolicy;
 use App\Policies\ServiceDeficiencyMemoPolicy;
 use App\Policies\UserPolicy;
+use App\Repositories\Eloquent\DesignationRepository;
 use App\Repositories\Eloquent\LineManagerDashboardRepository;
 use App\Repositories\Eloquent\MasterDataRepository;
 use App\Repositories\Eloquent\RoleRepository;
@@ -45,6 +47,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(DesignationRepositoryInterface::class, DesignationRepository::class);
         $this->app->bind(UserRepositoryInterface::class, UserRepository::class);
         $this->app->bind(LineManagerDashboardRepositoryInterface::class, LineManagerDashboardRepository::class);
         $this->app->bind(WorkflowRoleDashboardRepositoryInterface::class, WorkflowRoleDashboardRepository::class);

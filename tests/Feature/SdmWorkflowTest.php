@@ -1128,7 +1128,7 @@ class SdmWorkflowTest extends TestCase
             'role' => UserRole::StationManager->value,
             'employee_number' => 'SM-REPLACEMENT',
             'phone' => null,
-            'designation' => 'Station Manager',
+            'designation' => null,
             'is_enabled' => '1',
             'password' => 'Secure Password 123!',
             'password_confirmation' => 'Secure Password 123!',

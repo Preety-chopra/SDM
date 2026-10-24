@@ -1,4 +1,4 @@
-@props(['action', 'method' => 'POST', 'managedUser' => null, 'selectedRole', 'roles', 'lines', 'stations', 'directStationRoleNames', 'submitLabel'])
+@props(['action', 'method' => 'POST', 'managedUser' => null, 'selectedRole', 'roles', 'lines', 'stations', 'designations', 'directStationRoleNames', 'submitLabel'])
 
 <form method="POST" action="{{ $action }}" class="flex flex-col gap-6" x-data="userForm" data-role="{{ old('role', $selectedRole->name) }}" data-direct-station-roles='@json($directStationRoleNames)' data-station-role="{{ \App\Enums\UserRole::Station->value }}">
     @csrf
@@ -59,7 +59,12 @@
         </div>
         <div>
             <x-input-label for="designation" value="Designation" />
-            <x-text-input id="designation" name="designation" type="text" class="mt-1 block w-full" :value="old('designation', $managedUser?->designation)" />
+            <select id="designation" name="designation" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                <option value="">Select a designation</option>
+                @foreach ($designations as $designation)
+                    <option value="{{ $designation->code }}" @selected(old('designation', $managedUser?->designation) === $designation->code)>{{ $designation->name }} ({{ $designation->code }})</option>
+                @endforeach
+            </select>
             <x-input-error :messages="$errors->get('designation')" class="mt-2" />
         </div>
         <div class="flex items-center gap-3 self-end pb-2">

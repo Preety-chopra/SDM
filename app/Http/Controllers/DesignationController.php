@@ -2,64 +2,38 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\UserPermission;
+use App\Http\Requests\SaveDesignationRequest;
 use App\Models\Designation;
+use App\Services\DesignationService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\View\View;
 
 class DesignationController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    public function __construct(private DesignationService $designations) {}
+
+    public function index(): View
     {
-        //
+        Gate::authorize(UserPermission::ManageRoles->value);
+
+        return view('designations.index', ['designations' => $this->designations->all()]);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
+    public function store(SaveDesignationRequest $request): RedirectResponse
     {
-        //
+        $designation = $this->designations->create($request->validated(), $request->user());
+
+        return back()->with('status', "{$designation->name} was added successfully.");
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
+    public function destroy(Request $request, Designation $designation): RedirectResponse
     {
-        //
-    }
+        Gate::authorize(UserPermission::ManageRoles->value);
+        $this->designations->delete($designation, $request->user());
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(Designation $designation)
-    {
-        //
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(Designation $designation)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, Designation $designation)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(Designation $designation)
-    {
-        //
+        return back()->with('status', "{$designation->name} was deleted successfully.");
     }
 }

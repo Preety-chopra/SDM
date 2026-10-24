@@ -272,7 +272,7 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
 
             $pending[$stage->value] = [
                 'memos' => (clone $query)
-                    ->select(['id', 'station_name', 'line_name', 'incident_date', 'current_stage', 'submitted_at'])
+                    ->select(['id', 'serial_number', 'station_name', 'line_name', 'incident_date', 'current_stage', 'submitted_at'])
                     ->with(['approvals' => fn ($query) => $query
                         ->select(['id', 'memo_id', 'role', 'assigned_name'])
                         ->where('role', $stage->value)

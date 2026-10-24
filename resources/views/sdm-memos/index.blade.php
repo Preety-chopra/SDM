@@ -83,13 +83,13 @@
                 </div>
 
                 <div>
-                    <x-input-label for="incident_date_from" value="Submitted On" />
+                    <x-input-label for="incident_date_from" value="Incident date from" />
                     <x-text-input id="incident_date_from" name="incident_date_from" type="date" :value="$filters['incident_date_from'] ?? ''" class="mt-1 block w-full" />
                     <x-input-error :messages="$errors->get('incident_date_from')" class="mt-2" />
                 </div>
 
                 <div>
-                    <x-input-label for="incident_date_to" value="Submitted Till" />
+                    <x-input-label for="incident_date_to" value="Incident date to" />
                     <x-text-input id="incident_date_to" name="incident_date_to" type="date" :value="$filters['incident_date_to'] ?? ''" class="mt-1 block w-full" />
                     <x-input-error :messages="$errors->get('incident_date_to')" class="mt-2" />
                 </div>

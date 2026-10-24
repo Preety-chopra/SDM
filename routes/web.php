@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ContractorController;
 use App\Http\Controllers\DashboardChartMemosController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DesignationController;
 use App\Http\Controllers\LineController;
 use App\Http\Controllers\LineManagerDashboardMemosController;
 use App\Http\Controllers\MemoApprovalAttachmentController;
@@ -39,6 +40,7 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
 
     Route::resource('roles', RoleController::class)->except('show');
+    Route::resource('designations', DesignationController::class)->only(['index', 'store', 'destroy']);
 
     Route::get('/sdm-hierarchy', [StationHierarchyController::class, 'index'])->name('hierarchies.index');
     Route::put('/sdm-hierarchy', [StationHierarchyController::class, 'update'])->name('hierarchies.update');

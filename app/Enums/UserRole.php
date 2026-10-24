@@ -37,7 +37,7 @@ enum UserRole: string
             self::ManagerOperations => 'Manager CMC Users',
             self::CmcTeamLead => 'CMC SMs',
             self::CmcStaff => 'CMC Staff Users',
-            self::DeputyGeneralManager => 'DGM/CMC Users',
+            self::DeputyGeneralManager => 'DGM/O Users',
         };
     }
 

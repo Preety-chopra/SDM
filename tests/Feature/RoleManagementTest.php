@@ -172,7 +172,7 @@ class RoleManagementTest extends TestCase
             'role' => $role->name,
             'employee_number' => null,
             'phone' => null,
-            'designation' => 'Auditor',
+            'designation' => null,
             'station_id' => null,
             'is_enabled' => '1',
             'password' => 'Secure Password 123!',

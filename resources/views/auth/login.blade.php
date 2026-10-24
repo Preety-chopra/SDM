@@ -33,7 +33,7 @@
 
                         <div class="mt-10 max-w-md lg:mt-20">
                             <p class="text-xs font-bold uppercase tracking-[0.24em] text-[#0b5f59]">Digitized Service Deficiency Memo</p>
-                            <h1 class="mt-4 text-3xl font-bold leading-tight tracking-[-0.03em] text-slate-950 sm:text-4xl lg:text-5xl">SDM Tracker</h1>
+                            <h1 class="mt-4 text-3xl font-bold leading-tight tracking-[-0.03em] text-slate-950 sm:text-4xl lg:text-5xl">Service Deficiency Management</h1>
                             <p class="mt-5 text-[15px] leading-7 text-slate-700 sm:text-base">A secure workspace for creating, reviewing, and tracking service deficiency memos across DMRC operations.</p>
                         </div>
                     </div>
@@ -149,7 +149,7 @@
                     </div>
 
                     <h2 id="forgot-password-title" class="mt-5 text-xl font-bold text-slate-950">Password assistance</h2>
-                    <p class="mt-3 text-sm leading-6 text-slate-600">Please contact Ops IT Cell - 113755 or send an email to itcell.ops@dmrc.org</p>
+                    <p class="mt-3 text-sm leading-6 text-slate-600">Please contact Ops IT Cell - 110426 or send an email to itcellops@dmrc.org</p>
 
                     <button type="button" class="mt-6 flex w-full items-center justify-center rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#115e59] focus:outline-none focus:ring-4 focus:ring-emerald-200" @click="forgotPasswordOpen = false">Close</button>
                 </div>

@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\UserRole;
+use App\Models\Designation;
 use App\Models\Line;
 use App\Models\Station;
 use App\Models\User;
@@ -35,7 +36,7 @@ class StoreUserRequest extends FormRequest
             ],
             'employee_number' => [Rule::requiredIf($role?->requiresEmployeeNumber() === true), 'nullable', 'string', 'max:100', Rule::unique(User::class)],
             'phone' => ['nullable', 'string', 'max:30'],
-            'designation' => ['nullable', 'string', 'max:100'],
+            'designation' => ['nullable', 'string', 'max:100', Rule::exists(Designation::class, 'code')->where('is_active', true)],
             'station_id' => [
                 'nullable',
                 Rule::exists(Station::class, 'id')->where(fn (Builder $query) => $query

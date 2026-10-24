@@ -9,6 +9,7 @@ use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Http\Requests\UpdateUserStatusRequest;
 use App\Models\User;
+use App\Services\DesignationService;
 use App\Services\RoleService;
 use App\Services\UserService;
 use Illuminate\Http\RedirectResponse;
@@ -23,6 +24,7 @@ class UserController extends Controller
         private UserService $users,
         private RoleService $roles,
         private StationRepositoryInterface $stations,
+        private DesignationService $designations,
     ) {}
 
     public function index(ListUsersRequest $request, string $role): View
@@ -75,6 +77,7 @@ class UserController extends Controller
             'stations' => $stations,
             'lines' => $stations->pluck('metroLine')->filter()->unique('id')->sortBy('name')->values(),
             'directStationRoleNames' => $this->roles->directStationRoleNames($roles),
+            'designations' => $this->designations->active(),
             'generalCreate' => $generalCreate,
         ]);
     }
@@ -102,6 +105,7 @@ class UserController extends Controller
             'stations' => $stations,
             'lines' => $stations->pluck('metroLine')->filter()->unique('id')->sortBy('name')->values(),
             'directStationRoleNames' => $this->roles->directStationRoleNames($roles),
+            'designations' => $this->designations->active(),
         ]);
     }
 

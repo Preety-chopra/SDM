@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\Designation;
 use Illuminate\Database\Seeder;
 
 class DesignationSeeder extends Seeder
@@ -12,6 +12,17 @@ class DesignationSeeder extends Seeder
      */
     public function run(): void
     {
-        //
+        foreach ([
+            ['code' => 'SM', 'name' => 'Station Manager'],
+            ['code' => 'Sr. SM', 'name' => 'Senior Station Manager'],
+            ['code' => 'AM', 'name' => 'Assistant Manager'],
+            ['code' => 'MGR', 'name' => 'Manager'],
+            ['code' => 'DGM', 'name' => 'Deputy General Manager'],
+        ] as $designation) {
+            Designation::query()->updateOrCreate(
+                ['code' => $designation['code']],
+                [...$designation, 'is_active' => true],
+            );
+        }
     }
 }

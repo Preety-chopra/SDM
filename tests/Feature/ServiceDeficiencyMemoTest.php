@@ -342,6 +342,8 @@ class ServiceDeficiencyMemoTest extends TestCase
 
     public function test_station_user_can_submit_a_complete_memo_without_saving_a_draft_first(): void
     {
+        $this->travelTo(Carbon::parse('2026-09-25 10:30:00'));
+
         [$user] = $this->stationUserWithLine();
         $contractor = Contractor::query()->create(['name' => 'Metro Services', 'is_active' => true]);
 
@@ -591,7 +593,7 @@ class ServiceDeficiencyMemoTest extends TestCase
 
     public function test_create_form_exposes_visible_multi_selection_and_requested_cash_check_fields(): void
     {
-        $this->travelTo(Carbon::parse('2026-08-18 10:00:00'));
+        $this->travelTo(Carbon::parse('2026-08-18 10:00:00', 'UTC'));
         [$user] = $this->stationUserWithLine();
 
         $this->actingAs($user)->get(route('sdm-memos.create'))

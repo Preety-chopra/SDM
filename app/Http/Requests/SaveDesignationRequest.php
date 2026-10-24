@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Contracts\Validation\ValidationRule;
+use App\Enums\UserPermission;
+use App\Models\Designation;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class SaveDesignationRequest extends FormRequest
 {
@@ -12,18 +14,20 @@ class SaveDesignationRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return false;
+        return $this->user()->can(UserPermission::ManageRoles->value);
     }
 
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, ValidationRule|array<mixed>|string>
+     * @return array<string, array<mixed>|string>
      */
     public function rules(): array
     {
         return [
-            //
+            'code' => ['required', 'string', 'max:30', Rule::unique(Designation::class, 'code')],
+            'name' => ['required', 'string', 'max:100'],
+            'is_active' => ['required', 'boolean'],
         ];
     }
 }
