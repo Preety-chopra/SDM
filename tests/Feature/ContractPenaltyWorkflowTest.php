@@ -851,6 +851,30 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertDontSee('>Cancelled after counselling by AM/Line</span>', false);
     }
 
+    public function test_case_timeline_starts_with_the_sdm_creator_and_creation_time(): void
+    {
+        [$stationUser, $stationManager] = $this->workflowUsers();
+        $stationUser->update(['name' => 'Initiator <SC>', 'employee_number' => 'SC-INITIATOR']);
+        $cmcStaff = $this->user(UserRole::CmcStaff);
+        $contractor = Contractor::query()->create(['name' => 'Creator Timeline Partner', 'is_active' => true]);
+        $contract = $this->contract($contractor, $cmcStaff, SdmType::Cfs, 'CFA/CREATOR-TIMELINE');
+        $contract->update(['status' => 'published', 'published_at' => now()]);
+        $memo = $this->submittedMemo($stationUser, $contractor, $contract);
+        $memo->forceFill(['created_at' => '2026-10-20 09:15:00', 'submitted_at' => '2026-10-21 10:30:00'])->save();
+
+        $this->actingAs($stationManager)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSeeTextInOrder([
+                'Case timeline',
+                'SDM created',
+                'Created by Initiator <SC>',
+                'SC-INITIATOR',
+                '20-10-2026 09:15',
+                WorkflowStepType::StationManager->label(),
+            ])
+            ->assertDontSee('Initiator <SC>', false);
+    }
+
     public function test_case_timeline_reveals_only_completed_and_current_steps_to_workflow_users(): void
     {
         [$stationUser, , $lineManager, $operationsManager, $dgm, , $cmcTeamLead] = $this->workflowUsers();
@@ -866,6 +890,7 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertOk()
             ->assertSee('<details data-case-timeline data-default-collapsed="true"', false)
             ->assertDontSee('data-case-timeline open', false)
+            ->assertSeeTextInOrder(['Case timeline', 'SDM created', $stationUser->name, WorkflowStepType::StationManager->label()])
             ->assertSee(WorkflowStepType::DgmApproval->label());
 
         $cases = [
@@ -891,6 +916,7 @@ class ContractPenaltyWorkflowTest extends TestCase
                 ->assertOk()
                 ->assertSee('<details data-case-timeline data-default-collapsed="true"', false)
                 ->assertDontSee('data-case-timeline open', false)
+                ->assertSeeTextInOrder(['Case timeline', 'SDM created', $stationUser->name, WorkflowStepType::StationManager->label()])
                 ->assertSee($currentStage->label());
 
             if ($hiddenFutureStage !== null) {

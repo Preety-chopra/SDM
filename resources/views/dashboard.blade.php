@@ -25,42 +25,42 @@
                     @can('create', \App\Models\ServiceDeficiencyMemo::class)
                         <a href="{{ route('sdm-memos.create') }}" class="group flex min-h-32 flex-col justify-between rounded-2xl bg-emerald-700 p-5 text-white shadow-sm transition duration-200 hover:-translate-y-1 hover:bg-emerald-800 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">
                             <span class="text-xs font-bold uppercase tracking-wider text-emerald-100">Start</span>
-                            <span class="flex items-end justify-between gap-3 text-base font-bold">Create SDM memo <span aria-hidden="true" class="text-2xl transition-transform group-hover:translate-x-1">→</span></span>
+                            <span class="flex items-end justify-between gap-3 text-base font-bold">Create SDM memo <span aria-hidden="true" class="text-2xl transition-transform group-hover:translate-x-1"></span></span>
                         </a>
                     @endcan
 
                     @if ($canUseMemos)
                         <a href="{{ route('sdm-memos.index') }}" class="group flex min-h-32 flex-col justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-emerald-300 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-emerald-700 dark:focus:ring-offset-gray-900">
                             <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Records</span>
-                            <span class="flex items-end justify-between gap-3 font-bold text-gray-950 dark:text-white">View all memos <span aria-hidden="true" class="text-2xl text-emerald-600 transition-transform group-hover:translate-x-1 dark:text-emerald-400">→</span></span>
+                            <span class="flex items-end justify-between gap-3 font-bold text-gray-950 dark:text-white">View all memos <span aria-hidden="true" class="text-2xl text-emerald-600 transition-transform group-hover:translate-x-1 dark:text-emerald-400"></span></span>
                         </a>
                     @endif
 
                     @can(\App\Enums\UserPermission::CreateUsers->value)
                         <a href="{{ route('users.create_any') }}" class="group flex min-h-32 flex-col justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-emerald-300 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-emerald-700 dark:focus:ring-offset-gray-900">
                             <span class="text-xs font-bold uppercase tracking-wider text-gray-400">People</span>
-                            <span class="flex items-end justify-between gap-3 font-bold text-gray-950 dark:text-white">Create user <span aria-hidden="true" class="text-2xl text-emerald-600 transition-transform group-hover:translate-x-1 dark:text-emerald-400">→</span></span>
+                            <span class="flex items-end justify-between gap-3 font-bold text-gray-950 dark:text-white">Create user <span aria-hidden="true" class="text-2xl text-emerald-600 transition-transform group-hover:translate-x-1 dark:text-emerald-400"></span></span>
                         </a>
                     @endcan
 
                     @can(\App\Enums\UserPermission::ManageLines->value)
                         <a href="{{ route('lines.index') }}" class="group flex min-h-32 flex-col justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-emerald-300 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-emerald-700 dark:focus:ring-offset-gray-900">
                             <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Network</span>
-                            <span class="flex items-end justify-between gap-3 font-bold text-gray-950 dark:text-white">Manage lines <span aria-hidden="true" class="text-2xl text-emerald-600 transition-transform group-hover:translate-x-1 dark:text-emerald-400">→</span></span>
+                            <span class="flex items-end justify-between gap-3 font-bold text-gray-950 dark:text-white">Manage lines <span aria-hidden="true" class="text-2xl text-emerald-600 transition-transform group-hover:translate-x-1 dark:text-emerald-400"></span></span>
                         </a>
                     @endcan
 
                     @can(\App\Enums\UserPermission::ManageStations->value)
                         <a href="{{ route('stations.index') }}" class="group flex min-h-32 flex-col justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-emerald-300 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-emerald-700 dark:focus:ring-offset-gray-900">
                             <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Locations</span>
-                            <span class="flex items-end justify-between gap-3 font-bold text-gray-950 dark:text-white">Manage stations <span aria-hidden="true" class="text-2xl text-emerald-600 transition-transform group-hover:translate-x-1 dark:text-emerald-400">→</span></span>
+                            <span class="flex items-end justify-between gap-3 font-bold text-gray-950 dark:text-white">Manage stations <span aria-hidden="true" class="text-2xl text-emerald-600 transition-transform group-hover:translate-x-1 dark:text-emerald-400"></span></span>
                         </a>
                     @endcan
 
                     @can(\App\Enums\UserPermission::ManageContractors->value)
                         <a href="{{ route('contractors.index') }}" class="group flex min-h-32 flex-col justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-emerald-300 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-emerald-700 dark:focus:ring-offset-gray-900">
                             <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Partners</span>
-                            <span class="flex items-end justify-between gap-3 font-bold text-gray-950 dark:text-white">Manage contractors <span aria-hidden="true" class="text-2xl text-emerald-600 transition-transform group-hover:translate-x-1 dark:text-emerald-400">→</span></span>
+                            <span class="flex items-end justify-between gap-3 font-bold text-gray-950 dark:text-white">Manage contractors <span aria-hidden="true" class="text-2xl text-emerald-600 transition-transform group-hover:translate-x-1 dark:text-emerald-400"></span></span>
                         </a>
                     @endcan
                 </div>
@@ -82,7 +82,7 @@
             @if ($isWorkflowDashboardUser)
                 <x-workflow-role-dashboard :dashboard="$workflowRoleDashboard" />
             @endif
-
+{{-- 
             @if (!empty($workflowStages))
                 <section aria-labelledby="approval-level-heading">
                     <div class="mb-4">
@@ -109,7 +109,7 @@
                         @endforeach
                     </div>
                 </section>
-            @endif
+            @endif --}}
 
             @if (!empty($workflowStepTypes))
                 @php
@@ -216,7 +216,7 @@
                                         <p class="font-semibold text-gray-700 dark:text-gray-200">{{ \App\Support\RoleLabel::plural($role->name) }}</p>
                                         <p class="mt-2 text-3xl font-black text-gray-950 dark:text-white">{{ $counts['total'] }}</p>
                                     </div>
-                                    <span aria-hidden="true" class="text-2xl text-emerald-600 transition-transform group-hover:translate-x-1 dark:text-emerald-400">→</span>
+                                    <span aria-hidden="true" class="text-2xl text-emerald-600 transition-transform group-hover:translate-x-1 dark:text-emerald-400"></span>
                                 </div>
                                 <div class="mt-5 grid grid-cols-2 gap-3 border-t border-gray-100 pt-4 text-sm dark:border-gray-700">
                                     <div><span class="block text-xs text-gray-500 dark:text-gray-400">Enabled</span><strong class="text-emerald-700 dark:text-emerald-400">{{ $counts['enabled'] }}</strong></div>

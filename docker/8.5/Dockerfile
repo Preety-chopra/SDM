@@ -21,7 +21,8 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN echo "Acquire::http::Pipeline-Depth 0;" > /etc/apt/apt.conf.d/99custom && \
     echo "Acquire::http::No-Cache true;" >> /etc/apt/apt.conf.d/99custom && \
-    echo "Acquire::BrokenProxy    true;" >> /etc/apt/apt.conf.d/99custom
+    echo "Acquire::BrokenProxy    true;" >> /etc/apt/apt.conf.d/99custom && \
+    echo 'Acquire::Retries "3";' >> /etc/apt/apt.conf.d/99custom
 
 RUN apt-get update && apt-get upgrade -y \
     && mkdir -p /etc/apt/keyrings \
@@ -66,7 +67,7 @@ RUN apt-get update && apt-get upgrade -y \
     && corepack prepare yarn@stable --activate \
     && npx -y playwright install-deps \
     && curl -sS https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor | tee /etc/apt/keyrings/pgdg.gpg > /dev/null \
-    && echo "deb [signed-by=/etc/apt/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt noble-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && echo "deb [signed-by=/etc/apt/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt noble-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
     && apt-get install -y $MYSQL_CLIENT \
     && apt-get install -y postgresql-client-$POSTGRES_VERSION \

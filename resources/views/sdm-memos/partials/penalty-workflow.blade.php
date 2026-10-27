@@ -124,6 +124,25 @@
         </span>
     </summary>
     <div class="mt-4 flex flex-col gap-4">
+        <ol class="flex flex-col gap-2 border-l-2 border-gray-200 pl-3 dark:border-gray-700">
+            <li data-timeline-state="created" class="relative rounded-xl border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-800 dark:bg-emerald-950/35">
+                <div class="flex items-start gap-2.5">
+                    <span class="-ml-[1.42rem] mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white ring-4 ring-white dark:ring-gray-800">
+                        <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.051l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.142Z" clip-rule="evenodd"/></svg>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                            <div class="min-w-0">
+                                <h5 class="text-sm font-semibold leading-5 text-gray-950 dark:text-white">SDM created</h5>
+                                <p class="text-xs leading-5 text-gray-600 dark:text-gray-300">Created by <strong>{{ $memo->creator?->name ?? 'Unknown user' }}</strong>@if($memo->creator?->employee_number) · {{ $memo->creator->employee_number }}@endif</p>
+                            </div>
+                            <span class="shrink-0 rounded-full bg-emerald-200 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100">Created</span>
+                        </div>
+                        <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ $memo->created_at?->format('d-m-Y H:i') }}</p>
+                    </div>
+                </div>
+            </li>
+        </ol>
         @foreach($timelineSteps->groupBy('round') as $round => $roundSteps)
             <div>
                 @if(!$loop->first)

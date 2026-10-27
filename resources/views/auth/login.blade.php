@@ -32,8 +32,8 @@
                         </a>
 
                         <div class="mt-10 max-w-md lg:mt-20">
-                            <p class="text-xs font-bold uppercase tracking-[0.24em] text-[#0b5f59]">Digitized Service Deficiency Memo</p>
-                            <h1 class="mt-4 text-3xl font-bold leading-tight tracking-[-0.03em] text-slate-950 sm:text-4xl lg:text-5xl">Service Deficiency Management</h1>
+                            {{-- <p class="text-xs font-bold uppercase tracking-[0.24em] text-[#0b5f59]">Digitized Service Deficiency Memo</p> --}}
+                            <h1 class="mt-4 text-3xl font-bold leading-tight tracking-[-0.03em] text-slate-950 sm:text-4xl lg:text-5xl">Digitized Service Deficiency Memo</h1>
                             <p class="mt-5 text-[15px] leading-7 text-slate-700 sm:text-base">A secure workspace for creating, reviewing, and tracking service deficiency memos across DMRC operations.</p>
                         </div>
                     </div>

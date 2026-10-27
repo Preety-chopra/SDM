@@ -216,7 +216,7 @@ class ServiceDeficiencyMemoController extends Controller
     {
         Gate::authorize('view', $sdmMemo);
         $sdmMemo->load([
-            'creator:id,name', 'deficiencies.lateReporting', 'publicComplaint.station', 'cashCheck', 'attachments',
+            'creator:id,name,employee_number', 'deficiencies.lateReporting', 'publicComplaint.station', 'cashCheck', 'attachments',
             'approvals.assignee', 'approvals.actor', 'approvals.attachments', 'serviceContract.penaltyClauses',
             'staffAcknowledgement', 'workflowSteps.assignee', 'currentWorkflowStep', 'cmcStaff', 'assessments.items',
             'penaltyLetters', 'currentPenaltyLetter', 'objections', 'deduction',
