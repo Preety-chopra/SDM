@@ -70,6 +70,43 @@ class UserManagementTest extends TestCase
             ->assertSee('Disabled');
     }
 
+    public function test_administrator_can_reach_existing_users_from_the_sidebar(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $managedUser = $this->userWithRole(UserRole::AssistantManager, [
+            'employee_number' => 'EMP-EXISTING-01',
+            'is_enabled' => false,
+        ]);
+        $customRole = Role::create(['name' => 'custom_reviewer', 'guard_name' => 'web']);
+
+        $response = $this->actingAs($administrator)
+            ->get(route('profile.edit'))
+            ->assertOk();
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $sidebarLinks = (new \DOMXPath($document))->query('//nav[@aria-label="Main navigation"]//a');
+        $destinations = collect($sidebarLinks)
+            ->map(fn (\DOMElement $link): string => $link->getAttribute('href'));
+
+        foreach ([...UserRole::managed(), $customRole] as $role) {
+            $roleName = $role instanceof UserRole ? $role->value : $role->name;
+            $this->assertContains(route('users.index', $roleName), $destinations);
+        }
+        $this->assertNotContains(route('users.index', UserRole::Administrator->value), $destinations);
+
+        $this->get(route('users.index', UserRole::AssistantManager->value))
+            ->assertOk()
+            ->assertSee($managedUser->name)
+            ->assertSee(route('users.edit', $managedUser), false);
+
+        $this->get(route('users.edit', $managedUser))
+            ->assertOk()
+            ->assertSee('Edit '.$managedUser->name)
+            ->assertSee('value="'.$managedUser->employee_number.'"', false)
+            ->assertSee(route('users.update', $managedUser), false);
+    }
+
     public function test_administrator_dashboard_exposes_primary_tools_as_direct_links_without_laravel_branding(): void
     {
         $administrator = $this->userWithRole(UserRole::Administrator);
