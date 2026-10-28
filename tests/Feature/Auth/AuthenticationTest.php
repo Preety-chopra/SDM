@@ -49,7 +49,7 @@ class AuthenticationTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee('Service Deficiency Management')
+            ->assertSee('Digitized Service Deficiency Memo')
             ->assertSee('A secure workspace for creating, reviewing, and tracking service deficiency memos across DMRC operations.')
             ->assertSee('src="'.asset('images/dmrc-logo.svg').'"', false)
             ->assertSee('alt="Delhi Metro Rail Corporation"', false)

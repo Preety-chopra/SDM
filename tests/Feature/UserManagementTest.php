@@ -138,7 +138,7 @@ class UserManagementTest extends TestCase
             ->assertSee('Queue clear');
     }
 
-    public function test_administrator_dashboard_lists_pending_memos_at_each_approval_level(): void
+    public function test_administrator_dashboard_provides_pending_memos_at_each_approval_level(): void
     {
         $administrator = $this->userWithRole(UserRole::Administrator);
         $station = Station::query()->create([
@@ -168,15 +168,17 @@ class UserManagementTest extends TestCase
         $response = $this->actingAs($administrator)->get(route('dashboard'));
 
         $response->assertOk()
-            ->assertSee('Pending memos by approval level')
-            ->assertSee('SM level')
-            ->assertSee('AM level')
-            ->assertSee('Manager level')
-            ->assertSee('DGM level');
+            ->assertSee('CFA / TVS workflow queues');
 
         foreach (WorkflowStage::cases() as $stage) {
-            $response->assertSee('PENDING-'.$stage->sequence())
-                ->assertSee(route('sdm-memos.index', ['pending_stage' => $stage->value]), false);
+            $response->assertViewHas('pendingMemoStages', function (array $queues) use ($stage): bool {
+                $queue = $queues[$stage->value];
+
+                $this->assertSame(1, $queue['total']);
+                $this->assertSame(['PENDING-'.$stage->sequence()], $queue['memos']->pluck('serial_number')->all());
+
+                return true;
+            });
         }
 
         $this->actingAs($administrator)
