@@ -320,6 +320,8 @@ class ServiceDeficiencyMemo extends Model
             'current_stage' => WorkflowStage::class,
             'incident_date' => 'date',
             'submitted_at' => 'datetime',
+            'station_manager_opened_at' => 'datetime',
+            'line_manager_opened_at' => 'datetime',
             'workflow_version' => 'integer',
         ];
     }

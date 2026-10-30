@@ -8,7 +8,7 @@ enum SdmType: string
     case Ticketing = 'token_vending';
     case WandW = 'watch_and_ward';
     case Marshall = 'marshall';
-
+    case BaggageHandling = 'baggage_handling';
 
     public function code(): string
     {
@@ -17,6 +17,7 @@ enum SdmType: string
             self::Ticketing => 'TVS',
             self::WandW => 'W&W',
             self::Marshall => 'MAR',
+            self::BaggageHandling => 'BHS',
         };
     }
 
@@ -27,6 +28,7 @@ enum SdmType: string
             self::Ticketing => 'Ticket Vending Services (TVS)',
             self::WandW => 'Watch and Ward',
             self::Marshall => 'Marshall',
+            self::BaggageHandling => 'Operation of Baggage Handling System (BHS)',
         };
     }
 }

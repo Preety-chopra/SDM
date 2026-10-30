@@ -199,11 +199,13 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
     public function recentSubmittedBy(User $user, int $limit = 10): Collection
     {
         return ServiceDeficiencyMemo::query()
-            ->select(['id', 'service_type', 'serial_number', 'is_urgent', 'status', 'workflow_version', 'created_by', 'submitted_at'])
+            ->select(['id', 'service_type', 'serial_number', 'is_urgent', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'created_by', 'submitted_at', 'station_manager_opened_at'])
             ->whereBelongsTo($user, 'creator')
             ->whereNotNull('submitted_at')
             ->with([
                 'deficiencies:id,memo_id,type',
+                'approvals:id,memo_id,role,decision',
+                'currentWorkflowStep:id,stage,decision',
                 'stationManagerApproval' => fn ($query) => $query->select([
                     'memo_approvals.id',
                     'memo_approvals.memo_id',
@@ -375,5 +377,24 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
     public function forceDelete(ServiceDeficiencyMemo $memo): void
     {
         $memo->forceDelete();
+    }
+
+    public function findForUpdate(int $id): ServiceDeficiencyMemo
+    {
+        return ServiceDeficiencyMemo::query()->whereKey($id)->lockForUpdate()->firstOrFail();
+    }
+
+    public function markOpenedByStationManager(ServiceDeficiencyMemo $memo): ServiceDeficiencyMemo
+    {
+        $memo->forceFill(['station_manager_opened_at' => now()])->save();
+
+        return $memo;
+    }
+
+    public function markOpenedByLineManager(ServiceDeficiencyMemo $memo): ServiceDeficiencyMemo
+    {
+        $memo->forceFill(['line_manager_opened_at' => now()])->save();
+
+        return $memo;
     }
 }

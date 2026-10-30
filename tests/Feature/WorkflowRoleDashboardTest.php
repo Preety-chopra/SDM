@@ -61,7 +61,8 @@ class WorkflowRoleDashboardTest extends TestCase
                     && $dashboard['total_received'] === 2
                     && $dashboard['pending_count'] === 1
                     && $dashboard['completed_count'] === 1
-                    && $dashboard['service_distribution']['counts'] === [1, 1, 0, 0]
+                    && $dashboard['service_distribution']['labels'] === ['CFA', 'TVS', 'W&W', 'MAR', 'BHS']
+                    && $dashboard['service_distribution']['counts'] === [1, 1, 0, 0, 0]
                     && count($dashboard['recent_sdms']) === 2;
             })
             ->assertSee('Manager CMC Dashboard')
@@ -140,7 +141,7 @@ class WorkflowRoleDashboardTest extends TestCase
                 && $dashboard['total_received'] === 2
                 && $dashboard['pending_count'] === 1
                 && $dashboard['completed_count'] === 1
-                && $dashboard['service_distribution']['counts'] === [1, 0, 1, 0])
+                && $dashboard['service_distribution']['counts'] === [1, 0, 1, 0, 0])
             ->assertSee('CMC SM Dashboard')
             ->assertSee('Select a bar to view its SDMs.')
             ->assertSee('chartMemosUrl', false)

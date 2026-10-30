@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['code', 'name', 'line_id', 'is_active'])]
+#[Fillable(['code', 'name', 'line_id', 'is_active', 'station_id', 'line_code', 'station_name', 'station_code', 'sequence_no'])]
 class Station extends Model
 {
     use HasFactory;
@@ -36,6 +36,6 @@ class Station extends Model
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean'];
+        return ['is_active' => 'boolean', 'station_id' => 'integer', 'sequence_no' => 'integer'];
     }
 }

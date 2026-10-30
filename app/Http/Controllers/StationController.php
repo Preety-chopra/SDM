@@ -19,10 +19,12 @@ class StationController extends Controller
         Gate::authorize(UserPermission::ManageStations->value);
 
         $stationGroups = $this->masterData->stations()
-            ->sortBy(fn (Station $station): string => implode('|', [
+            ->sortBy(fn (Station $station): array => [
                 mb_strtolower($station->metroLine->code),
+                $station->sequence_no ?? PHP_INT_MAX,
                 mb_strtolower($station->name),
-            ]))
+                $station->id,
+            ])
             ->groupBy('line_id');
 
         return view('master-data.stations', [

@@ -49,5 +49,11 @@ interface ServiceDeficiencyMemoRepositoryInterface
 
     public function update(ServiceDeficiencyMemo $memo, array $attributes): ServiceDeficiencyMemo;
 
+    public function findForUpdate(int $id): ServiceDeficiencyMemo;
+
+    public function markOpenedByStationManager(ServiceDeficiencyMemo $memo): ServiceDeficiencyMemo;
+
+    public function markOpenedByLineManager(ServiceDeficiencyMemo $memo): ServiceDeficiencyMemo;
+
     public function forceDelete(ServiceDeficiencyMemo $memo): void;
 }

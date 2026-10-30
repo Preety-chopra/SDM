@@ -74,7 +74,8 @@ class ServiceDeficiencyMemoPolicy
         if ($user->is_enabled
             && $user->hasRole(UserRole::StationManager->value)
             && $user->can(UserPermission::ActOnRoutedMemos->value)
-            && $this->isPendingWithStationManager($memo, $user)) {
+            && ($this->isPendingWithStationManager($memo, $user)
+                || $this->isForwardedByStationManagerAndUnopened($memo, $user))) {
             return true;
         }
 
@@ -142,6 +143,7 @@ class ServiceDeficiencyMemoPolicy
             && ! $user->hasRole(UserRole::Administrator->value)
             && $user->station_id !== null
             && $memo->created_by === $user->id
+            && $memo->submitted_at?->gte(now()->subDays(2))
             && $this->isEditableSubmittedMemo($memo);
     }
 
@@ -161,7 +163,7 @@ class ServiceDeficiencyMemoPolicy
 
     private function isEditableSubmittedMemo(ServiceDeficiencyMemo $memo): bool
     {
-        if (! $memo->submitted_at || $memo->submitted_at->lt(now()->subDays(2))) {
+        if (! $memo->submitted_at || $memo->station_manager_opened_at !== null) {
             return false;
         }
 
@@ -173,7 +175,7 @@ class ServiceDeficiencyMemoPolicy
 
         return $memo->status === MemoStatus::Submitted
             && $memo->current_stage === WorkflowStage::StationManager
-            && $memo->approvals()->where('role', WorkflowStage::StationManager->value)->where('decision', 'pending')->exists();
+            && $memo->approvals->contains(fn ($approval): bool => $approval->role === WorkflowStage::StationManager && $approval->decision === 'pending');
     }
 
     private function isPendingWithStationManager(ServiceDeficiencyMemo $memo, User $user): bool
@@ -192,6 +194,27 @@ class ServiceDeficiencyMemoPolicy
                 ->where('assigned_to', $user->id)
                 ->where('decision', 'pending')
                 ->exists();
+    }
+
+    private function isForwardedByStationManagerAndUnopened(ServiceDeficiencyMemo $memo, User $user): bool
+    {
+        if ($memo->submitted_at === null || $memo->line_manager_opened_at !== null) {
+            return false;
+        }
+
+        if ($memo->workflow_version >= 2) {
+            return $memo->status === MemoStatus::LineReview
+                && $memo->currentWorkflowStep?->stage === WorkflowStepType::LineReview
+                && $memo->currentWorkflowStep?->decision === 'pending'
+                && $memo->stationManagerWorkflowStep?->decision === 'forwarded'
+                && $memo->stationManagerWorkflowStep?->acted_by === $user->id;
+        }
+
+        return $memo->status === MemoStatus::UnderReview
+            && $memo->current_stage === WorkflowStage::LineManager
+            && $memo->lineManagerApproval?->decision === 'pending'
+            && $memo->stationManagerApproval?->decision === 'approved'
+            && $memo->stationManagerApproval?->acted_by === $user->id;
     }
 
     private function isPendingWithLineManager(ServiceDeficiencyMemo $memo, User $user): bool

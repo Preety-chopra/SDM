@@ -17,7 +17,7 @@
                     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead class="bg-gray-50 dark:bg-gray-900">
                             <tr>
-                                @foreach (['S. No.', 'SDM serial number', 'SDM type', 'Deficiency', 'Submitted on', 'Submitted to', 'Status', ''] as $heading)
+                                @foreach (['S. No.', 'SDM serial number', 'SDM type', 'Deficiency', 'Submitted on', 'Submitted to', 'Status', 'Actions'] as $heading)
                                     <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ $heading }}</th>
                                 @endforeach
                             </tr>
@@ -55,7 +55,12 @@
                                         ])>{{ $memo->stationControllerStatusLabel() }}</span>
                                     </td>
                                     <td class="px-4 py-4 text-right">
-                                        <a href="{{ route('sdm-memos.show', $memo) }}" class="font-semibold text-emerald-700 hover:underline dark:text-emerald-400">Open</a>
+                                        <div class="flex items-center justify-end gap-4">
+                                            <a href="{{ route('sdm-memos.show', $memo) }}" class="font-semibold text-emerald-700 hover:underline dark:text-emerald-400">Open</a>
+                                            @can('update', $memo)
+                                                <a href="{{ route('sdm-memos.edit', $memo) }}" class="font-semibold text-emerald-700 hover:underline dark:text-emerald-400">Edit</a>
+                                            @endcan
+                                        </div>
                                     </td>
                                 </tr>
                             @empty

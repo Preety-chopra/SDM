@@ -22,6 +22,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -99,6 +100,55 @@ final class ServiceDeficiencyMemoService
         return $this->persist($memo, $user, $data, false);
     }
 
+    public function recordStationManagerOpen(ServiceDeficiencyMemo $memo, User $user): ServiceDeficiencyMemo
+    {
+        if (! $user->is_enabled || ! $user->hasRole(UserRole::StationManager->value) || $memo->submitted_at === null) {
+            return $memo;
+        }
+
+        return DB::transaction(function () use ($memo, $user): ServiceDeficiencyMemo {
+            $lockedMemo = $this->memos->findForUpdate($memo->id);
+
+            if ($lockedMemo->station_manager_opened_at === null && $this->isPendingWithStationManager($lockedMemo, $user)) {
+                $this->markStationManagerOpened($lockedMemo, $user);
+            }
+
+            return $lockedMemo;
+        });
+    }
+
+    public function recordLineManagerOpen(ServiceDeficiencyMemo $memo, User $user): ServiceDeficiencyMemo
+    {
+        if (! $user->is_enabled || ! $user->hasRole(UserRole::AssistantManager->value) || $memo->submitted_at === null) {
+            return $memo;
+        }
+
+        return DB::transaction(function () use ($memo, $user): ServiceDeficiencyMemo {
+            $lockedMemo = $this->memos->findForUpdate($memo->id);
+
+            if ($lockedMemo->line_manager_opened_at === null && Gate::forUser($user)->allows('handoverLineManager', $lockedMemo)) {
+                $this->memos->markOpenedByLineManager($lockedMemo);
+                $this->audit->record($lockedMemo, $user, 'memo.line_manager.opened', [
+                    'line_manager_opened_at' => null,
+                ], [
+                    'line_manager_opened_at' => $lockedMemo->line_manager_opened_at->toIso8601String(),
+                ]);
+            }
+
+            return $lockedMemo;
+        });
+    }
+
+    private function markStationManagerOpened(ServiceDeficiencyMemo $memo, User $user): void
+    {
+        $this->memos->markOpenedByStationManager($memo);
+        $this->audit->record($memo, $user, 'memo.station_manager.opened', [
+            'station_manager_opened_at' => null,
+        ], [
+            'station_manager_opened_at' => $memo->station_manager_opened_at->toIso8601String(),
+        ]);
+    }
+
     public function submit(ServiceDeficiencyMemo $memo, User $user, array $data): ServiceDeficiencyMemo
     {
         $this->resolveSubmissionAssignments(
@@ -127,9 +177,17 @@ final class ServiceDeficiencyMemoService
 
         try {
             return DB::transaction(function () use ($memo, $user, $data, $submit, &$storedPaths): ServiceDeficiencyMemo {
+                if ($memo !== null && ! $submit) {
+                    $memo = $this->memos->findForUpdate($memo->id);
+                    Gate::forUser($user)->authorize('update', $memo);
+                }
+
                 $isStationManagerEdit = $memo !== null
                     && $memo->submitted_at !== null
-                    && $this->isPendingWithStationManager($memo, $user);
+                    && $user->hasRole(UserRole::StationManager->value);
+                if ($isStationManagerEdit && $memo->station_manager_opened_at === null && $this->isPendingWithStationManager($memo, $user)) {
+                    $this->markStationManagerOpened($memo, $user);
+                }
                 $beforeAuditValues = $isStationManagerEdit ? $this->auditValues($memo) : [];
                 $stationId = $this->submissionStationId($user, $data, $memo);
                 $station = Station::query()->with('metroLine')->whereKey($stationId)->where('is_active', true)->firstOrFail();
@@ -308,7 +366,8 @@ final class ServiceDeficiencyMemoService
             if (! $lockedMemo->submitted_at
                 || ! $isAwaitingStationManager
                 || ! $assignment
-                || (! $isAssignedStationManager && $lockedMemo->submitted_at->lt(now()->subDays(2)))) {
+                || (! $isAssignedStationManager && ($lockedMemo->station_manager_opened_at !== null
+                    || $lockedMemo->submitted_at->lt(now()->subDays(2))))) {
                 throw ValidationException::withMessages([
                     'station_manager_employee_number' => 'The Station Manager can no longer be changed for this SDM.',
                 ]);

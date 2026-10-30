@@ -20,7 +20,7 @@
                 <div class="rounded-lg border border-rose-200 bg-rose-50 p-4 font-semibold text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{ $memo->cancellationLabel() }}</div>
             @endif
             @can('update', $memo)
-                @unless($isStationManagerViewer)
+                @unless($isStationManagerViewer && auth()->user()->can('act', $memo))
                     <div class="flex justify-end"><a href="{{ route('sdm-memos.edit', $memo) }}" class="rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">Edit SDM</a></div>
                 @endunless
             @endcan
@@ -28,7 +28,7 @@
                 @unless($isStationManagerViewer)
                     <section class="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
                         <h3 class="font-semibold text-amber-950 dark:text-amber-100">Change forwarded SM</h3>
-                        <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">You can change the Station Manager until {{ $memo->submitted_at->addDays(2)->format('d-m-Y H:i') }}, provided the current SM has not acted.</p>
+                        <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">You can change the Station Manager until {{ $memo->submitted_at->addDays(2)->format('d-m-Y H:i') }}, provided the assigned SM has not opened the SDM.</p>
                         <form method="POST" action="{{ route('sdm-memos.station-manager.update', $memo) }}" class="mt-5 flex flex-col gap-4">
                             @csrf
                             @method('PATCH')

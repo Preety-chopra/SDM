@@ -20,7 +20,7 @@
                 $selectedLineIds = array_map('strval', old('line_ids', $contract?->lines->pluck('id')->all() ?? []));
                 $selectedStationIds = array_map('strval', old('station_ids', $contract?->stations->pluck('id')->all() ?? []));
             @endphp
-            <form method="POST" enctype="multipart/form-data" action="{{ $contract ? route('contracts.update', $contract) : route('contracts.store') }}" class="flex flex-col gap-6" x-data="contractForm" data-line-ids="{{ json_encode($selectedLineIds) }}" data-station-ids="{{ json_encode($selectedStationIds) }}" data-stations="{{ $stations->map->only(['id', 'line_id', 'code', 'name'])->values()->toJson() }}">
+            <form method="POST" enctype="multipart/form-data" action="{{ $contract ? route('contracts.update', $contract) : route('contracts.store') }}" class="flex flex-col gap-6" x-data="contractForm" data-line-ids="{{ json_encode($selectedLineIds) }}" data-station-ids="{{ json_encode($selectedStationIds) }}" data-stations="{{ $stations->map->only(['id', 'line_id', 'code', 'name', 'sequence_no'])->values()->toJson() }}">
                 @csrf
                 @if($contract) @method('PUT') @endif
                 <input type="hidden" name="service_type" value="{{ $serviceType->value }}">
@@ -28,7 +28,7 @@
                 <section class="grid gap-5 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm md:grid-cols-2 dark:border-gray-700 dark:bg-gray-800">
                     <fieldset class="flex flex-col gap-5 md:col-span-2" data-contract-location-selector>
                         <legend class="text-base font-semibold text-gray-950 dark:text-white">Contract coverage <span aria-hidden="true" class="font-bold !text-red-600">*</span></legend>
-                        <p class="text-sm text-gray-500 dark:text-gray-400">Choose the lines covered by this contract, then select the applicable stations within each line.</p>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Choose the lines covered by this contract, then choose a from and till station on each line to select all stations between them.</p>
 
                         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             @foreach($lines as $line)
@@ -81,10 +81,31 @@
                                         @if($lineStations->isEmpty())
                                             <p class="px-4 py-5 text-sm text-amber-700 dark:text-amber-300">No active stations are available on this line.</p>
                                         @else
+                                            <div class="grid gap-3 border-b border-gray-200 p-4 sm:grid-cols-2 dark:border-gray-700">
+                                                <div>
+                                                    <label for="from_station_{{ $line->id }}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">From station</label>
+                                                    <select id="from_station_{{ $line->id }}" x-model="stationRanges['{{ $line->id }}'].from" @change="selectStationRange('{{ $line->id }}')" :disabled="!lineIds.includes('{{ $line->id }}') || rangeStationsForLine('{{ $line->id }}').length === 0" aria-describedby="station_range_help_{{ $line->id }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm focus:border-emerald-600 focus:ring-emerald-600 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+                                                        <option value="">Select from station</option>
+                                                        <template x-for="station in rangeStationsForLine('{{ $line->id }}')" :key="station.id">
+                                                            <option :value="String(station.id)" x-text="station.name"></option>
+                                                        </template>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label for="till_station_{{ $line->id }}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Till station</label>
+                                                    <select id="till_station_{{ $line->id }}" x-model="stationRanges['{{ $line->id }}'].till" @change="selectStationRange('{{ $line->id }}')" :disabled="!lineIds.includes('{{ $line->id }}') || rangeStationsForLine('{{ $line->id }}').length === 0" aria-describedby="station_range_help_{{ $line->id }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm focus:border-emerald-600 focus:ring-emerald-600 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+                                                        <option value="">Select till station</option>
+                                                        <template x-for="station in rangeStationsForLine('{{ $line->id }}')" :key="station.id">
+                                                            <option :value="String(station.id)" x-text="station.name"></option>
+                                                        </template>
+                                                    </select>
+                                                </div>
+                                                <p id="station_range_help_{{ $line->id }}" class="text-xs text-gray-500 sm:col-span-2 dark:text-gray-400">Choosing both stations replaces this line's selection with the full range, including both ends. You can also adjust individual stations below. Stations without a sequence number can be selected individually.</p>
+                                            </div>
                                             <div class="grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3">
                                                 @foreach($lineStations as $station)
                                                     <label x-show="stationMatchesSearch('{{ $station->id }}')" class="flex cursor-pointer items-start gap-3 rounded-lg border border-transparent p-3 transition hover:border-gray-200 hover:bg-gray-50 dark:hover:border-gray-700 dark:hover:bg-gray-800">
-                                                        <input type="checkbox" name="station_ids[]" value="{{ $station->id }}" x-model="stationIds" class="mt-0.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-600 dark:border-gray-600 dark:bg-gray-800">
+                                                        <input type="checkbox" name="station_ids[]" value="{{ $station->id }}" x-model="stationIds" @change="syncStationRange('{{ $line->id }}')" class="mt-0.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-600 dark:border-gray-600 dark:bg-gray-800">
                                                         <span class="min-w-0">
                                                             <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ $station->name }}</span>
                                                             <span class="block text-xs text-gray-500 dark:text-gray-400">{{ $station->code }}</span>

@@ -97,8 +97,8 @@ class ContractPenaltyWorkflowTest extends TestCase
         $contractor = Contractor::query()->create(['name' => 'Mapped Contract Partner', 'is_active' => true]);
         $redLine = Line::query()->create(['code' => 'RED-MAP', 'name' => 'Alpha Mapping Line', 'is_active' => true]);
         $blueLine = Line::query()->create(['code' => 'BLUE-MAP', 'name' => 'Zulu Mapping Line', 'is_active' => true]);
-        $redStation = Station::query()->create(['code' => 'RED-MAP-01', 'name' => 'Red Mapping Station', 'line_id' => $redLine->id, 'is_active' => true]);
-        $secondRedStation = Station::query()->create(['code' => 'RED-MAP-02', 'name' => 'Second Red Mapping Station', 'line_id' => $redLine->id, 'is_active' => true]);
+        $redStation = Station::query()->create(['code' => 'RED-MAP-01', 'name' => 'Red Mapping Station', 'line_id' => $redLine->id, 'sequence_no' => 20, 'is_active' => true]);
+        $secondRedStation = Station::query()->create(['code' => 'RED-MAP-02', 'name' => 'Second Red Mapping Station', 'line_id' => $redLine->id, 'sequence_no' => 10, 'is_active' => true]);
         $blueStation = Station::query()->create(['code' => 'BLUE-MAP-01', 'name' => 'Blue Mapping Station', 'line_id' => $blueLine->id, 'is_active' => true]);
 
         $createResponse = $this->actingAs($administrator)
@@ -110,6 +110,9 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertSee('x-data="contractForm"', false)
             ->assertSee('Select all stations')
             ->assertSee('Clear stations')
+            ->assertSee('From station')
+            ->assertSee('Till station')
+            ->assertSee('&quot;sequence_no&quot;:20', false)
             ->assertSee('Choose one or more lines to see their stations.')
             ->assertSee('Red Mapping Station');
 
@@ -157,6 +160,9 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->actingAs($administrator)
             ->get(route('contracts.edit', $contract))
             ->assertOk()
+            ->assertSee('From station')
+            ->assertSee('Till station')
+            ->assertSee('&quot;sequence_no&quot;:10', false)
             ->assertSee('Alpha Mapping Line')
             ->assertSee('Red Mapping Station');
 
@@ -357,7 +363,7 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertDontSee('Contract assessment')
             ->assertDontSee('Memo CMC Staff')
             ->assertSee('Station Manager review')
-            ->assertSee('Assistant Manager/Manager(Line) review')
+            ->assertDontSee('Assistant Manager/Manager(Line) review')
             ->assertDontSee('Manager CMC forwarding for scrutiny')
             ->assertDontSee('CMC SM- staff assignment')
             ->assertDontSee('CMC Staff scrutiny and assessment')

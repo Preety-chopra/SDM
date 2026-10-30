@@ -17,7 +17,9 @@ use App\Models\ReportingRelationship;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
 use App\Models\User;
+use App\Services\ServiceDeficiencyMemoService;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -272,7 +274,7 @@ class SdmWorkflowTest extends TestCase
         $this->assertSame($stationManager->id, ServiceDeficiencyMemo::query()->sole()->approvals()->where('role', WorkflowStage::StationManager->value)->value('assigned_to'));
     }
 
-    public function test_station_controller_can_edit_a_submitted_memo_until_two_days_or_station_manager_forwarding(): void
+    public function test_station_controller_can_edit_an_older_submitted_memo_until_the_station_manager_opens_it(): void
     {
         Carbon::setTestNow('2026-09-01 10:00:00');
         [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
@@ -294,7 +296,31 @@ class SdmWorkflowTest extends TestCase
         $this->assertSame('2026-09-01 10:00:00', $memo->submitted_at?->format('Y-m-d H:i:s'));
 
         Carbon::setTestNow('2026-09-03 11:00:01');
+        $this->actingAs($stationUser)->get(route('sdm-memos.edit', $memo))->assertOk();
+        $this->actingAs($stationUser)->post(route('sdm-memos.update', $memo), [
+            ...$this->validMemoData($memo->serial_number),
+            'staff_name' => 'Corrected after two days',
+        ])->assertRedirect();
+        $this->assertSame('Corrected after two days', $memo->refresh()->staff_name);
+
+        $staleMemo = $memo->fresh();
+        $this->actingAs($stationManager)->get(route('sdm-memos.show', $memo))->assertOk();
         $this->actingAs($stationUser)->get(route('sdm-memos.edit', $memo))->assertForbidden();
+        $this->actingAs($stationUser)->post(route('sdm-memos.update', $memo), [
+            ...$this->validMemoData($memo->serial_number),
+            'staff_name' => 'Blocked stale form',
+        ])->assertForbidden();
+        $this->assertSame('Corrected after two days', $memo->refresh()->staff_name);
+
+        try {
+            app(ServiceDeficiencyMemoService::class)->updateDraft($staleMemo, $stationUser, [
+                ...$this->validMemoData($memo->serial_number),
+                'staff_name' => 'Blocked stale model',
+            ]);
+            $this->fail('A stale model must not bypass the Station Manager open lock.');
+        } catch (AuthorizationException) {
+            $this->assertSame('Corrected after two days', $memo->refresh()->staff_name);
+        }
 
         Carbon::setTestNow('2026-09-01 11:00:00');
         $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
@@ -358,7 +384,7 @@ class SdmWorkflowTest extends TestCase
         $this->assertSame('Corrected deficiency details.', $audit->after_values['deficiencies'][0]['remarks']);
     }
 
-    public function test_station_manager_cannot_edit_a_memo_assigned_to_someone_else_or_after_forwarding(): void
+    public function test_station_manager_cannot_edit_a_memo_assigned_to_someone_else_or_after_am_opens(): void
     {
         [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
         $otherStationManager = $this->user(UserRole::StationManager, [
@@ -382,6 +408,7 @@ class SdmWorkflowTest extends TestCase
             'forward_to_employee_number' => $lineManager->employee_number,
         ])->assertRedirect();
 
+        $this->actingAs($lineManager)->get(route('sdm-memos.show', $memo))->assertOk();
         $this->actingAs($stationManager)->get(route('sdm-memos.edit', $memo))->assertForbidden();
         $this->actingAs($stationManager)->post(route('sdm-memos.update', $memo), $update)->assertForbidden();
         $this->assertSame('Test Staff', $memo->fresh()->staff_name);

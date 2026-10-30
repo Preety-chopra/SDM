@@ -15,6 +15,7 @@ final class PenaltyClauseTemplates
             SdmType::Ticketing => self::tvs(),
             SdmType::WandW => self::watchAndWard(),
             SdmType::Marshall => self::marshal(),
+            SdmType::BaggageHandling => [],
         };
     }
 

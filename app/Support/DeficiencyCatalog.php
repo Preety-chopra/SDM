@@ -60,6 +60,7 @@ final class DeficiencyCatalog
     private static function typesFor(SdmType $type): array
     {
         return match ($type) {
+            SdmType::BaggageHandling => [],
             SdmType::Cfs, SdmType::WandW, SdmType::Marshall => [
                 DeficiencyType::DressCode,
                 DeficiencyType::MobilePhoneOnDuty,

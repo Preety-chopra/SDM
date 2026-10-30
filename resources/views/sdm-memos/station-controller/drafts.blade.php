@@ -31,7 +31,7 @@
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->updated_at?->format('d-m-Y H:i') ?? '—' }}</td>
                                     <td class="px-5 py-4">
                                         <div class="flex items-center justify-end gap-4">
-                                            <a href="{{ route('sdm-memos.edit', $memo) }}" class="font-semibold text-emerald-700 hover:underline dark:text-emerald-400">Open</a>
+                                            <a href="{{ route('sdm-memos.edit', $memo) }}" class="font-semibold text-emerald-700 hover:underline dark:text-emerald-400">Edit</a>
                                             <form method="POST" action="{{ route('sdm-memos.destroy', $memo) }}">
                                                 @csrf
                                                 @method('DELETE')

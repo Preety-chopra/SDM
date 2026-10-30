@@ -215,6 +215,8 @@ class ServiceDeficiencyMemoController extends Controller
     public function show(Request $request, ServiceDeficiencyMemo $sdmMemo): View
     {
         Gate::authorize('view', $sdmMemo);
+        $sdmMemo = $this->memos->recordStationManagerOpen($sdmMemo, $request->user());
+        $sdmMemo = $this->memos->recordLineManagerOpen($sdmMemo, $request->user());
         $sdmMemo->load([
             'creator:id,name,employee_number', 'deficiencies.lateReporting', 'publicComplaint.station', 'cashCheck', 'attachments',
             'approvals.assignee', 'approvals.actor', 'approvals.attachments', 'serviceContract.penaltyClauses',
@@ -225,16 +227,7 @@ class ServiceDeficiencyMemoController extends Controller
 
         $timelineSteps = $this->timeline->visibleSteps($sdmMemo, $request->user());
 
-        $timelineApprovals = match (true) {
-            $request->user()->isStationController() => $sdmMemo->approvals->filter(
-                fn ($approval): bool => $approval->role === WorkflowStage::StationManager,
-            ),
-            $request->user()->hasRole(UserRole::StationManager->value) => $sdmMemo->approvals->filter(fn ($approval): bool => in_array($approval->role, [
-                WorkflowStage::StationManager,
-                WorkflowStage::LineManager,
-            ], true)),
-            default => $sdmMemo->approvals,
-        };
+        $timelineApprovals = $this->timeline->visibleApprovals($sdmMemo, $request->user());
 
         $stationManagerConfirmationPreview = [
             ['label' => 'Line', 'value' => $sdmMemo->line_name ?: '—'],
@@ -305,6 +298,7 @@ class ServiceDeficiencyMemoController extends Controller
     public function edit(Request $request, ServiceDeficiencyMemo $sdmMemo): View
     {
         Gate::authorize('update', $sdmMemo);
+        $sdmMemo = $this->memos->recordStationManagerOpen($sdmMemo, $request->user());
         $sdmMemo->load(['deficiencies.lateReporting', 'publicComplaint', 'cashCheck', 'attachments']);
 
         return $this->formView($request, $sdmMemo);

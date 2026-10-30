@@ -7,6 +7,8 @@ use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
+use App\Enums\WorkflowStepType;
+use App\Models\AuditLog;
 use App\Models\Contractor;
 use App\Models\Line;
 use App\Models\ServiceDeficiencyMemo;
@@ -14,6 +16,7 @@ use App\Models\Station;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\TestWith;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -86,6 +89,82 @@ class StationControllerMemoPortalTest extends TestCase
             ->assertDontSee($other->serial_number);
     }
 
+    #[TestWith([1])]
+    #[TestWith([2])]
+    public function test_view_all_shows_edit_for_unopened_sdms_regardless_of_submission_age(int $workflowVersion): void
+    {
+        $this->freezeTime();
+        [$controller, , , $stationManager] = $this->stationControllerWithHierarchy();
+        $pending = $this->submittedMemo($controller, $stationManager, $workflowVersion, 'EDITABLE', now()->subHour(), 'pending');
+        $older = $this->submittedMemo($controller, $stationManager, $workflowVersion, 'OLDER-UNOPENED', now()->subDays(3), 'pending');
+        $processed = $this->submittedMemo($controller, $stationManager, $workflowVersion, 'PROCESSED', now()->subHour(), 'approved');
+
+        $this->actingAs($controller)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('Actions')
+            ->assertSee('Edit')
+            ->assertSee(route('sdm-memos.edit', $pending), false)
+            ->assertSee(route('sdm-memos.edit', $older), false)
+            ->assertDontSee(route('sdm-memos.edit', $processed), false);
+    }
+
+    #[TestWith([1, 'sdm-memos.show'])]
+    #[TestWith([2, 'sdm-memos.show'])]
+    #[TestWith([1, 'sdm-memos.edit'])]
+    #[TestWith([2, 'sdm-memos.edit'])]
+    public function test_assigned_station_manager_opening_an_sdm_locks_station_controller_edits_and_is_audited_once(int $workflowVersion, string $openRoute): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        [$controller, , , $stationManager] = $this->stationControllerWithHierarchy();
+        $memo = $this->submittedMemo($controller, $stationManager, $workflowVersion, 'OPEN-LOCK', now()->subDays(3), 'pending');
+
+        $this->actingAs($controller)->get(route('sdm-memos.edit', $memo))->assertOk();
+        $this->actingAs($stationManager)->get(route($openRoute, $memo))->assertOk();
+
+        $openedAt = $memo->refresh()->station_manager_opened_at;
+        $this->assertNotNull($openedAt);
+        $this->assertTrue($openedAt->equalTo(now()));
+        $audit = AuditLog::query()->where('event', 'memo.station_manager.opened')->sole();
+        $this->assertSame($stationManager->id, $audit->actor_id);
+        $this->assertSame($memo->id, $audit->auditable_id);
+        $this->assertNull($audit->before_values['station_manager_opened_at']);
+        $this->assertSame($openedAt->toIso8601String(), $audit->after_values['station_manager_opened_at']);
+
+        $this->travel(1)->hours();
+        $this->actingAs($stationManager)->get(route($openRoute, $memo))->assertOk();
+        $this->assertTrue($memo->refresh()->station_manager_opened_at->equalTo($openedAt));
+        $this->assertSame(1, AuditLog::query()->where('event', 'memo.station_manager.opened')->count());
+
+        $this->actingAs($controller)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee(route('sdm-memos.show', $memo), false)
+            ->assertDontSee(route('sdm-memos.edit', $memo), false);
+        $this->actingAs($controller)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertDontSee(route('sdm-memos.edit', $memo), false);
+        $this->actingAs($controller)->get(route('sdm-memos.edit', $memo))->assertForbidden();
+        $this->actingAs($controller)->post(route('sdm-memos.update', $memo), ['staff_name' => 'Stale form edit'])->assertForbidden();
+        $this->assertNull($memo->refresh()->staff_name);
+    }
+
+    #[TestWith([1])]
+    #[TestWith([2])]
+    public function test_other_viewers_and_the_station_manager_list_do_not_lock_station_controller_edits(int $workflowVersion): void
+    {
+        [$controller, , , $stationManager] = $this->stationControllerWithHierarchy();
+        $memo = $this->submittedMemo($controller, $stationManager, $workflowVersion, 'STILL-UNOPENED', now(), 'pending');
+        $otherManager = User::factory()->create();
+        $otherManager->assignRole(UserRole::StationManager->value);
+
+        $this->actingAs($controller)->get(route('sdm-memos.show', $memo))->assertOk();
+        $this->actingAs($otherManager)->get(route('sdm-memos.show', $memo))->assertOk();
+        $this->actingAs($stationManager)->get(route('sdm-memos.index'))->assertOk();
+
+        $this->assertNull($memo->refresh()->station_manager_opened_at);
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'memo.station_manager.opened']);
+        $this->actingAs($controller)->get(route('sdm-memos.edit', $memo))->assertOk();
+    }
+
     public function test_drafts_page_lists_only_the_station_controllers_own_drafts_with_edit_and_delete_actions(): void
     {
         [$controller] = $this->stationControllerWithHierarchy();
@@ -99,6 +178,7 @@ class StationControllerMemoPortalTest extends TestCase
         $this->actingAs($controller)->get(route('sdm-memos.drafts'))
             ->assertOk()
             ->assertViewHas('memos', fn ($memos): bool => collect($memos->items())->pluck('id')->all() === [$ownDraft->id])
+            ->assertSee('Edit')
             ->assertSee(route('sdm-memos.edit', $ownDraft), false)
             ->assertSee(route('sdm-memos.destroy', $ownDraft), false)
             ->assertDontSee($submitted->serial_number)
@@ -205,6 +285,33 @@ class StationControllerMemoPortalTest extends TestCase
             'updated_by' => $creator->id,
             'submitted_at' => $submittedAt,
         ]);
+    }
+
+    private function submittedMemo(User $controller, User $stationManager, int $workflowVersion, string $serialNumber, mixed $submittedAt, string $decision): ServiceDeficiencyMemo
+    {
+        $memo = $this->memo($controller, $serialNumber, MemoStatus::Submitted, $submittedAt);
+
+        if ($workflowVersion === 1) {
+            $this->assignStationManager($memo, $stationManager, $decision);
+        } else {
+            $step = $memo->workflowSteps()->create([
+                'round' => 1,
+                'sequence' => 1,
+                'stage' => WorkflowStepType::StationManager->value,
+                'role' => UserRole::StationManager->value,
+                'assigned_to' => $stationManager->id,
+                'assigned_name' => $stationManager->name,
+                'assigned_employee_number' => $stationManager->employee_number,
+                'decision' => $decision,
+            ]);
+            $memo->update([
+                'workflow_version' => 2,
+                'status' => MemoStatus::AwaitingStationManager->value,
+                'current_workflow_step_id' => $step->id,
+            ]);
+        }
+
+        return $memo;
     }
 
     private function assignStationManager(ServiceDeficiencyMemo $memo, User $stationManager, string $decision): void
