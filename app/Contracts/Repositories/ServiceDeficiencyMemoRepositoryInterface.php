@@ -40,6 +40,9 @@ interface ServiceDeficiencyMemoRepositoryInterface
 
     public function pendingActionCount(User $user): int;
 
+    /** @return array{total: int, urgent: int} */
+    public function pendingActionSummary(User $user): array;
+
     /** @return Collection<int, ServiceDeficiencyMemo> */
     public function urgentPendingFor(User $user, int $limit = 10): Collection;
 

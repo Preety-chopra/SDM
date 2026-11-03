@@ -239,6 +239,12 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
 
     private function scopeToInboxCategory(Builder $query, User $user, string $category): Builder
     {
+        if (in_array($category, ['pending_action', 'urgent_pending_action'], true)) {
+            return $query
+                ->whereIn('id', $this->pendingActionQuery($user)->select('id'))
+                ->when($category === 'urgent_pending_action', fn (Builder $query) => $query->where('is_urgent', true));
+        }
+
         $assignmentSource = $category === 'transferred' ? 'handover' : 'workflow';
 
         return $query->where(function (Builder $query) use ($user, $assignmentSource): void {
@@ -292,6 +298,21 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
 
     public function pendingActionCount(User $user): int
     {
+        return $this->pendingActionQuery($user)->count();
+    }
+
+    public function pendingActionSummary(User $user): array
+    {
+        $counts = $this->pendingActionQuery($user)
+            ->toBase()
+            ->selectRaw('COUNT(*) as total, COUNT(CASE WHEN is_urgent = ? THEN 1 END) as urgent', [true])
+            ->first();
+
+        return ['total' => (int) $counts->total, 'urgent' => (int) $counts->urgent];
+    }
+
+    private function pendingActionQuery(User $user): Builder
+    {
         return ServiceDeficiencyMemo::query()
             ->where(function ($query) use ($user): void {
                 $query->where(function ($query) use ($user): void {
@@ -303,26 +324,14 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
                 })->orWhereHas('currentWorkflowStep', fn ($query) => $query
                     ->where('assigned_to', $user->id)
                     ->where('decision', 'pending'));
-            })
-            ->count();
+            });
     }
 
     public function urgentPendingFor(User $user, int $limit = 10): Collection
     {
-        return ServiceDeficiencyMemo::query()
+        return $this->pendingActionQuery($user)
             ->select(['id', 'service_type', 'serial_number', 'is_urgent', 'station_name', 'current_stage', 'current_workflow_step_id', 'submitted_at'])
             ->where('is_urgent', true)
-            ->where(function (Builder $query) use ($user): void {
-                $query->where(function (Builder $query) use ($user): void {
-                    $query->whereIn('status', [MemoStatus::Submitted->value, MemoStatus::UnderReview->value])
-                        ->whereHas('approvals', fn (Builder $query) => $query
-                            ->where('assigned_to', $user->id)
-                            ->where('decision', 'pending')
-                            ->whereColumn('memo_approvals.role', 'service_deficiency_memos.current_stage'));
-                })->orWhereHas('currentWorkflowStep', fn (Builder $query) => $query
-                    ->where('assigned_to', $user->id)
-                    ->where('decision', 'pending'));
-            })
             ->latest('submitted_at')
             ->latest('id')
             ->limit($limit)

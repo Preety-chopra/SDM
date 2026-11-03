@@ -106,7 +106,7 @@ class UrgentServiceDeficiencyMemoTest extends TestCase
             ->assertSee('animate-pulse', false);
     }
 
-    public function test_assignee_sees_urgent_attention_modal_immediately_after_login(): void
+    public function test_assignee_sees_pending_and_urgent_counts_immediately_after_login(): void
     {
         [$controller, $station] = $this->stationController();
         $stationManager = User::factory()->create();
@@ -123,16 +123,18 @@ class UrgentServiceDeficiencyMemoTest extends TestCase
             'decision' => 'pending',
         ]);
 
-        $this->followingRedirects()
-            ->post(route('login'), [
-                'username' => $stationManager->name,
-                'password' => 'password',
-                'station_id' => $station->id,
-            ])
+        $this->post(route('login'), [
+            'username' => $stationManager->name,
+            'password' => 'password',
+            'station_id' => $station->id,
+        ])
+            ->assertRedirect()
+            ->assertSessionHas('pending_sdm_summary', ['total' => 1, 'urgent' => 1]);
+
+        $this->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('Urgent attention required')
-            ->assertSee($memo->serial_number)
-            ->assertSee(route('sdm-memos.show', $memo), false);
+            ->assertSee('Pending SDMs awaiting your action')
+            ->assertSee('Urgent SDMs');
     }
 
     public function test_login_modal_excludes_urgent_memos_not_awaiting_the_user(): void
@@ -151,17 +153,16 @@ class UrgentServiceDeficiencyMemoTest extends TestCase
             'decision' => 'pending',
         ]);
 
-        $this->followingRedirects()
-            ->post(route('login'), [
-                'username' => $stationManager->name,
-                'password' => 'password',
-                'station_id' => $station->id,
-            ])
-            ->assertOk()
-            ->assertDontSee('Urgent attention required');
+        $this->post(route('login'), [
+            'username' => $stationManager->name,
+            'password' => 'password',
+            'station_id' => $station->id,
+        ])
+            ->assertRedirect()
+            ->assertSessionHas('pending_sdm_summary', ['total' => 0, 'urgent' => 0]);
     }
 
-    public function test_login_modal_excludes_non_urgent_memos_awaiting_the_user(): void
+    public function test_login_modal_counts_non_urgent_memos_awaiting_the_user(): void
     {
         [$controller, $station] = $this->stationController();
         $stationManager = User::factory()->create();
@@ -179,14 +180,13 @@ class UrgentServiceDeficiencyMemoTest extends TestCase
             'decision' => 'pending',
         ]);
 
-        $this->followingRedirects()
-            ->post(route('login'), [
-                'username' => $stationManager->name,
-                'password' => 'password',
-                'station_id' => $station->id,
-            ])
-            ->assertOk()
-            ->assertDontSee('Urgent attention required');
+        $this->post(route('login'), [
+            'username' => $stationManager->name,
+            'password' => 'password',
+            'station_id' => $station->id,
+        ])
+            ->assertRedirect()
+            ->assertSessionHas('pending_sdm_summary', ['total' => 1, 'urgent' => 0]);
     }
 
     /** @return array{User, Station} */

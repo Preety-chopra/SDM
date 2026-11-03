@@ -220,7 +220,7 @@ class AuthenticationTest extends TestCase
         }
     }
 
-    public function test_line_manager_sees_their_pending_sdms_in_submission_date_descending_order_after_login(): void
+    public function test_line_manager_sees_only_counts_of_their_current_pending_sdms_after_login(): void
     {
         $manager = User::factory()->create(['employee_number' => 'AM-LOGIN']);
         $manager->assignRole(UserRole::AssistantManager->value);
@@ -236,6 +236,7 @@ class AuthenticationTest extends TestCase
 
         $olderPending = $this->lineReviewMemo($manager, $station, 'AM-PENDING-OLDER', '2026-10-01 09:00:00');
         $newerPending = $this->lineReviewMemo($manager, $station, 'AM-PENDING-NEWER', '2026-10-04 09:00:00');
+        $newerPending->update(['is_urgent' => true]);
         $forwarded = $this->lineReviewMemo($manager, $station, 'AM-FORWARDED', '2026-10-05 09:00:00', 'forwarded');
         $otherManagerPending = $this->lineReviewMemo($otherManager, $station, 'OTHER-AM-PENDING', '2026-10-05 10:00:00');
 
@@ -246,22 +247,148 @@ class AuthenticationTest extends TestCase
 
         $response
             ->assertRedirect(route('dashboard', absolute: false))
-            ->assertSessionHas('line_manager_pending_memos', fn (array $memos): bool => array_column($memos, 'id') === [
-                $newerPending->id,
-                $olderPending->id,
-            ]);
+            ->assertSessionHas('pending_sdm_summary', ['total' => 2, 'urgent' => 1]);
 
-        $this->get(route('dashboard'))
+        $dashboard = $this->get(route('dashboard'))
             ->assertOk()
             ->assertSee('Pending SDMs awaiting your action')
-            ->assertSeeInOrder(['AM-PENDING-NEWER', 'AM-PENDING-OLDER'])
-            ->assertSee(route('sdm-memos.show', $newerPending), false)
+            ->assertSee('Pending SDMs')
+            ->assertSee('Urgent SDMs')
             ->assertDontSee($forwarded->serial_number)
             ->assertDontSee($otherManagerPending->serial_number);
+
+        preg_match('/<section[^>]*aria-labelledby="pending-sdm-title".*?<\/section>/s', $dashboard->getContent(), $modal);
+        $this->assertNotEmpty($modal);
+        $this->assertMatchesRegularExpression('/Pending SDMs<\/dt>\s*<dd[^>]*>2<\/dd>/', $modal[0]);
+        $this->assertMatchesRegularExpression('/Urgent SDMs<\/dt>\s*<dd[^>]*>1<\/dd>/', $modal[0]);
+        $this->assertStringNotContainsString($olderPending->serial_number, $modal[0]);
+        $this->assertStringNotContainsString($newerPending->serial_number, $modal[0]);
+        $this->assertStringNotContainsString(route('sdm-memos.show', $newerPending), $modal[0]);
+        $this->assertStringContainsString('href="'.route('sdm-memos.index', ['category' => 'pending_action']).'"', $modal[0]);
+        $this->assertStringContainsString('href="'.route('sdm-memos.index', ['category' => 'urgent_pending_action']).'"', $modal[0]);
 
         $this->get(route('dashboard'))
             ->assertOk()
             ->assertDontSee('Pending SDMs awaiting your action');
+    }
+
+    #[TestWith(['station_manager_signoff'])]
+    #[TestWith(['line_penalty_review'])]
+    #[TestWith(['am_cmc_to_scrutiny'])]
+    #[TestWith(['cmc_assignment'])]
+    #[TestWith(['cmc_assessment'])]
+    #[TestWith(['cmc_verification'])]
+    #[TestWith(['am_cmc_to_dgm'])]
+    #[TestWith(['dgm_cmc_approval'])]
+    public function test_login_counts_only_sdms_currently_pending_with_the_user_at_each_workflow_level(string $stageValue): void
+    {
+        $stage = WorkflowStepType::from($stageValue);
+        $user = User::factory()->create();
+        $user->assignRole($stage->role()->value);
+        $otherUser = User::factory()->create();
+        $station = Station::query()->create(['code' => 'QUEUE', 'name' => 'Queue Station', 'is_active' => true]);
+
+        $this->workflowMemo($user, $station, $stage, 'MY-NORMAL');
+        $this->workflowMemo($user, $station, $stage, 'MY-URGENT', true);
+        $this->workflowMemo($otherUser, $station, $stage, 'OTHER-URGENT', true);
+        $this->workflowMemo($user, $station, $stage, 'ALREADY-ACTED', true, 'forwarded');
+        $movedMemo = $this->workflowMemo($user, $station, $stage, 'MOVED-TO-NEXT-USER', true);
+        $nextStep = MemoWorkflowStep::query()->create([
+            'memo_id' => $movedMemo->id,
+            'round' => 1,
+            'sequence' => 2,
+            'stage' => WorkflowStepType::DgmApproval->value,
+            'role' => UserRole::DeputyGeneralManager->value,
+            'assigned_to' => $otherUser->id,
+            'assigned_name' => $otherUser->name,
+            'decision' => 'pending',
+        ]);
+        $movedMemo->update(['current_workflow_step_id' => $nextStep->id]);
+
+        $this->post(route('login'), [
+            'username' => $user->name,
+            'password' => 'password',
+            'station_id' => $station->id,
+        ])
+            ->assertRedirect(route('dashboard', absolute: false))
+            ->assertSessionHas('pending_sdm_summary', ['total' => 2, 'urgent' => 1]);
+    }
+
+    #[TestWith(['station'])]
+    #[TestWith(['administrator'])]
+    public function test_login_displays_zero_counts_when_the_user_has_no_pending_sdms(string $role): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole($role);
+        $station = Station::query()->create(['code' => 'EMPTY', 'name' => 'Empty Station', 'is_active' => true]);
+
+        $response = $this->post(route('login'), [
+            'username' => $user->name,
+            'password' => 'password',
+            'station_id' => $station->id,
+        ])
+            ->assertRedirect()
+            ->assertSessionHas('pending_sdm_summary', ['total' => 0, 'urgent' => 0]);
+
+        $this->get($response->headers->get('Location'))
+            ->assertOk()
+            ->assertSee('Pending SDMs awaiting your action')
+            ->assertSee('Pending SDMs')
+            ->assertSee('Urgent SDMs');
+    }
+
+    public function test_login_counts_all_urgent_sdms_without_the_old_ten_memo_limit(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole(UserRole::CmcStaff->value);
+        $station = Station::query()->create(['code' => 'URGENT', 'name' => 'Urgent Station', 'is_active' => true]);
+        for ($index = 1; $index <= 12; $index++) {
+            $this->workflowMemo($user, $station, WorkflowStepType::CmcAssessment, 'URGENT-'.$index, true);
+        }
+
+        $this->post(route('login'), ['username' => $user->name, 'password' => 'password'])
+            ->assertRedirect(route('dashboard', absolute: false))
+            ->assertSessionHas('pending_sdm_summary', ['total' => 12, 'urgent' => 12]);
+    }
+
+    #[TestWith(['pending_action', ['MY-NORMAL', 'MY-URGENT', 'TRANSFERRED-URGENT']])]
+    #[TestWith(['urgent_pending_action', ['MY-URGENT', 'TRANSFERRED-URGENT']])]
+    public function test_pending_summary_card_lists_only_the_matching_current_assignments(string $category, array $expectedSerials): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole(UserRole::StationManager->value);
+        $station = Station::query()->create(['code' => 'CARDS', 'name' => 'Cards Station', 'is_active' => true]);
+        $this->workflowMemo($user, $station, WorkflowStepType::StationManager, 'MY-NORMAL');
+        $this->workflowMemo($user, $station, WorkflowStepType::StationManager, 'MY-URGENT', true);
+        $transferred = $this->workflowMemo($user, $station, WorkflowStepType::StationManager, 'TRANSFERRED-URGENT', true);
+        $transferred->currentWorkflowStep()->update(['assignment_source' => 'handover']);
+        $this->workflowMemo(User::factory()->create(), $station, WorkflowStepType::StationManager, 'OTHER-URGENT', true);
+        $this->workflowMemo($user, $station, WorkflowStepType::StationManager, 'ALREADY-ACTED', true, 'forwarded');
+
+        $response = $this->actingAs($user)->get(route('sdm-memos.index', ['category' => $category]))
+            ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('serial_number')->sort()->values()->all() === $expectedSerials)
+            ->assertViewHas('memoCategoryTabs', fn (array $tabs): bool => array_column($tabs, 'label') === ['All Memos', 'Pending Memos', 'Transferred Memos'])
+            ->assertSee('name="category" value="'.$category.'"', false);
+
+        preg_match('/<nav aria-label="SDM categories".*?<\/nav>/s', $response->getContent(), $navigation);
+        $this->assertNotEmpty($navigation);
+        $this->assertMatchesRegularExpression('/<a\s+href="'.preg_quote(route('sdm-memos.index', ['category' => 'pending_action']), '/').'"\s+aria-current="page"[^>]*>Pending Memos<\/a>/s', $navigation[0]);
+    }
+
+    #[TestWith(['pending_action'])]
+    #[TestWith(['urgent_pending_action'])]
+    public function test_station_users_open_an_empty_pending_list_instead_of_their_submitted_memos(string $category): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole(UserRole::Station->value);
+        $station = Station::query()->create(['code' => 'EMPTY-CARD', 'name' => 'Empty Queue', 'is_active' => true]);
+        $this->workflowMemo($user, $station, WorkflowStepType::StationManager, 'SUBMITTED-ELSEWHERE', true, 'forwarded');
+
+        $this->actingAs($user)->get(route('sdm-memos.index', ['category' => $category]))
+            ->assertOk()
+            ->assertViewIs('sdm-memos.index')
+            ->assertViewHas('memos', fn ($memos): bool => $memos->total() === 0);
     }
 
     public function test_users_can_not_authenticate_with_invalid_password(): void
@@ -319,6 +446,34 @@ class AuthenticationTest extends TestCase
 
         $this->assertGuest();
         $response->assertRedirect('/');
+    }
+
+    private function workflowMemo(User $user, Station $station, WorkflowStepType $stage, string $serialNumber, bool $urgent = false, string $decision = 'pending'): ServiceDeficiencyMemo
+    {
+        $memo = ServiceDeficiencyMemo::query()->create([
+            'service_type' => SdmType::Cfs->value,
+            'serial_number' => $serialNumber,
+            'station_id' => $station->id,
+            'station_name' => $station->name,
+            'status' => MemoStatus::UnderReview->value,
+            'workflow_version' => 2,
+            'created_by' => $user->id,
+            'submitted_at' => now(),
+            'is_urgent' => $urgent,
+        ]);
+        $step = MemoWorkflowStep::query()->create([
+            'memo_id' => $memo->id,
+            'round' => 1,
+            'sequence' => 1,
+            'stage' => $stage->value,
+            'role' => $stage->role()->value,
+            'assigned_to' => $user->id,
+            'assigned_name' => $user->name,
+            'decision' => $decision,
+        ]);
+        $memo->update(['current_workflow_step_id' => $step->id]);
+
+        return $memo;
     }
 
     private function lineReviewMemo(

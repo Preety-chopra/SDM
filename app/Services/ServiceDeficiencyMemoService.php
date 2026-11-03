@@ -69,6 +69,12 @@ final class ServiceDeficiencyMemoService
         return $this->memos->pendingActionCount($user);
     }
 
+    /** @return array{total: int, urgent: int} */
+    public function pendingActionSummary(User $user): array
+    {
+        return $this->memos->pendingActionSummary($user);
+    }
+
     /** @return Collection<int, ServiceDeficiencyMemo> */
     public function urgentPendingFor(User $user, int $limit = 10): Collection
     {

@@ -2,8 +2,8 @@
     <x-slot name="header">
         <div class="flex items-center justify-between gap-4">
             <div>
-                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Service Deficiency Memos</h2>
-                <p class="text-sm text-gray-500 dark:text-gray-400">Draft and submitted CFA/TVS records.</p></div>@can('create', \App\Models\ServiceDeficiencyMemo::class)<a href="{{ route('sdm-memos.create') }}" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">New memo</a>@endcan</div></x-slot>
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ match ($category) { 'pending_action' => 'Pending SDMs awaiting your action', 'urgent_pending_action' => 'Urgent SDMs awaiting your action', default => 'Service Deficiency Memos' } }}</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400">{{ in_array($category, ['pending_action', 'urgent_pending_action'], true) ? 'Only SDMs currently pending at your level, including handed-over assignments.' : 'Draft and submitted CFA/TVS records.' }}</p></div>@can('create', \App\Models\ServiceDeficiencyMemo::class)<a href="{{ route('sdm-memos.create') }}" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">New memo</a>@endcan</div></x-slot>
     <div class="py-10"><div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         @if(session('status'))<div class="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{{ session('status') }}</div>@endif
         @can(\App\Enums\UserPermission::ActOnRoutedMemos->value)
@@ -11,6 +11,8 @@
             <div class="inline-flex min-w-full gap-1 rounded-xl border border-gray-200 bg-gray-100 p-1 sm:min-w-0 dark:border-gray-700 dark:bg-gray-900">
                 @foreach ($memoCategoryTabs as $tab)
                     @php
+                        $tabIsActive = $category === $tab['category']
+                            || ($tab['category'] === 'pending_action' && $category === 'urgent_pending_action');
                         $tabParameters = array_filter([
                             ...$filters,
                             'pending_stage' => $pendingStage?->value,
@@ -19,11 +21,11 @@
                     @endphp
                     <a
                         href="{{ route('sdm-memos.index', $tabParameters) }}"
-                        @if($category === $tab['category']) aria-current="page" @endif
+                        @if($tabIsActive) aria-current="page" @endif
                         @class([
                             'flex-1 whitespace-nowrap rounded-lg px-4 py-2.5 text-center text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 sm:flex-none dark:focus:ring-offset-gray-900',
-                            'bg-white text-emerald-800 shadow-sm dark:bg-gray-800 dark:text-emerald-300' => $category === $tab['category'],
-                            'text-gray-600 hover:bg-white/70 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-gray-800/70 dark:hover:text-white' => $category !== $tab['category'],
+                            'bg-white text-emerald-800 shadow-sm dark:bg-gray-800 dark:text-emerald-300' => $tabIsActive,
+                            'text-gray-600 hover:bg-white/70 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-gray-800/70 dark:hover:text-white' => ! $tabIsActive,
                         ])
                     >{{ $tab['label'] }}</a>
                 @endforeach
@@ -371,7 +373,7 @@
                                 @endif
                             </tr>
                         @empty
-                            <tr><td colspan="{{ 8 + ($showActionColumn ? 1 : 0) + (($bulkForwardingEnabled || $bulkCmcActionsEnabled) ? 1 : 0) }}" class="px-5 py-12 text-center text-gray-500 dark:text-gray-400">{{ match ($category) { 'pending' => 'No memos are currently pending with you.', 'transferred' => 'No transferred memos are currently pending with you.', default => 'No memos match the selected filters.' } }}</td></tr>
+                            <tr><td colspan="{{ 8 + ($showActionColumn ? 1 : 0) + (($bulkForwardingEnabled || $bulkCmcActionsEnabled) ? 1 : 0) }}" class="px-5 py-12 text-center text-gray-500 dark:text-gray-400">{{ match ($category) { 'pending', 'pending_action' => 'No memos are currently pending with you.', 'urgent_pending_action' => 'No urgent memos are currently pending with you.', 'transferred' => 'No transferred memos are currently pending with you.', default => 'No memos match the selected filters.' } }}</td></tr>
                         @endforelse
                     </tbody>
                 </table>

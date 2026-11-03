@@ -49,14 +49,15 @@ class ServiceDeficiencyMemoController extends Controller
             $request->session()->put('memo_notifications_acknowledged_by', $request->user()->id);
         }
 
-        if ($request->user()->isStationController()) {
+        $category = $request->category();
+
+        if ($request->user()->isStationController() && ! in_array($category, ['pending_action', 'urgent_pending_action'], true)) {
             return view('sdm-memos.station-controller.index', [
                 'memos' => $this->memos->recentSubmittedBy($request->user()),
             ]);
         }
 
         $pendingStage = $request->pendingStage();
-        $category = $request->category();
         $filters = $request->filters();
         $isStationManager = $request->user()->hasRole(UserRole::StationManager->value);
         $isLineManager = $request->user()->hasRole(UserRole::AssistantManager->value);
@@ -88,6 +89,10 @@ class ServiceDeficiencyMemoController extends Controller
             ['category' => null, 'label' => 'All Memos'],
             ['category' => 'pending', 'label' => 'Pending Memos'],
         ];
+
+        if (in_array($category, ['pending_action', 'urgent_pending_action'], true)) {
+            $memoCategoryTabs[1]['category'] = 'pending_action';
+        }
 
         if (! $isDownstreamWorkflowUser) {
             $memoCategoryTabs[] = ['category' => 'transferred', 'label' => 'Transferred Memos'];

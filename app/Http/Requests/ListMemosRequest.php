@@ -22,7 +22,7 @@ class ListMemosRequest extends FormRequest
     {
         return [
             'pending_stage' => ['nullable', Rule::enum(WorkflowStage::class)],
-            'category' => ['nullable', Rule::in(['pending', 'transferred'])],
+            'category' => ['nullable', Rule::in(['pending', 'transferred', 'pending_action', 'urgent_pending_action'])],
             'service_type' => ['nullable', Rule::enum(SdmType::class)],
             'station_id' => ['nullable', 'integer', Rule::exists('stations', 'id')],
             'line_code' => ['nullable', 'string', Rule::exists('lines', 'code')],
@@ -52,7 +52,7 @@ class ListMemosRequest extends FormRequest
     {
         $category = $this->string('category')->toString();
 
-        return in_array($category, ['pending', 'transferred'], true) ? $category : null;
+        return in_array($category, ['pending', 'transferred', 'pending_action', 'urgent_pending_action'], true) ? $category : null;
     }
 
     /** @return array<string, int|string> */
