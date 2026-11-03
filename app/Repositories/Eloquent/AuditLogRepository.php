@@ -12,6 +12,11 @@ use Illuminate\Support\Collection;
 
 final class AuditLogRepository implements AuditLogRepositoryInterface
 {
+    public function create(array $attributes): AuditLog
+    {
+        return AuditLog::query()->create($attributes);
+    }
+
     public function paginate(array $filters): LengthAwarePaginator
     {
         return AuditLog::query()

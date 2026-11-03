@@ -8,6 +8,7 @@
                     <h3 class="text-2xl font-bold text-gray-900 dark:text-white">Activity history</h3>
                     <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">Review user actions, sign-ins, page visits, downloads, and recorded changes. Newest activity appears first.</p>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">All times are in {{ config('app.timezone') }}. Page visits are recorded from the time activity tracking was enabled.</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Locations are approximate and based on the client IP visible to the application. Local/private networks have no geographic location. Location capture applies to new activity.</p>
                 </div>
                 <span class="rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">{{ number_format($activities->total()) }} {{ Str::plural('activity', $activities->total()) }}</span>
             </div>
@@ -52,7 +53,7 @@
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200 text-left text-sm dark:divide-gray-700">
                         <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-900 dark:text-gray-400">
-                            <tr><th scope="col" class="px-5 py-4">Time</th><th scope="col" class="px-5 py-4">User</th><th scope="col" class="px-5 py-4">Action</th><th scope="col" class="px-5 py-4">Record / page</th><th scope="col" class="px-5 py-4">Details</th></tr>
+                            <tr><th scope="col" class="px-5 py-4">Time</th><th scope="col" class="px-5 py-4">User</th><th scope="col" class="px-5 py-4">Action</th><th scope="col" class="px-5 py-4">Record / page</th><th scope="col" class="px-5 py-4">IP address / location</th><th scope="col" class="px-5 py-4">Details</th></tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                             @forelse ($activities as $activity)
@@ -78,6 +79,10 @@
                                             {{ Str::headline(class_basename($activity->auditable_type)) }} #{{ $activity->auditable_id }}
                                         @endif
                                     </td>
+                                    <td class="px-5 py-4">
+                                        <span class="block break-all font-mono text-xs">{{ $activity->ip_address ?? 'Not recorded' }}</span>
+                                        <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ $activity->location ?? 'Location unavailable' }}</span>
+                                    </td>
                                     <td class="min-w-64 px-5 py-4">
                                         <details>
                                             <summary class="cursor-pointer rounded font-semibold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-emerald-300">View details</summary>
@@ -93,7 +98,7 @@
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="5" class="px-5 py-14 text-center text-gray-500 dark:text-gray-400">No activity matches these filters.</td></tr>
+                                <tr><td colspan="6" class="px-5 py-14 text-center text-gray-500 dark:text-gray-400">No activity matches these filters.</td></tr>
                             @endforelse
                         </tbody>
                     </table>

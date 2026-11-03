@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\DeficiencyType;
+use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\UserPermission;
 use App\Enums\UserRole;
@@ -62,7 +63,7 @@ abstract class MemoRequest extends FormRequest
 
     public function rules(): array
     {
-        $strict = $this->isSubmission();
+        $strict = $this->requiresCompleteMemo();
         $types = $this->input('deficiencies', []);
         $serviceType = SdmType::tryFrom($this->string('service_type')->toString());
         $isStationController = $this->isStationControllerUser();
@@ -77,8 +78,8 @@ abstract class MemoRequest extends FormRequest
             'staff_name' => [$strict ? 'required' : 'nullable', 'string', 'max:255'],
             'employee_number' => [$strict ? 'required' : 'nullable', 'string', 'max:100'],
             'station_record_brief_remarks' => ['nullable', 'string', 'max:5000'],
-            'station_manager_employee_number' => [Rule::requiredIf($strict && $isStationController), 'nullable', 'string', 'max:100'],
-            'line_manager_employee_number' => [Rule::requiredIf($strict && $isStationManager), 'nullable', 'string', 'max:100'],
+            'station_manager_employee_number' => [Rule::requiredIf($this->isSubmission() && $isStationController), 'nullable', 'string', 'max:100'],
+            'line_manager_employee_number' => [Rule::requiredIf($this->isSubmission() && $isStationManager), 'nullable', 'string', 'max:100'],
             'deficiencies' => $strict ? ['required', 'array', 'min:1'] : ['nullable', 'array'],
             'deficiencies.*' => [Rule::in(DeficiencyCatalog::valuesFor($serviceType)), 'distinct'],
             'outsourced_staff_acknowledged' => [$strict ? 'accepted' : 'nullable', 'boolean'],
@@ -130,7 +131,7 @@ abstract class MemoRequest extends FormRequest
                 $validator->errors()->add('deficiencies', 'TOM / CCC Inspection is available only for Ticketing memos.');
             }
 
-            if ($this->isSubmission() && $cashSelected && collect($this->input('cash_check', []))->filter(fn ($value) => filled($value))->isEmpty()) {
+            if ($this->requiresCompleteMemo() && $cashSelected && collect($this->input('cash_check', []))->filter(fn ($value) => filled($value))->isEmpty()) {
                 $validator->errors()->add('cash_check', 'Enter at least one TOM / CCC cash-check detail or remark.');
             }
 
@@ -196,6 +197,13 @@ abstract class MemoRequest extends FormRequest
                 $validator->errors()->add('attachments', 'A memo can contain no more than five attachments.');
             }
         }];
+    }
+
+    private function requiresCompleteMemo(): bool
+    {
+        $memo = $this->route('sdm_memo');
+
+        return $this->isSubmission() || ($memo instanceof ServiceDeficiencyMemo && $memo->status !== MemoStatus::Draft);
     }
 
     private function requiresContractWorkflow(): bool

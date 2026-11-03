@@ -33,6 +33,12 @@ class RestrictStationControllerAccess
     public function handle(Request $request, Closure $next): Response
     {
         if ($request->user()?->isStationController()
+            && $request->isMethod('GET')
+            && ($request->is('/') || $request->routeIs('login'))) {
+            return redirect()->route('sdm-memos.create');
+        }
+
+        if ($request->user()?->isStationController()
             && ! in_array($request->route()?->getName(), self::ALLOWED_ROUTES, true)) {
             abort(403);
         }

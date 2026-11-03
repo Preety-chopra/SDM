@@ -19,6 +19,7 @@ use App\Services\ServiceDeficiencyMemoService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\TestWith;
 use Tests\TestCase;
 
@@ -31,6 +32,167 @@ class StationManagerForwardedEditTest extends TestCase
         parent::setUp();
         config()->set('sdm.require_contract_workflow', false);
         $this->seed(RolesAndPermissionsSeeder::class);
+    }
+
+    #[DataProvider('incompleteStaffDetails')]
+    public function test_sm_cannot_remove_required_staff_details_from_a_submitted_sdm(int $version, bool $forwarded, array $staffDetails, array $errors): void
+    {
+        [$memo, $sm, $am] = $this->memoAwaitingStationManager($version);
+        if ($forwarded) {
+            $this->forward($memo, $sm, $am);
+        }
+        $status = $memo->refresh()->status;
+        $data = array_replace($this->editData(), $staffDetails);
+        foreach ($staffDetails as $field => $value) {
+            if ($value === null) {
+                unset($data[$field]);
+            }
+        }
+
+        $this->actingAs($sm)->from(route('sdm-memos.edit', $memo))
+            ->post(route('sdm-memos.update', $memo), $data)
+            ->assertRedirect(route('sdm-memos.edit', $memo))
+            ->assertSessionHasErrors($errors);
+
+        $this->assertDatabaseHas('service_deficiency_memos', [
+            'id' => $memo->id,
+            'staff_name' => 'Original staff',
+            'employee_number' => 'OUT-ORIGINAL',
+            'status' => $status->value,
+        ]);
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'memo.station_manager.edited']);
+    }
+
+    public static function incompleteStaffDetails(): iterable
+    {
+        foreach ([1, 2] as $version) {
+            foreach ([false, true] as $forwarded) {
+                $stage = $forwarded ? 'after forwarding' : 'before forwarding';
+                foreach ([
+                    'blank name' => [['staff_name' => ''], ['staff_name' => 'The staff name field is required.']],
+                    'blank number' => [['employee_number' => ''], ['employee_number' => 'The employee number field is required.']],
+                    'both blank' => [['staff_name' => '', 'employee_number' => ''], ['staff_name', 'employee_number']],
+                    'whitespace' => [['staff_name' => '   ', 'employee_number' => '   '], ['staff_name', 'employee_number']],
+                    'omitted' => [['staff_name' => null, 'employee_number' => null], ['staff_name', 'employee_number']],
+                ] as $case => [$details, $errors]) {
+                    yield "v{$version} {$stage}: {$case}" => [$version, $forwarded, $details, $errors];
+                }
+            }
+        }
+    }
+
+    #[DataProvider('incompleteMandatoryDetails')]
+    public function test_sm_cannot_remove_any_mandatory_details_from_a_submitted_sdm(int $version, bool $forwarded, array $changes, array $errors): void
+    {
+        [$memo, $sm, $am] = $this->memoAwaitingStationManager($version);
+        if ($forwarded) {
+            $this->forward($memo, $sm, $am);
+        }
+        $before = $memo->refresh()->getAttributes();
+        $data = array_replace($this->editData(), $changes);
+        foreach ($changes as $field => $value) {
+            if ($value === null) {
+                unset($data[$field]);
+            }
+        }
+
+        $this->actingAs($sm)->from(route('sdm-memos.edit', $memo))
+            ->post(route('sdm-memos.update', $memo), $data)
+            ->assertRedirect(route('sdm-memos.edit', $memo))
+            ->assertSessionHasErrors($errors);
+
+        $this->assertSame($before, $memo->refresh()->getAttributes());
+        $this->assertSame(DeficiencyType::Other, $memo->deficiencies()->sole()->type);
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'memo.station_manager.edited']);
+    }
+
+    public static function incompleteMandatoryDetails(): iterable
+    {
+        $cases = [
+            'SDM type' => [['service_type' => ''], ['service_type']],
+            'contractor' => [['contractor_id' => ''], ['contractor_id']],
+            'incident date' => [['incident_date' => ''], ['incident_date']],
+            'incident time' => [['incident_time' => ''], ['incident_time']],
+            'deficiencies' => [['deficiencies' => []], ['deficiencies']],
+            'acknowledgement' => [['outsourced_staff_acknowledged' => '0'], [
+                'outsourced_staff_acknowledged' => 'Confirm that you have received acknowledgement from outsourced staff.',
+            ]],
+            'omitted details' => [[
+                'contractor_id' => null, 'incident_date' => null, 'incident_time' => null,
+                'deficiencies' => null, 'outsourced_staff_acknowledged' => null,
+            ], ['contractor_id', 'incident_date', 'incident_time', 'deficiencies', 'outsourced_staff_acknowledged']],
+            'empty cash check' => [[
+                'service_type' => SdmType::Ticketing->value,
+                'deficiencies' => [DeficiencyType::CashCheck->value],
+                'cash_check' => [],
+            ], ['cash_check' => 'Enter at least one TOM / CCC cash-check detail or remark.']],
+            'complaint station' => [[
+                'deficiencies' => [DeficiencyType::PublicComplaint->value],
+                'public_complaint' => ['number' => 'COMPLAINT-1', 'station_id' => ''],
+            ], ['public_complaint.station_id']],
+        ];
+        foreach (['booked_shift_from', 'booked_shift_to', 'actual_reporting_time'] as $field) {
+            $late = ['booked_shift_from' => '08:00', 'booked_shift_to' => '16:00', 'actual_reporting_time' => '08:15'];
+            $late[$field] = '';
+            $cases[$field] = [[
+                'deficiencies' => [DeficiencyType::LateReporting->value],
+                'late_reporting' => $late,
+            ], ['late_reporting.'.$field]];
+        }
+        foreach (['check_date' => ['check_time' => '10:00'], 'check_time' => ['check_date' => '2026-08-01']] as $field => $cash) {
+            $cases[$field] = [[
+                'service_type' => SdmType::Ticketing->value,
+                'deficiencies' => [DeficiencyType::CashCheck->value],
+                'cash_check' => $cash,
+            ], ['cash_check.'.$field]];
+        }
+        foreach ([1, 2] as $version) {
+            foreach ([false, true] as $forwarded) {
+                $stage = $forwarded ? 'after forwarding' : 'before forwarding';
+                foreach ($cases as $case => [$changes, $errors]) {
+                    yield "v{$version} {$stage}: {$case}" => [$version, $forwarded, $changes, $errors];
+                }
+            }
+        }
+    }
+
+    #[TestWith([1, 'late_reporting'])]
+    #[TestWith([2, 'late_reporting'])]
+    #[TestWith([1, 'cash_check'])]
+    #[TestWith([2, 'cash_check'])]
+    public function test_sm_can_save_complete_conditional_details_without_submission_recipient_fields(int $version, string $type): void
+    {
+        [$memo, $sm] = $this->memoAwaitingStationManager($version);
+        $data = [
+            ...$this->editData(),
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => [$type],
+            'late_reporting' => ['booked_shift_from' => '08:00', 'booked_shift_to' => '16:00', 'actual_reporting_time' => '08:15'],
+            'cash_check' => ['remarks' => 'Cash check completed.'],
+        ];
+
+        $this->actingAs($sm)->post(route('sdm-memos.update', $memo), $data)
+            ->assertSessionHasNoErrors()->assertRedirect(route('sdm-memos.show', $memo));
+
+        $this->assertSame($type, $memo->deficiencies()->sole()->type->value);
+    }
+
+    #[TestWith([1])]
+    #[TestWith([2])]
+    public function test_sm_can_correct_staff_details_and_forward_the_submitted_sdm(int $version): void
+    {
+        [$memo, $sm, $am] = $this->memoAwaitingStationManager($version);
+
+        $this->actingAs($sm)->post(route('sdm-memos.update', $memo), $this->editData())
+            ->assertSessionHasNoErrors()->assertRedirect(route('sdm-memos.show', $memo));
+        $this->forward($memo, $sm, $am);
+
+        $this->assertDatabaseHas('service_deficiency_memos', [
+            'id' => $memo->id,
+            'staff_name' => 'Corrected after forwarding',
+            'employee_number' => 'OUT-CORRECTED',
+            'status' => $version === 2 ? MemoStatus::LineReview->value : MemoStatus::UnderReview->value,
+        ]);
     }
 
     #[TestWith([1])]
@@ -158,6 +320,7 @@ class StationManagerForwardedEditTest extends TestCase
         $creator->update(['station_id' => $station->id]);
         $sm = $this->user(UserRole::StationManager);
         $am = $this->user(UserRole::AssistantManager);
+        $contractor = Contractor::query()->create(['name' => 'AM Open Contractor', 'is_active' => true]);
         $memo = ServiceDeficiencyMemo::query()->create([
             'service_type' => SdmType::Cfs->value,
             'serial_number' => 'AM-FIRST-OPEN',
@@ -166,14 +329,18 @@ class StationManagerForwardedEditTest extends TestCase
             'line_name' => $line->name,
             'line_code' => $line->code,
             'staff_name' => 'Original staff',
+            'employee_number' => 'OUT-ORIGINAL',
+            'contractor_id' => $contractor->id,
+            'incident_date' => '2026-08-18',
+            'incident_time' => '10:30',
             'status' => $version === 2 ? MemoStatus::AwaitingStationManager->value : MemoStatus::Submitted->value,
             'workflow_version' => $version,
             'current_stage' => WorkflowStage::StationManager->value,
             'created_by' => $creator->id,
             'submitted_at' => now(),
         ]);
+        $memo->deficiencies()->create(['type' => DeficiencyType::Other->value]);
         if ($version === 2) {
-            $contractor = Contractor::query()->create(['name' => 'AM Open Contractor', 'is_active' => true]);
             $contract = ServiceContract::query()->create([
                 'contract_group' => 'AM-FIRST-OPEN-CONTRACT',
                 'contractor_id' => $contractor->id,
@@ -234,7 +401,12 @@ class StationManagerForwardedEditTest extends TestCase
     {
         return [
             'service_type' => SdmType::Cfs->value,
+            'contractor_id' => Contractor::query()->sole()->id,
+            'incident_date' => '2026-08-18',
+            'incident_time' => '10:30',
             'staff_name' => $staffName,
+            'employee_number' => 'OUT-CORRECTED',
+            'outsourced_staff_acknowledged' => '1',
             'deficiencies' => [DeficiencyType::Other->value],
             'deficiency_remarks' => [DeficiencyType::Other->value => 'Updated before AM opened.'],
         ];

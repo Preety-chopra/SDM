@@ -291,6 +291,20 @@ class ServiceDeficiencyMemoTest extends TestCase
         $response->assertRedirect(route('sdm-memos.edit', $memo));
         $this->assertSame(MemoStatus::Draft, $memo->status);
 
+        $this->actingAs($user)->from(route('sdm-memos.edit', $memo))->post(route('sdm-memos.update', $memo), [
+            'service_type' => SdmType::Cfs->value,
+            'staff_name' => '',
+            'employee_number' => '',
+            'deficiencies' => [DeficiencyType::LateReporting->value],
+            'late_reporting' => [],
+        ])->assertSessionHasNoErrors()->assertRedirect(route('sdm-memos.edit', $memo));
+        $this->assertDatabaseHas('service_deficiency_memos', [
+            'id' => $memo->id,
+            'status' => MemoStatus::Draft->value,
+            'staff_name' => null,
+            'employee_number' => null,
+        ]);
+
         $this->actingAs($user)->post(route('sdm-memos.submit', $memo), [
             'service_type' => SdmType::Cfs->value,
             'serial_number' => 'CFS-100',

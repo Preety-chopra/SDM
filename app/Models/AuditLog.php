@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
-#[Fillable(['actor_id', 'event', 'auditable_type', 'auditable_id', 'before_values', 'after_values', 'ip_address', 'user_agent', 'request_id'])]
+#[Fillable(['actor_id', 'event', 'auditable_type', 'auditable_id', 'before_values', 'after_values', 'ip_address', 'location', 'user_agent', 'request_id'])]
 class AuditLog extends Model
 {
     public const UPDATED_AT = null;

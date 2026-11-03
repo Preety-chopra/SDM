@@ -8,6 +8,8 @@ use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\TestWith;
 use Tests\TestCase;
 
 class UserActivityTest extends TestCase
@@ -41,12 +43,14 @@ class UserActivityTest extends TestCase
             'before_values' => ['status' => 'draft'],
             'after_values' => ['status' => 'submitted'],
             'ip_address' => '192.0.2.15',
+            'location' => 'New Delhi, Delhi, India',
             'request_id' => 'activity-request-123',
         ]);
         $this->actingAs($this->user(UserRole::Administrator))->get('/admin/user-activity')
             ->assertOk()->assertSee('User activity')->assertSee('Activity reviewer')->assertSee('EMP-234')
             ->assertSee('memo.updated')->assertSee('01 Nov 2026, 16:45:12')->assertSee('Asia/Kolkata')
             ->assertSee('draft')->assertSee('submitted')->assertSee('192.0.2.15')->assertSee('activity-request-123')
+            ->assertSee('IP address / location')->assertSee('New Delhi, Delhi, India')
             ->assertSee(route('user-activity.index'));
     }
 
@@ -92,13 +96,16 @@ class UserActivityTest extends TestCase
         $this->log($actor, 'memo.updated', '2026-11-01 12:00:00', [
             'auditable_type' => 'App\\Models\\ServiceDeficiencyMemo', 'auditable_id' => 99999,
             'after_values' => ['remarks' => '<script>details()</script>'],
+            'location' => '<script>location()</script>',
         ]);
         $this->log(null, 'system.imported', '2026-11-01 12:00:00');
 
         $this->actingAs($this->user(UserRole::Administrator))->get('/admin/user-activity')
             ->assertOk()->assertSee('System / deleted user')->assertSee('Service Deficiency Memo #99999')
             ->assertSee('<script>actor()</script>')->assertSee('details()')
-            ->assertDontSee('<script>actor()</script>', false)->assertDontSee('<script>details()</script>', false);
+            ->assertSee('Location unavailable')->assertSee('<script>location()</script>')
+            ->assertDontSee('<script>actor()</script>', false)->assertDontSee('<script>details()</script>', false)
+            ->assertDontSee('<script>location()</script>', false);
     }
 
     public function test_authenticated_requests_record_route_resource_status_and_time_without_payloads(): void
@@ -122,14 +129,106 @@ class UserActivityTest extends TestCase
     public function test_login_failure_login_and_logout_are_audited_without_credentials(): void
     {
         $user = $this->user(UserRole::Administrator);
+        $this->withServerVariables(['REMOTE_ADDR' => '192.168.1.24']);
         $this->post('/login', ['username' => $user->name, 'password' => 'wrong-secret'])->assertSessionHasErrors('username');
         $this->assertDatabaseHas('audit_logs', ['event' => 'auth.failed', 'actor_id' => null, 'auditable_id' => $user->id]);
         $this->post('/login', ['username' => $user->name, 'password' => 'password'])->assertRedirect();
         $this->assertDatabaseHas('audit_logs', ['event' => 'auth.login', 'actor_id' => $user->id]);
         $this->post('/logout')->assertRedirect('/');
         $this->assertDatabaseHas('audit_logs', ['event' => 'auth.logout', 'actor_id' => $user->id]);
+        foreach (['auth.failed', 'auth.login', 'auth.logout'] as $event) {
+            $this->assertDatabaseHas('audit_logs', [
+                'event' => $event, 'ip_address' => '192.168.1.24', 'location' => 'Local / private network',
+            ]);
+        }
         $this->assertStringNotContainsString('wrong-secret', AuditLog::all()->toJson());
         $this->assertStringNotContainsString($user->password, AuditLog::all()->toJson());
+    }
+
+    #[TestWith(['192.168.1.24', '192.168.1.24', 'Local / private network'])]
+    #[TestWith(['::ffff:192.168.1.24', '192.168.1.24', 'Local / private network'])]
+    #[TestWith(['::ffff:c0a8:118', '192.168.1.24', 'Local / private network'])]
+    #[TestWith(['127.0.0.1', '127.0.0.1', 'Localhost'])]
+    #[TestWith(['::1', '::1', 'Localhost'])]
+    #[TestWith(['fd00::24', 'fd00::24', 'Local / private network'])]
+    #[TestWith(['192.0.2.15', '192.0.2.15', 'Reserved network'])]
+    public function test_activity_captures_client_ip_and_labels_non_public_networks_without_lookups(string $remote, string $ip, string $location): void
+    {
+        Http::preventStrayRequests();
+        $user = $this->user(UserRole::AssistantManager);
+
+        $this->actingAs($user)->withServerVariables(['REMOTE_ADDR' => $remote])
+            ->withHeader('X-Forwarded-For', '8.8.8.8')->get('/profile')->assertOk();
+
+        $log = AuditLog::query()->where('event', 'activity.request')->sole();
+        $this->assertSame($ip, $log->ip_address);
+        $this->assertSame($location, $log->location);
+        Http::assertNothingSent();
+    }
+
+    #[TestWith(['8.8.8.8'])]
+    #[TestWith(['2001:4860:4860::8888'])]
+    public function test_public_client_location_is_captured_and_cached_for_subsequent_activity(string $ip): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://ipwho.is/'.$ip.'*' => Http::response([
+            'success' => true, 'city' => 'New Delhi', 'region' => 'Delhi', 'country' => 'India',
+            'latitude' => 28.61, 'longitude' => 77.21,
+        ])]);
+        $user = $this->user(UserRole::AssistantManager);
+
+        $this->actingAs($user)->withServerVariables(['REMOTE_ADDR' => $ip])->get('/profile')->assertOk();
+        $this->get('/profile')->assertOk();
+
+        $logs = AuditLog::query()->where('event', 'activity.request')->get();
+        $this->assertCount(2, $logs);
+        foreach ($logs as $log) {
+            $this->assertSame($ip, $log->ip_address);
+            $this->assertSame('New Delhi, Delhi, India', $log->location);
+            $this->assertStringNotContainsString('latitude', $log->toJson());
+        }
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => $request['fields'] === 'success,city,region,country');
+    }
+
+    #[TestWith(['timeout'])]
+    #[TestWith(['http_error'])]
+    #[TestWith(['lookup_error'])]
+    #[TestWith(['malformed'])]
+    public function test_location_lookup_failures_do_not_prevent_activity_recording(string $failure): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://ipwho.is/8.8.8.8*' => match ($failure) {
+            'timeout' => Http::failedConnection(),
+            'http_error' => Http::response([], 429),
+            'lookup_error' => Http::response(['success' => false]),
+            'malformed' => Http::response(['success' => true, 'city' => ['unexpected']]),
+        }]);
+
+        $this->actingAs($this->user(UserRole::AssistantManager))
+            ->withServerVariables(['REMOTE_ADDR' => '8.8.8.8'])->get('/profile')->assertOk();
+        $this->get('/profile')->assertOk();
+
+        $logs = AuditLog::query()->where('event', 'activity.request')->get();
+        $this->assertCount(2, $logs);
+        $log = $logs->first();
+        $this->assertSame('8.8.8.8', $log->ip_address);
+        $this->assertNull($log->location);
+        Http::assertSentCount(1);
+    }
+
+    public function test_location_lookups_can_be_disabled_without_losing_the_client_ip(): void
+    {
+        config(['services.ip_location.enabled' => false]);
+        Http::preventStrayRequests();
+
+        $this->actingAs($this->user(UserRole::AssistantManager))
+            ->withServerVariables(['REMOTE_ADDR' => '8.8.8.8'])->get('/profile')->assertOk();
+
+        $log = AuditLog::query()->where('event', 'activity.request')->sole();
+        $this->assertSame('8.8.8.8', $log->ip_address);
+        $this->assertNull($log->location);
+        Http::assertNothingSent();
     }
 
     public function test_user_account_changes_record_actor_and_safe_before_and_after_values(): void

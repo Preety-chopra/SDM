@@ -13,6 +13,7 @@ use App\Models\Station;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\TestWith;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -60,6 +61,34 @@ class AuthenticationTest extends TestCase
             ->assertSee('name="password"', false)
             ->assertDontSee('name="line_id"', false)
             ->assertSee('action="'.route('login').'"', false);
+    }
+
+    #[TestWith(['station', '/'])]
+    #[TestWith(['station', '/login'])]
+    #[TestWith(['station_controller', '/'])]
+    #[TestWith(['station_controller', '/login'])]
+    public function test_authenticated_station_controller_visiting_a_login_entry_page_is_redirected_to_create_memo(string $role, string $path): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole(Role::findOrCreate($role));
+
+        $this->actingAs($user)->get($path)
+            ->assertRedirect(route('sdm-memos.create'));
+
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $user->id,
+            'event' => 'activity.request',
+            'after_values->status' => 302,
+        ]);
+    }
+
+    public function test_authenticated_administrator_visiting_the_homepage_is_redirected_to_the_dashboard(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole(UserRole::Administrator->value);
+
+        $this->actingAs($user)->get('/')
+            ->assertRedirect(route('dashboard'));
     }
 
     public function test_station_controller_can_authenticate_using_the_login_screen_with_a_station(): void
