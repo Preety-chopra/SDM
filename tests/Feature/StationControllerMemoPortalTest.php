@@ -108,6 +108,59 @@ class StationControllerMemoPortalTest extends TestCase
             ->assertDontSee(route('sdm-memos.edit', $processed), false);
     }
 
+    #[TestWith([1, 'station'])]
+    #[TestWith([2, 'station'])]
+    #[TestWith([1, 'station_controller'])]
+    #[TestWith([2, 'station_controller'])]
+    public function test_controller_using_a_login_station_can_edit_own_submitted_memo_until_the_station_manager_opens_it(int $workflowVersion, string $role): void
+    {
+        [$controller, , $station, $stationManager] = $this->stationControllerWithHierarchy();
+        $controller->update(['station_id' => null]);
+        $controllerRole = Role::findOrCreate($role);
+        $controllerRole->syncPermissions(Role::findByName(UserRole::Station->value)->permissions);
+        $controller->syncRoles($controllerRole);
+        $memo = $this->submittedMemo($controller, $stationManager, $workflowVersion, 'LOGIN-STATION', now()->subDays(3), 'pending');
+        $submittedAt = $memo->submitted_at;
+        $status = $memo->status;
+        $stepId = $memo->current_workflow_step_id;
+        $contractor = Contractor::query()->create(['name' => 'Metro Services', 'is_active' => true]);
+        $data = [
+            'service_type' => SdmType::Cfs->value,
+            'contractor_id' => $contractor->id,
+            'incident_date' => now()->format('d-m-Y'),
+            'incident_time' => '10:30',
+            'staff_name' => 'Corrected Staff Name',
+            'employee_number' => 'EMP-10',
+            'outsourced_staff_acknowledged' => '1',
+            'deficiencies' => [DeficiencyType::Other->value],
+            'deficiency_remarks' => [DeficiencyType::Other->value => 'Corrected deficiency details'],
+        ];
+
+        $this->actingAs($controller)->withSession(['auth.station_id' => $station->id])
+            ->get(route('sdm-memos.index'))
+            ->assertOk()->assertSee(route('sdm-memos.edit', $memo), false);
+        $this->get(route('sdm-memos.edit', $memo))->assertOk();
+        $this->post(route('sdm-memos.update', $memo), $data)
+            ->assertSessionHasNoErrors()->assertRedirect();
+
+        $memo->refresh();
+        $this->assertSame('Corrected Staff Name', $memo->staff_name);
+        $this->assertSame($station->id, $memo->station_id);
+        $this->assertSame('LOGIN-STATION', $memo->serial_number);
+        $this->assertSame($status, $memo->status);
+        $this->assertTrue($submittedAt->equalTo($memo->submitted_at));
+        $this->assertSame($stepId, $memo->current_workflow_step_id);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'memo.updated', 'actor_id' => $controller->id, 'auditable_id' => $memo->id]);
+
+        $this->actingAs($stationManager)->get(route('sdm-memos.show', $memo))->assertOk();
+
+        $this->actingAs($controller)->get(route('sdm-memos.index'))
+            ->assertOk()->assertDontSee(route('sdm-memos.edit', $memo), false);
+        $this->get(route('sdm-memos.edit', $memo))->assertForbidden();
+        $this->post(route('sdm-memos.update', $memo), [...$data, 'staff_name' => 'Blocked edit'])->assertForbidden();
+        $this->assertSame('Corrected Staff Name', $memo->refresh()->staff_name);
+    }
+
     #[TestWith([1, 'sdm-memos.show'])]
     #[TestWith([2, 'sdm-memos.show'])]
     #[TestWith([1, 'sdm-memos.edit'])]

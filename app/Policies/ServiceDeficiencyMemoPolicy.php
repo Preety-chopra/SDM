@@ -82,7 +82,8 @@ class ServiceDeficiencyMemoPolicy
         return $user->can(UserPermission::UpdateOwnDraftMemos->value)
             && $memo->created_by === $user->id
             && ($memo->status === MemoStatus::Draft
-                || ($user->station_id !== null && $this->isEditableSubmittedMemo($memo)));
+                || (($user->isStationController() || $user->station_id !== null)
+                    && $this->isEditableSubmittedMemo($memo)));
     }
 
     public function submit(User $user, ServiceDeficiencyMemo $memo): bool
