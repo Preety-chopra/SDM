@@ -10,14 +10,14 @@ use Illuminate\Database\Eloquent\Collection;
 
 final class MasterDataRepository implements MasterDataRepositoryInterface
 {
-    public function lines(bool $activeOnly = false): Collection
+    public function lines(bool $activeOnly = false, bool $lock = false): Collection
     {
-        return Line::query()->when($activeOnly, fn ($query) => $query->where('is_active', true))->orderBy('name')->get();
+        return Line::query()->when($activeOnly, fn ($query) => $query->where('is_active', true))->when($lock, fn ($query) => $query->lockForUpdate())->orderBy('name')->get();
     }
 
-    public function stations(bool $activeOnly = false): Collection
+    public function stations(bool $activeOnly = false, bool $lock = false): Collection
     {
-        return Station::query()->with('metroLine:id,code,name,is_active')->when($activeOnly, fn ($query) => $query->where('is_active', true))->orderBy('name')->get();
+        return Station::query()->with('metroLine:id,code,name,is_active')->when($activeOnly, fn ($query) => $query->where('is_active', true))->when($lock, fn ($query) => $query->lockForUpdate())->orderBy('name')->get();
     }
 
     public function contractors(bool $activeOnly = false): Collection

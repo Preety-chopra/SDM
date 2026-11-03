@@ -17,6 +17,10 @@ interface ServiceContractRepositoryInterface
 
     public function update(ServiceContract $contract, array $attributes): ServiceContract;
 
+    public function forLineReconciliation(array $lineIds, bool $lock = false): Collection;
+
+    public function syncLines(ServiceContract $contract, array $lineIds): void;
+
     public function hasPublishedOverlap(ServiceContract $contract): bool;
 
     public function activeFor(?SdmType $type, ?int $contractorId = null, ?int $stationId = null): Collection;

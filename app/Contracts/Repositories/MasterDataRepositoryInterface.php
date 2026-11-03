@@ -9,9 +9,9 @@ use Illuminate\Database\Eloquent\Collection;
 
 interface MasterDataRepositoryInterface
 {
-    public function lines(bool $activeOnly = false): Collection;
+    public function lines(bool $activeOnly = false, bool $lock = false): Collection;
 
-    public function stations(bool $activeOnly = false): Collection;
+    public function stations(bool $activeOnly = false, bool $lock = false): Collection;
 
     public function contractors(bool $activeOnly = false): Collection;
 

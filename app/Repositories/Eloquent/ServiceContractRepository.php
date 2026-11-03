@@ -43,6 +43,23 @@ final class ServiceContractRepository implements ServiceContractRepositoryInterf
         return $contract->refresh();
     }
 
+    public function forLineReconciliation(array $lineIds, bool $lock = false): Collection
+    {
+        return ServiceContract::query()
+            ->where(fn (Builder $query) => $query
+                ->whereIn('line_id', $lineIds)
+                ->orWhereHas('lines', fn (Builder $lines) => $lines->whereIn('lines.id', $lineIds)))
+            ->with('lines:id')
+            ->orderBy('id')
+            ->when($lock, fn (Builder $query) => $query->lockForUpdate())
+            ->get();
+    }
+
+    public function syncLines(ServiceContract $contract, array $lineIds): void
+    {
+        $contract->lines()->sync($lineIds);
+    }
+
     public function hasPublishedOverlap(ServiceContract $contract): bool
     {
         $stationIds = $contract->stations()->pluck('stations.id');
