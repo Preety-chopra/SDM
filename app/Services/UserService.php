@@ -16,6 +16,7 @@ final class UserService
         private UserRepositoryInterface $users,
         private StationHierarchyService $hierarchies,
         private RoleService $roles,
+        private AuditService $audit,
     ) {}
 
     public function paginate(string $role, ?string $search, ?string $status): LengthAwarePaginator
@@ -41,9 +42,9 @@ final class UserService
     }
 
     /** @param array<string, mixed> $data */
-    public function create(array $data): User
+    public function create(array $data, ?User $actor = null): User
     {
-        return DB::transaction(function () use ($data): User {
+        return DB::transaction(function () use ($data, $actor): User {
             $roleName = $data['role'];
             $role = UserRole::tryFrom($roleName);
             $attributes = $this->attributesForRole($data, $role, $roleName);
@@ -51,15 +52,17 @@ final class UserService
 
             $user = $this->users->create($attributes);
             $user->syncRoles([$roleName]);
+            $this->audit->record($user, $actor, 'user.created', after: $this->auditValues($user));
 
             return $user;
         });
     }
 
     /** @param array<string, mixed> $data */
-    public function update(User $user, array $data): User
+    public function update(User $user, array $data, ?User $actor = null): User
     {
-        return DB::transaction(function () use ($user, $data): User {
+        return DB::transaction(function () use ($user, $data, $actor): User {
+            $before = $this->auditValues($user);
             if ($user->roles()->value('name') !== $data['role']) {
                 $this->hierarchies->ensureUserCanBeChanged($user);
             }
@@ -73,18 +76,36 @@ final class UserService
 
             $user = $this->users->update($user, $attributes);
             $user->syncRoles([$roleName]);
+            $this->audit->record($user, $actor, 'user.updated', $before, [
+                ...$this->auditValues($user->unsetRelation('roles')),
+                'password_changed' => filled($data['password'] ?? null),
+            ]);
 
             return $user;
         });
     }
 
-    public function setEnabled(User $user, bool $enabled): User
+    public function setEnabled(User $user, bool $enabled, ?User $actor = null): User
     {
-        if (! $enabled) {
-            $this->hierarchies->ensureUserCanBeChanged($user);
-        }
+        return DB::transaction(function () use ($user, $enabled, $actor): User {
+            if (! $enabled) {
+                $this->hierarchies->ensureUserCanBeChanged($user);
+            }
 
-        return $this->users->setEnabled($user, $enabled);
+            $before = ['is_enabled' => $user->is_enabled];
+            $user = $this->users->setEnabled($user, $enabled);
+            $this->audit->record($user, $actor, $enabled ? 'user.enabled' : 'user.disabled', $before, ['is_enabled' => $enabled]);
+
+            return $user;
+        });
+    }
+
+    private function auditValues(User $user): array
+    {
+        return [
+            ...$user->only(['name', 'employee_number', 'designation', 'station_id', 'is_enabled']),
+            'roles' => $user->getRoleNames()->all(),
+        ];
     }
 
     /**

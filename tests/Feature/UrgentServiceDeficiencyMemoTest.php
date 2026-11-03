@@ -43,9 +43,10 @@ class UrgentServiceDeficiencyMemoTest extends TestCase
         $this->assertTrue($memo->is_urgent);
     }
 
-    public function test_memo_form_offers_an_urgent_flag(): void
+    public function test_station_manager_memo_form_offers_an_urgent_flag(): void
     {
         [$controller, $station] = $this->stationController();
+        $controller->syncRoles([UserRole::StationManager->value]);
 
         $this->actingAs($controller)
             ->withSession(['auth.station_id' => $station->id])
@@ -57,6 +58,39 @@ class UrgentServiceDeficiencyMemoTest extends TestCase
             ->assertSee('name="is_urgent"', false)
             ->assertSee('&quot;name&quot;:&quot;is_urgent&quot;', false)
             ->assertSee('&quot;emptyValue&quot;:&quot;Normal&quot;', false);
+    }
+
+    public function test_station_controller_create_form_hides_the_urgent_option(): void
+    {
+        [$controller, $station] = $this->stationController();
+
+        $this->actingAs($controller)
+            ->withSession(['auth.station_id' => $station->id])
+            ->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertSee('Memo details')
+            ->assertDontSee('Mark as urgent')
+            ->assertDontSee('name="is_urgent"', false)
+            ->assertDontSee('&quot;name&quot;:&quot;is_urgent&quot;', false);
+    }
+
+    public function test_station_controller_edit_form_hides_the_urgent_option(): void
+    {
+        [$controller, $station] = $this->stationController();
+        $memo = $this->urgentMemo($controller, $station);
+        $memo->update([
+            'status' => MemoStatus::Draft,
+            'submitted_at' => null,
+            'current_stage' => null,
+        ]);
+
+        $this->actingAs($controller)
+            ->get(route('sdm-memos.edit', $memo))
+            ->assertOk()
+            ->assertSee('Edit SDM draft')
+            ->assertDontSee('Mark as urgent')
+            ->assertDontSee('name="is_urgent"', false)
+            ->assertDontSee('&quot;name&quot;:&quot;is_urgent&quot;', false);
     }
 
     public function test_urgent_flag_is_displayed_with_the_sdm_serial_number(): void

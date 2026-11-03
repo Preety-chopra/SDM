@@ -3,11 +3,15 @@
 namespace App\Services;
 
 use App\Contracts\Repositories\ServiceContractRepositoryInterface;
+use App\Enums\SdmType;
+use App\Models\Line;
 use App\Models\ServiceContract;
+use App\Models\Station;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -21,9 +25,41 @@ final class ServiceContractService
         private AuditService $audit,
     ) {}
 
-    public function paginate(): LengthAwarePaginator
+    public function paginate(string $status, ?SdmType $serviceType = null): LengthAwarePaginator
     {
-        return $this->contracts->paginate();
+        return $this->contracts->paginate($status, $serviceType);
+    }
+
+    public function memoContractorOptions(int $stationId): Collection
+    {
+        return $this->contracts->activeFor(null, stationId: $stationId)
+            ->loadMissing('contractor:id,is_active')
+            ->filter(fn (ServiceContract $contract): bool => $contract->contractor?->is_active === true)
+            ->map(fn (ServiceContract $contract): array => [
+                'id' => $contract->id,
+                'contractor_id' => $contract->contractor_id,
+                'service_type' => $contract->service_type->value,
+                'effective_from' => $contract->effective_from->toDateString(),
+                'effective_to' => $contract->effective_to->toDateString(),
+            ])
+            ->values();
+    }
+
+    public function locationSummaries(ServiceContract $contract): Collection
+    {
+        return $contract->lines
+            ->sortBy('code', SORT_NATURAL | SORT_FLAG_CASE)
+            ->map(function (Line $line) use ($contract): string {
+                $stations = $contract->stations
+                    ->where('line_id', $line->id)
+                    ->sortBy(fn (Station $station): int => $station->sequence_no ?? PHP_INT_MAX);
+
+                $from = $stations->first()?->name ?? 'Not mapped';
+                $till = $stations->last()?->name ?? 'Not mapped';
+
+                return $line->code.' - '.$from.' - '.$till;
+            })
+            ->values();
     }
 
     public function create(User $actor, array $data): ServiceContract

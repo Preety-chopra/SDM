@@ -9,13 +9,15 @@ use Illuminate\Support\Collection;
 
 interface ServiceContractRepositoryInterface
 {
-    public function paginate(): LengthAwarePaginator;
+    public function paginate(string $status, ?SdmType $serviceType = null): LengthAwarePaginator;
 
     public function create(array $attributes): ServiceContract;
+
+    public function findByReference(int $contractorId, SdmType $serviceType, string $contractNumber): ?ServiceContract;
 
     public function update(ServiceContract $contract, array $attributes): ServiceContract;
 
     public function hasPublishedOverlap(ServiceContract $contract): bool;
 
-    public function activeFor(SdmType $type, ?int $contractorId = null, ?int $stationId = null): Collection;
+    public function activeFor(?SdmType $type, ?int $contractorId = null, ?int $stationId = null): Collection;
 }

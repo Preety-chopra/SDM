@@ -6,13 +6,17 @@ use App\Contracts\Repositories\MasterDataRepositoryInterface;
 use App\Models\Contractor;
 use App\Models\Line;
 use App\Models\Station;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 final class MasterDataService
 {
-    public function __construct(private MasterDataRepositoryInterface $repository) {}
+    public function __construct(
+        private MasterDataRepositoryInterface $repository,
+        private AuditService $audit,
+    ) {}
 
     public function lines(bool $activeOnly = false): Collection
     {
@@ -39,9 +43,17 @@ final class MasterDataService
         return DB::transaction(fn () => $this->repository->saveStation($station, $data));
     }
 
-    public function saveContractor(?Contractor $contractor, array $data): Contractor
+    public function saveContractor(?Contractor $contractor, array $data, User $actor): Contractor
     {
-        return DB::transaction(fn () => $this->repository->saveContractor($contractor, $data));
+        return DB::transaction(function () use ($contractor, $data, $actor): Contractor {
+            $fields = ['name', 'code', 'contact_person', 'phone', 'address', 'is_active'];
+            $before = $contractor?->only($fields) ?? [];
+            $event = $contractor === null ? 'contractor.created' : 'contractor.updated';
+            $contractor = $this->repository->saveContractor($contractor, $data);
+            $this->audit->record($contractor, $actor, $event, $before, $contractor->only($fields));
+
+            return $contractor;
+        });
     }
 
     public function deleteLine(Line $line): void

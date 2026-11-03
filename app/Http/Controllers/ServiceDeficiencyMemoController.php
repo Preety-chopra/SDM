@@ -21,6 +21,7 @@ use App\Models\User;
 use App\Services\MasterDataService;
 use App\Services\MemoAssessmentService;
 use App\Services\MemoTimelineService;
+use App\Services\ServiceContractService;
 use App\Services\ServiceDeficiencyMemoService;
 use App\Services\UserService;
 use App\Support\DeficiencyCatalog;
@@ -37,6 +38,7 @@ class ServiceDeficiencyMemoController extends Controller
         private UserService $users,
         private MemoAssessmentService $assessments,
         private MemoTimelineService $timeline,
+        private ServiceContractService $contracts,
     ) {}
 
     public function index(ListMemosRequest $request): View
@@ -386,6 +388,7 @@ class ServiceDeficiencyMemoController extends Controller
             'memo' => $memo,
             'station' => $station,
             'contractors' => $this->masterData->contractors(true),
+            'contractorContracts' => $this->contracts->memoContractorOptions($station->id),
             'stations' => $stations,
             'issuanceStations' => collect(),
             'sdmTypes' => SdmType::cases(),

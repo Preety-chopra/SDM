@@ -6,6 +6,7 @@
     $incidentTime = substr((string) old('incident_time', $memo?->incident_time ?? now('Asia/Kolkata')->format('H:i')), 0, 5);
     $inputClass = 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100';
     $isDraft = ! $memo || $memo->status === \App\Enums\MemoStatus::Draft;
+    $showUrgentOption = ! request()->user()->isStationController();
     $requiresForwarding = $forwardingRole !== null && $isDraft;
     $forwardingField = $forwardingRole === \App\Enums\UserRole::StationManager
         ? 'station_manager_employee_number'
@@ -21,7 +22,7 @@
         ['label' => 'Deficiencies', 'name' => 'deficiencies[]'],
         ['label' => 'Incident date', 'name' => 'incident_date'],
         ['label' => 'Incident time', 'name' => 'incident_time'],
-        ['label' => 'Priority', 'name' => 'is_urgent', 'emptyValue' => 'Normal'],
+        ...($showUrgentOption ? [['label' => 'Priority', 'name' => 'is_urgent', 'emptyValue' => 'Normal']] : []),
         ...($requiresForwarding ? [['label' => 'Forward to', 'name' => $forwardingField]] : []),
     ];
     $pageTitle = $memo ? ($isDraft ? 'Edit SDM draft' : 'Edit submitted SDM') : 'Create Service Deficiency Memo';
@@ -54,7 +55,11 @@
                     </ul>
                 </div>
             @endif
-            <form method="POST" enctype="multipart/form-data" action="{{ $memo ? route('sdm-memos.update', $memo) : route('sdm-memos.store') }}" class="flex flex-col gap-6" x-data="memoForm" @submit="requestSdmConfirmation($event)" data-selected-deficiencies='@json($selected)' data-service-type="{{ $serviceType }}" data-deficiency-options='@json($deficiencyOptionsByType)' data-booked-shift-from="{{ $lateTime('booked_shift_from') }}" data-booked-shift-to="{{ $lateTime('booked_shift_to') }}" data-actual-reporting-time="{{ $lateTime('actual_reporting_time') }}" data-confirmation-show-action="false" data-confirmation-preview="{{ json_encode($confirmationPreview) }}" data-confirmation-fields="{{ json_encode($confirmationFields) }}">
+            <form method="POST" enctype="multipart/form-data" action="{{ $memo ? route('sdm-memos.update', $memo) : route('sdm-memos.store') }}" class="flex flex-col gap-6" x-data="memoForm" @submit="requestSdmConfirmation($event)" data-selected-deficiencies='@json($selected)' data-service-type="{{ $serviceType }}" data-deficiency-options='@json($deficiencyOptionsByType)' data-booked-shift-from="{{ $lateTime('booked_shift_from') }}" data-booked-shift-to="{{ $lateTime('booked_shift_to') }}" data-actual-reporting-time="{{ $lateTime('actual_reporting_time') }}" data-confirmation-show-action="false" data-confirmation-preview="{{ json_encode($confirmationPreview) }}" data-confirmation-fields="{{ json_encode($confirmationFields) }}"
+                data-contractor-id="{{ old('contractor_id', $memo?->contractor_id) }}"
+                data-contractors="{{ $contractors->map->only(['id', 'name'])->values()->toJson() }}"
+                data-contractor-contracts="{{ $contractorContracts->toJson() }}"
+                data-incident-date="{{ old('incident_date', $memo?->incident_date?->toDateString() ?? now('Asia/Kolkata')->toDateString()) }}">
                 @csrf
                 <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                     <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -64,19 +69,21 @@
                                 <p data-memo-location class="text-lg font-semibold text-gray-900 dark:text-white">[{{ $memoLocation }}]</p>
                             @endunless
                         </div>
-                        <div class="w-full sm:w-auto sm:max-w-sm">
-                            <input type="hidden" name="is_urgent" value="0" data-preview-ignore>
-                            <label for="is_urgent" class="flex cursor-pointer items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
-                                <input id="is_urgent" type="checkbox" name="is_urgent" value="1" data-preview-value="Urgent" @checked(old('is_urgent', $memo?->is_urgent)) class="mt-0.5 rounded border-red-300 text-red-600 focus:ring-red-500 dark:border-red-700 dark:bg-gray-900">
-                                <span><span class="block font-semibold">Mark as urgent</span><span class="mt-0.5 block text-xs text-red-700 dark:text-red-300">Highlights this SDM and alerts the assigned user at login.</span></span>
-                            </label>
-                            <x-input-error :messages="$errors->get('is_urgent')" class="mt-2"/>
-                        </div>
+                        @if($showUrgentOption)
+                            <div class="w-full sm:w-auto sm:max-w-sm">
+                                <input type="hidden" name="is_urgent" value="0" data-preview-ignore>
+                                <label for="is_urgent" class="flex cursor-pointer items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
+                                    <input id="is_urgent" type="checkbox" name="is_urgent" value="1" data-preview-value="Urgent" @checked(old('is_urgent', $memo?->is_urgent)) class="mt-0.5 rounded border-red-300 text-red-600 focus:ring-red-500 dark:border-red-700 dark:bg-gray-900">
+                                    <span><span class="block font-semibold">Mark as urgent</span><span class="mt-0.5 block text-xs text-red-700 dark:text-red-300">Highlights this SDM and alerts the assigned user at login.</span></span>
+                                </label>
+                                <x-input-error :messages="$errors->get('is_urgent')" class="mt-2"/>
+                            </div>
+                        @endif
                     </div>
                     <div class="mt-5 grid gap-5 md:grid-cols-2">
                         <div>
                             <x-input-label for="service_type" value="SDM type" required/>
-                            <select id="service_type" name="service_type" x-model="serviceType" @change="syncSelectedDeficiencies" class="{{ $inputClass }}" required>
+                            <select id="service_type" name="service_type" x-model="serviceType" @change="syncSelectedDeficiencies(); syncContractor()" class="{{ $inputClass }}" required>
                                 <option value="">Select type</option>
                                 @foreach($sdmTypes as $type)
                                     <option value="{{ $type->value }}">{{ $type->code() }} · {{ $type->label() }}</option>
@@ -144,17 +151,17 @@
 
                         <div>
                             <x-input-label for="contractor_id" value="Contractor" required/>
-                            <select id="contractor_id" name="contractor_id" class="{{ $inputClass }}">
-                                <option value="">Select contractor</option>
-                                @foreach($contractors as $contractor)
-                                    <option value="{{ $contractor->id }}" @selected((string)old('contractor_id',$memo?->contractor_id)===(string)$contractor->id)>{{ $contractor->name }}</option>
-                                @endforeach
+                            <select id="contractor_id" name="contractor_id" x-model="contractorId" class="{{ $inputClass }}">
+                                <option value="" x-text="!serviceType ? 'Select an SDM type first' : (availableContractors.length ? 'Select contractor' : 'No matching published contract')">Select an SDM type first</option>
+                                <template x-for="contractor in availableContractors" :key="contractor.id">
+                                    <option :value="String(contractor.id)" :selected="contractorId === String(contractor.id)" x-text="contractor.name"></option>
+                                </template>
                             </select>
                             <x-input-error :messages="$errors->get('contractor_id')" class="mt-2"/>
                         </div>
                         <div>
                             <x-input-label for="incident_date" value="Date of incident" required/>
-                            <x-text-input id="incident_date" type="date" name="incident_date" max="{{ now('Asia/Kolkata')->toDateString() }}" class="mt-1 block w-full" :value="old('incident_date', $memo?->incident_date?->toDateString() ?? now('Asia/Kolkata')->toDateString())"/>
+                            <x-text-input id="incident_date" type="date" name="incident_date" x-model="incidentDate" @change="syncContractor()" max="{{ now('Asia/Kolkata')->toDateString() }}" class="mt-1 block w-full" :value="old('incident_date', $memo?->incident_date?->toDateString() ?? now('Asia/Kolkata')->toDateString())"/>
                             <x-input-error :messages="$errors->get('incident_date')" class="mt-2"/>
                         </div>
                         <div>
@@ -175,7 +182,35 @@
                     </div>
                 </section>
 
-                <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"><h3 class="text-lg font-semibold text-gray-900 dark:text-white">Deficiencies</h3><div class="relative mt-5"><x-input-label for="deficiencies-control" value="Select deficiencies" required/><button id="deficiencies-control" type="button" @click="deficiencyOpen=!deficiencyOpen" :disabled="! serviceType" class="mt-1 flex min-h-[42px] w-full items-center justify-between gap-3 rounded-md border border-gray-300 bg-white px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:disabled:bg-gray-800"><span class="flex min-w-0 flex-1 flex-wrap gap-1.5"><span x-show="selected.length === 0" class="text-gray-500 dark:text-gray-400" x-text="serviceType ? 'Select deficiencies' : 'Select an SDM type first'"></span><template x-for="type in selected" :key="type"><span class="max-w-full rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200" x-text="labelFor(type)"></span></template></span><span class="shrink-0" aria-hidden="true">▾</span></button><div x-cloak x-show="deficiencyOpen && serviceType" @click.outside="deficiencyOpen=false" class="absolute z-20 mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-900"><template x-for="option in availableDeficiencies" :key="option.value"><label class="flex cursor-pointer items-start gap-3 rounded px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800"><input type="checkbox" name="deficiencies[]" :value="option.value" :data-preview-value="option.label" x-model="selected" class="mt-0.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500"><span class="text-sm text-gray-700 dark:text-gray-200"><span x-show="option.serial_number" class="font-semibold" x-text="`${option.serial_number}. `"></span><span x-text="option.label"></span></span></label></template></div></div><x-input-error :messages="$errors->get('deficiencies')" class="mt-2"/>
+                <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Deficiencies</h3>
+                    <div class="relative mt-5" @click.outside="deficiencyOpen=false" @keydown.escape.prevent.stop="deficiencyOpen=false; $refs.deficienciesControl.focus()">
+                        <x-input-label for="deficiencies-control" value="Select deficiencies" required/>
+                        <div class="mt-1 flex min-h-[42px] flex-wrap items-center gap-2 rounded-md border border-gray-300 bg-white p-2 dark:border-gray-700 dark:bg-gray-900">
+                            <template x-for="type in selected" :key="type">
+                                <span class="inline-flex max-w-full items-start gap-1 rounded bg-emerald-50 py-1 pl-2 pr-1 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
+                                    <span class="min-w-0 break-words py-1" x-text="labelFor(type)"></span>
+                                    <button type="button" @click.stop="removeDeficiency(type); $nextTick(() => $refs.deficienciesControl.focus())" :aria-label="`Remove deficiency: ${labelFor(type)}`" class="flex h-6 w-6 shrink-0 items-center justify-center rounded hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:hover:bg-emerald-800">
+                                        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" stroke-linecap="round"/></svg>
+                                    </button>
+                                </span>
+                            </template>
+                            <button id="deficiencies-control" x-ref="deficienciesControl" type="button" @click="deficiencyOpen=!deficiencyOpen" :disabled="! serviceType" :aria-expanded="deficiencyOpen.toString()" aria-controls="deficiencies-options" class="flex min-h-8 flex-1 items-center justify-between gap-3 rounded px-1 text-left text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:text-gray-400 dark:text-gray-300">
+                                <span x-text="! serviceType ? 'Select an SDM type first' : (selected.length ? 'Add deficiencies' : 'Select deficiencies')"></span>
+                                <span class="shrink-0" aria-hidden="true">▾</span>
+                            </button>
+                        </div>
+                        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Select as many deficiencies as needed. Use × to remove a selection.</p>
+                        <div id="deficiencies-options" x-cloak x-show="deficiencyOpen && serviceType" class="absolute z-20 mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                            <template x-for="option in availableDeficiencies" :key="option.value">
+                                <label class="flex cursor-pointer items-start gap-3 rounded px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800">
+                                    <input type="checkbox" name="deficiencies[]" :value="option.value" :data-preview-value="option.label" x-model="selected" class="mt-0.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500">
+                                    <span class="text-sm text-gray-700 dark:text-gray-200"><span x-show="option.serial_number" class="font-semibold" x-text="`${option.serial_number}. `"></span><span x-text="option.label"></span></span>
+                                </label>
+                            </template>
+                        </div>
+                    </div>
+                    <x-input-error :messages="$errors->get('deficiencies')" class="mt-2"/>
                     <div x-cloak x-show="has('late_reporting')" class="mt-6 rounded-xl bg-gray-50 p-4 dark:bg-gray-900">
                         <div class="grid gap-4 md:grid-cols-3">
                             <div><x-input-label for="booked_shift_from" value="Booked shift from" required/>

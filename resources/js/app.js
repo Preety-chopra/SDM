@@ -7,6 +7,7 @@ import { createBulkMemoSelection } from './bulk-memo-selection';
 import { createCmcMemoSelection } from './cmc-memo-selection';
 import { createMemoCancellationDialog } from './memo-cancellation-dialog';
 import { createContractForm } from './contract-form';
+import { createMemoForm } from './memo-form';
 
 window.Alpine = Alpine;
 
@@ -78,62 +79,7 @@ Alpine.data('employeeAutocomplete', () => ({
     },
 }));
 
-Alpine.data('memoForm', () => ({
-    ...createSdmConfirmation(),
-    selected: [],
-    optionsByType: {},
-    serviceType: '',
-    deficiencyOpen: false,
-    bookedShiftFrom: '',
-    bookedShiftTo: '',
-    actualReportingTime: '',
-    init() {
-        this.selected = JSON.parse(this.$el.dataset.selectedDeficiencies || '[]');
-        this.optionsByType = JSON.parse(this.$el.dataset.deficiencyOptions || '{}');
-        this.serviceType = this.$el.dataset.serviceType || '';
-        this.bookedShiftFrom = this.$el.dataset.bookedShiftFrom || '';
-        this.bookedShiftTo = this.$el.dataset.bookedShiftTo || '';
-        this.actualReportingTime = this.$el.dataset.actualReportingTime || '';
-    },
-    has(type) {
-        return this.selected.includes(type);
-    },
-    get availableDeficiencies() {
-        return this.optionsByType[this.serviceType] || [];
-    },
-    syncSelectedDeficiencies() {
-        const availableValues = this.availableDeficiencies.map((option) => option.value);
-        this.selected = this.selected.filter((type) => availableValues.includes(type));
-        this.deficiencyOpen = false;
-    },
-    labelFor(type) {
-        const option = this.availableDeficiencies.find((candidate) => candidate.value === type)
-            || Object.values(this.optionsByType)
-                .flat()
-                .find((candidate) => candidate.value === type);
-
-        return option?.label || type;
-    },
-    get delayLabel() {
-        if (!this.bookedShiftFrom || !this.actualReportingTime) {
-            return '';
-        }
-
-        const minutes = (time) => {
-            const [hours, mins] = time.split(':').map(Number);
-            return (hours * 60) + mins;
-        };
-        const delay = Math.max(0, minutes(this.actualReportingTime) - minutes(this.bookedShiftFrom));
-
-        if (delay < 60) {
-            return `${delay} ${delay === 1 ? 'minute' : 'minutes'}`;
-        }
-
-        const hours = Math.floor(delay / 60);
-        const remainingMinutes = delay % 60;
-        return `${hours} ${hours === 1 ? 'hour' : 'hours'}${remainingMinutes ? ` ${remainingMinutes} ${remainingMinutes === 1 ? 'minute' : 'minutes'}` : ''}`;
-    },
-}));
+Alpine.data('memoForm', () => createMemoForm());
 
 Alpine.data('sdmActionForm', () => createSdmConfirmation());
 Alpine.data('bulkMemoSelection', () => createBulkMemoSelection());

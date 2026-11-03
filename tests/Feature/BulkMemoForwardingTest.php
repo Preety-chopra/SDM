@@ -6,6 +6,7 @@ use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\UserRole;
 use App\Enums\WorkflowStepType;
+use App\Models\AuditLog;
 use App\Models\Line;
 use App\Models\MemoWorkflowStep;
 use App\Models\ServiceDeficiencyMemo;
@@ -67,7 +68,7 @@ class BulkMemoForwardingTest extends TestCase
 
         $this->assertSame(MemoStatus::DgmApproval, $toDgm->fresh()->status);
         $this->assertSame($dgmCmc->id, $toDgm->fresh()->currentWorkflowStep->assigned_to);
-        $this->assertDatabaseCount('audit_logs', 2);
+        $this->assertSame(2, AuditLog::query()->where('auditable_type', ServiceDeficiencyMemo::class)->count());
     }
 
     public function test_select_all_forwards_every_eligible_memo_across_pages_and_honours_filters(): void
@@ -157,7 +158,7 @@ class BulkMemoForwardingTest extends TestCase
         ])->assertSessionHasErrors('memo_ids');
 
         $this->assertSame(MemoStatus::AmCmcReview, $memo->fresh()->status);
-        $this->assertDatabaseCount('audit_logs', 0);
+        $this->assertDatabaseMissing('audit_logs', ['auditable_type' => ServiceDeficiencyMemo::class]);
     }
 
     public function test_am_cmc_can_resend_a_forwarded_sdm_to_another_cmc_sm_before_it_is_acted_on(): void

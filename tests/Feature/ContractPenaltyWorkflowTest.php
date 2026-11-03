@@ -22,6 +22,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\TestWith;
 use Tests\TestCase;
 
 class ContractPenaltyWorkflowTest extends TestCase
@@ -63,7 +65,7 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->assertSame('Poor dress code', $contract->penaltyClauses->first()->description);
 
         $this->actingAs($administrator)
-            ->get(route('contracts.index'))
+            ->get(route('contracts.index', ['status' => 'draft']))
             ->assertOk()
             ->assertSee('Contract Tenure')
             ->assertSee('01-04-2026 – 31-03-2027')
@@ -89,6 +91,198 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->assertSame([$station->id], $revision->stations()->pluck('stations.id')->all());
         $this->assertSame('draft', $revision->status);
         $this->assertCount(12, $revision->penaltyClauses);
+    }
+
+    #[TestWith([null, 'published'])]
+    #[TestWith(['published', 'published'])]
+    #[TestWith(['retired', 'retired'])]
+    #[TestWith(['draft', 'draft'])]
+    #[TestWith(['unknown', 'published'])]
+    #[TestWith(['', 'published'])]
+    #[TestWith([['draft'], 'published'])]
+    public function test_contract_tabs_only_show_contracts_with_the_selected_status(mixed $requestedStatus, string $expectedStatus): void
+    {
+        $administrator = $this->user(UserRole::Administrator);
+        $contractor = Contractor::query()->create(['name' => 'Status Tabs Partner', 'is_active' => true]);
+
+        foreach (['published', 'retired', 'draft'] as $status) {
+            $this->contract($contractor, $administrator, SdmType::Cfs, 'CFA/TABS/'.$status)
+                ->update(['status' => $status]);
+        }
+
+        $response = $this->actingAs($administrator)
+            ->get(route('contracts.index', ['status' => $requestedStatus]))
+            ->assertOk()
+            ->assertSeeInOrder(['Published', 'Retired', 'Draft'])
+            ->assertSee('CFA/TABS/'.$expectedStatus);
+
+        foreach (array_diff(['published', 'retired', 'draft'], [$expectedStatus]) as $otherStatus) {
+            $response->assertDontSee('CFA/TABS/'.$otherStatus);
+        }
+
+        $response->assertViewHas('status', $expectedStatus)
+            ->assertSee('href="'.route('contracts.index', ['status' => $expectedStatus]).'"', false)
+            ->assertSee('aria-current="page"', false);
+    }
+
+    public function test_contract_tab_pagination_keeps_the_selected_status(): void
+    {
+        $administrator = $this->user(UserRole::Administrator);
+        $contractor = Contractor::query()->create(['name' => 'Paginated Tabs Partner', 'is_active' => true]);
+
+        for ($index = 1; $index <= 16; $index++) {
+            $this->contract($contractor, $administrator, SdmType::Cfs, 'CFA/PAGED/'.$index);
+        }
+        $this->contract($contractor, $administrator, SdmType::Cfs, 'CFA/PAGED/PUBLISHED')
+            ->update(['status' => 'published']);
+
+        $response = $this->actingAs($administrator)
+            ->get(route('contracts.index', ['status' => 'draft', 'page' => 2]))
+            ->assertOk()
+            ->assertSee('CFA/PAGED/1')
+            ->assertDontSee('CFA/PAGED/16')
+            ->assertDontSee('CFA/PAGED/PUBLISHED');
+
+        $contracts = $response->viewData('contracts');
+        $this->assertSame(16, $contracts->total());
+        $this->assertSame(1, $contracts->count());
+        $response->assertSee($contracts->url(1));
+        $this->assertStringContainsString('status=draft', $contracts->url(1));
+        $response->assertSee('href="'.route('contracts.index', ['status' => 'retired']).'"', false);
+    }
+
+    #[TestWith(['published'])]
+    #[TestWith(['retired'])]
+    #[TestWith(['draft'])]
+    public function test_empty_contract_tabs_describe_the_selected_status(string $status): void
+    {
+        $administrator = $this->user(UserRole::Administrator);
+
+        $this->actingAs($administrator)
+            ->get(route('contracts.index', ['status' => $status]))
+            ->assertOk()
+            ->assertSee('No '.$status.' contracts found.');
+    }
+
+    public function test_contract_tabs_remain_forbidden_without_contract_management_permission(): void
+    {
+        $this->actingAs($this->user(UserRole::Station))
+            ->get(route('contracts.index', ['status' => 'draft']))
+            ->assertForbidden();
+    }
+
+    public static function contractServiceFilters(): array
+    {
+        $cases = [];
+
+        foreach (['published', 'retired', 'draft'] as $status) {
+            foreach (SdmType::cases() as $type) {
+                $cases[$status.' '.$type->code()] = [$status, $type];
+            }
+        }
+
+        return $cases;
+    }
+
+    #[DataProvider('contractServiceFilters')]
+    public function test_contract_service_filter_combines_with_each_status_tab(string $status, SdmType $type): void
+    {
+        $administrator = $this->user(UserRole::Administrator);
+        $contractor = Contractor::query()->create(['name' => 'Service Filter Partner', 'is_active' => true]);
+        $expectedContract = null;
+
+        foreach (['published', 'retired', 'draft'] as $contractStatus) {
+            foreach (SdmType::cases() as $contractType) {
+                $contract = $this->contract($contractor, $administrator, $contractType, 'FILTER/'.$contractStatus.'/'.$contractType->code());
+                $contract->update(['status' => $contractStatus]);
+
+                if ($status === $contractStatus && $type === $contractType) {
+                    $expectedContract = $contract;
+                }
+            }
+        }
+
+        $response = $this->actingAs($administrator)
+            ->get(route('contracts.index', ['status' => $status, 'service_type' => $type->value]))
+            ->assertOk()
+            ->assertSee($expectedContract->contract_number)
+            ->assertSee('name="service_type"', false)
+            ->assertSee('value="'.$type->value.'" selected', false)
+            ->assertSee('name="status" value="'.$status.'"', false)
+            ->assertSee('href="'.route('contracts.index', ['status' => $status]).'"', false);
+
+        $this->assertSame([$expectedContract->id], $response->viewData('contracts')->pluck('id')->all());
+
+        foreach (['published', 'retired', 'draft'] as $tabStatus) {
+            $response->assertSee(route('contracts.index', ['status' => $tabStatus, 'service_type' => $type->value]));
+        }
+    }
+
+    public function test_contract_service_filter_is_preserved_in_pagination(): void
+    {
+        $administrator = $this->user(UserRole::Administrator);
+        $contractor = Contractor::query()->create(['name' => 'Paginated Service Partner', 'is_active' => true]);
+
+        for ($index = 1; $index <= 16; $index++) {
+            $this->contract($contractor, $administrator, SdmType::Ticketing, 'TVS/FILTER/'.$index);
+        }
+        $this->contract($contractor, $administrator, SdmType::Cfs, 'CFA/FILTER/OTHER');
+
+        $response = $this->actingAs($administrator)
+            ->get(route('contracts.index', ['status' => 'draft', 'service_type' => 'token_vending', 'page' => 2]))
+            ->assertOk()
+            ->assertSee('TVS/FILTER/1')
+            ->assertDontSee('TVS/FILTER/16')
+            ->assertDontSee('CFA/FILTER/OTHER');
+
+        $contracts = $response->viewData('contracts');
+        $this->assertSame(16, $contracts->total());
+        $this->assertSame(1, $contracts->count());
+        $this->assertStringContainsString('status=draft', $contracts->url(1));
+        $this->assertStringContainsString('service_type=token_vending', $contracts->url(1));
+        $response->assertSee($contracts->url(1));
+    }
+
+    #[TestWith([null])]
+    #[TestWith([''])]
+    #[TestWith(['unknown'])]
+    #[TestWith([['token_vending']])]
+    public function test_unselected_or_invalid_contract_service_filters_show_all_services(mixed $serviceType): void
+    {
+        $administrator = $this->user(UserRole::Administrator);
+        $contractor = Contractor::query()->create(['name' => 'All Services Partner', 'is_active' => true]);
+        $this->contract($contractor, $administrator, SdmType::Cfs, 'CFA/ALL');
+        $this->contract($contractor, $administrator, SdmType::Ticketing, 'TVS/ALL');
+
+        $this->actingAs($administrator)
+            ->get(route('contracts.index', ['status' => 'draft', 'service_type' => $serviceType]))
+            ->assertOk()
+            ->assertSee('All services')
+            ->assertSee('CFA/ALL')
+            ->assertSee('TVS/ALL');
+    }
+
+    public function test_contract_service_filter_empty_state_identifies_the_selected_service(): void
+    {
+        $administrator = $this->user(UserRole::Administrator);
+
+        $this->actingAs($administrator)
+            ->get(route('contracts.index', ['status' => 'retired', 'service_type' => 'token_vending']))
+            ->assertOk()
+            ->assertSee('No retired contracts found for Ticket Vending Services (TVS).');
+    }
+
+    public function test_contract_detail_back_button_returns_to_contracts_after_visiting_the_edit_form(): void
+    {
+        $administrator = $this->user(UserRole::Administrator);
+        $contractor = Contractor::query()->create(['name' => 'Navigation Partner', 'is_active' => true]);
+        $contract = $this->contract($contractor, $administrator, SdmType::Cfs, 'CFA/NAVIGATION');
+
+        $this->actingAs($administrator)
+            ->from(route('contracts.edit', $contract))
+            ->get(route('contracts.show', $contract))
+            ->assertOk()
+            ->assertSee('data-global-back href="'.route('contracts.index').'"', false);
     }
 
     public function test_administrator_maps_a_contract_to_multiple_lines_and_stations_when_creating_and_updating_it(): void
@@ -152,10 +346,11 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->actingAs($administrator)
             ->get(route('contracts.show', $contract))
             ->assertOk()
-            ->assertSee('Lines')
-            ->assertSee('Stations')
-            ->assertSee('Second Red Mapping Station')
-            ->assertSee('Blue Mapping Station');
+            ->assertSee('Lines and Stations')
+            ->assertSeeInOrder([
+                'BLUE-MAP - Blue Mapping Station - Blue Mapping Station',
+                'RED-MAP - Second Red Mapping Station - Red Mapping Station',
+            ]);
 
         $this->actingAs($administrator)
             ->get(route('contracts.edit', $contract))

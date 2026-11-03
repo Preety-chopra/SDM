@@ -18,6 +18,7 @@ use App\Http\Controllers\ServiceContractController;
 use App\Http\Controllers\ServiceDeficiencyMemoController;
 use App\Http\Controllers\StationController;
 use App\Http\Controllers\StationHierarchyController;
+use App\Http\Controllers\UserActivityController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -37,6 +38,7 @@ Route::get('/dashboard/chart-sdms', DashboardChartMemosController::class)
     ->name('dashboard.chart-sdms');
 
 Route::middleware(['auth', 'enabled'])->group(function () {
+    Route::get('/admin/user-activity', [UserActivityController::class, 'index'])->name('user-activity.index');
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
 
     Route::resource('roles', RoleController::class)->except('show');

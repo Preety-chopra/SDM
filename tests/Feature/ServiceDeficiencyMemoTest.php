@@ -10,9 +10,11 @@ use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
 use App\Models\Contractor;
 use App\Models\Line;
+use App\Models\ServiceContract;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
 use App\Models\User;
+use App\Support\DeficiencyCatalog;
 use App\Support\PenaltyClauseTemplates;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,6 +33,44 @@ class ServiceDeficiencyMemoTest extends TestCase
         parent::setUp();
         config()->set('sdm.require_contract_workflow', false);
         $this->seed(RolesAndPermissionsSeeder::class);
+    }
+
+    public function test_create_form_loads_published_contractor_contracts_for_the_signed_in_station(): void
+    {
+        [$user, $line, $station] = $this->stationUserWithLine();
+        $otherStation = Station::query()->create(['code' => 'OTHER', 'name' => 'Other station', 'line_id' => $line->id, 'is_active' => true]);
+        $contractor = Contractor::query()->create(['name' => 'Ticketing Partner', 'is_active' => true]);
+        $inactive = Contractor::query()->create(['name' => 'Inactive Partner', 'is_active' => false]);
+        $attributes = [
+            'contract_group' => 'memo-contractor-lookup', 'version' => 1,
+            'contractor_id' => $contractor->id, 'line_id' => $line->id, 'station_id' => $otherStation->id,
+            'service_type' => SdmType::Ticketing, 'contract_number' => 'LOOKUP-1', 'title' => 'Ticketing contract',
+            'effective_from' => '2026-01-01', 'effective_to' => '2026-12-31', 'status' => 'published',
+        ];
+        $mapped = ServiceContract::query()->create($attributes);
+        $mapped->stations()->sync([$station->id]);
+        ServiceContract::query()->create([...$attributes, 'contract_group' => 'unmapped', 'contract_number' => 'OTHER-STATION']);
+        ServiceContract::query()->create([...$attributes, 'contract_group' => 'draft', 'contract_number' => 'DRAFT', 'station_id' => $station->id, 'status' => 'draft']);
+        ServiceContract::query()->create([...$attributes, 'contract_group' => 'retired', 'contract_number' => 'RETIRED', 'station_id' => $station->id, 'status' => 'retired']);
+        ServiceContract::query()->create([...$attributes, 'contract_group' => 'inactive', 'contract_number' => 'INACTIVE', 'station_id' => $station->id, 'contractor_id' => $inactive->id]);
+        $legacy = ServiceContract::query()->create([...$attributes, 'contract_group' => 'legacy', 'contract_number' => 'LEGACY', 'station_id' => $station->id, 'service_type' => SdmType::Cfs]);
+        $global = ServiceContract::query()->create([...$attributes, 'contract_group' => 'global', 'contract_number' => 'GLOBAL', 'station_id' => null]);
+        $overridden = ServiceContract::query()->create([...$attributes, 'contract_group' => 'overridden', 'contract_number' => 'OVERRIDDEN', 'station_id' => $station->id]);
+        $overridden->stations()->sync([$otherStation->id]);
+
+        $response = $this->actingAs($user)->get(route('sdm-memos.create'))->assertOk();
+
+        $contracts = $response->viewData('contractorContracts');
+        $this->assertSame(collect([$mapped->id, $legacy->id, $global->id])->sort()->values()->all(), $contracts->pluck('id')->sort()->values()->all());
+        $this->assertSame([
+            'id' => $mapped->id,
+            'contractor_id' => $contractor->id,
+            'service_type' => 'token_vending',
+            'effective_from' => '2026-01-01',
+            'effective_to' => '2026-12-31',
+        ], $contracts->firstWhere('id', $mapped->id));
+        $response->assertSee('data-contractor-contracts=', false)
+            ->assertSee('x-model="contractorId"', false);
     }
 
     public function test_station_role_receives_memo_permissions_and_administrator_receives_all_permissions(): void
@@ -221,6 +261,22 @@ class ServiceDeficiencyMemoTest extends TestCase
         ])->assertRedirect();
 
         $this->assertSame('undervalued_tickets', ServiceDeficiencyMemo::query()->sole()->deficiencies()->sole()->type->value);
+    }
+
+    public function test_station_user_can_save_a_draft_with_every_available_deficiency(): void
+    {
+        [$user] = $this->stationUserWithLine();
+        $types = DeficiencyCatalog::valuesFor(SdmType::Ticketing);
+
+        $response = $this->actingAs($user)->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => $types,
+        ]);
+
+        $response->assertSessionHasNoErrors();
+        $memo = ServiceDeficiencyMemo::query()->sole();
+        $response->assertRedirect(route('sdm-memos.edit', $memo));
+        $this->assertSame($types, $memo->deficiencies()->orderBy('id')->pluck('type')->map(fn (DeficiencyType $type): string => $type->value)->all());
     }
 
     public function test_station_user_can_save_partial_draft_but_submission_is_strict(): void

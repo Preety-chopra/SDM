@@ -84,7 +84,7 @@ class UserController extends Controller
 
     public function store(StoreUserRequest $request): RedirectResponse
     {
-        $user = $this->users->create($request->validated());
+        $user = $this->users->create($request->validated(), $request->user());
         $role = $request->validated('role');
 
         return redirect()->route('users.index', $role)
@@ -111,7 +111,7 @@ class UserController extends Controller
 
     public function update(UpdateUserRequest $request, User $user): RedirectResponse
     {
-        $updatedUser = $this->users->update($user, $request->validated());
+        $updatedUser = $this->users->update($user, $request->validated(), $request->user());
         $role = $request->validated('role');
 
         return redirect()->route('users.index', $role)
@@ -120,7 +120,7 @@ class UserController extends Controller
 
     public function status(UpdateUserStatusRequest $request, User $user): RedirectResponse
     {
-        $updatedUser = $this->users->setEnabled($user, $request->boolean('is_enabled'));
+        $updatedUser = $this->users->setEnabled($user, $request->boolean('is_enabled'), $request->user());
         $state = $updatedUser->is_enabled ? 'enabled' : 'disabled';
 
         return back()->with('status', "{$updatedUser->name} was {$state}.");

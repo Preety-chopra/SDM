@@ -40,6 +40,10 @@ class AppLayout extends Component
 
     private function backUrl(): string
     {
+        if (request()->routeIs('contracts.show')) {
+            return route('contracts.index');
+        }
+
         $fallback = route('dashboard');
         $previous = url()->previous($fallback);
         $applicationOrigin = request()->getSchemeAndHttpHost();

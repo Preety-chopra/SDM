@@ -102,6 +102,12 @@
                 </a>
             @endcan
         @endforeach
+        @can('viewAny', \App\Models\AuditLog::class)
+            <a href="{{ route('user-activity.index') }}" title="User activity" class="{{ $baseClasses }} {{ request()->routeIs('user-activity.*') ? $activeClasses : $idleClasses }}">
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 4h6m-6 0H6v17h12V4h-3M9 4v3h6V4M9 12h6M9 16h6" /></svg>
+                <span x-show="! collapsed || mobileOpen" class="truncate">User activity</span>
+            </a>
+        @endcan
     </nav>
 
     </aside>

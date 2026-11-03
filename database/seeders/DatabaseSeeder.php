@@ -15,6 +15,9 @@ class DatabaseSeeder extends Seeder
             RolesAndPermissionsSeeder::class,
             DesignationSeeder::class,
             AdministratorSeeder::class,
+            LineSeeder::class,
+            StationSeeder::class,
+            ServiceContractSeeder::class,
         ]);
     }
 }

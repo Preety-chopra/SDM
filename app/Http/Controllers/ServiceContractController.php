@@ -24,11 +24,26 @@ class ServiceContractController extends Controller
         private MasterDataService $masterData,
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
         Gate::authorize('viewAny', ServiceContract::class);
 
-        return view('contracts.index', ['contracts' => $this->contracts->paginate()]);
+        $statusTabs = ['published' => 'Published', 'retired' => 'Retired', 'draft' => 'Draft'];
+        $status = $request->query('status', 'published');
+        $status = in_array($status, array_keys($statusTabs), true) ? $status : 'published';
+        $requestedServiceType = $request->query('service_type');
+        $serviceType = is_string($requestedServiceType) ? SdmType::tryFrom($requestedServiceType) : null;
+
+        return view('contracts.index', [
+            'contracts' => $this->contracts->paginate($status, $serviceType)->appends(array_filter([
+                'status' => $status,
+                'service_type' => $serviceType?->value,
+            ])),
+            'status' => $status,
+            'statusTabs' => $statusTabs,
+            'serviceType' => $serviceType,
+            'serviceTypes' => SdmType::cases(),
+        ]);
     }
 
     public function create(Request $request): View
@@ -51,7 +66,10 @@ class ServiceContractController extends Controller
         Gate::authorize('view', $contract);
         $contract->load(['contractor', 'lines', 'stations', 'penaltyClauses'])->loadCount('memos');
 
-        return view('contracts.show', ['contract' => $contract]);
+        return view('contracts.show', [
+            'contract' => $contract,
+            'locationSummaries' => $this->contracts->locationSummaries($contract),
+        ]);
     }
 
     public function edit(ServiceContract $contract): View

@@ -23,14 +23,14 @@ class ContractorController extends Controller
 
     public function store(SaveContractorRequest $request): RedirectResponse
     {
-        $this->masterData->saveContractor(null, $request->validated());
+        $this->masterData->saveContractor(null, $request->validated(), $request->user());
 
         return back()->with('status', 'Contractor created.');
     }
 
     public function update(SaveContractorRequest $request, Contractor $contractor): RedirectResponse
     {
-        $this->masterData->saveContractor($contractor, $request->validated());
+        $this->masterData->saveContractor($contractor, $request->validated(), $request->user());
 
         return back()->with('status', 'Contractor updated.');
     }

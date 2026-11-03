@@ -79,7 +79,7 @@ abstract class MemoRequest extends FormRequest
             'station_record_brief_remarks' => ['nullable', 'string', 'max:5000'],
             'station_manager_employee_number' => [Rule::requiredIf($strict && $isStationController), 'nullable', 'string', 'max:100'],
             'line_manager_employee_number' => [Rule::requiredIf($strict && $isStationManager), 'nullable', 'string', 'max:100'],
-            'deficiencies' => [$strict ? 'required' : 'nullable', 'array', $strict ? 'min:1' : 'max:5'],
+            'deficiencies' => $strict ? ['required', 'array', 'min:1'] : ['nullable', 'array'],
             'deficiencies.*' => [Rule::in(DeficiencyCatalog::valuesFor($serviceType)), 'distinct'],
             'outsourced_staff_acknowledged' => [$strict ? 'accepted' : 'nullable', 'boolean'],
             'deficiency_remarks' => ['nullable', 'array'],
