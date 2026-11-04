@@ -49,6 +49,8 @@
                 </div>
             </form>
 
+            @include('user-activity.hr-summary')
+
             <section aria-label="Recorded user activity" class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200 text-left text-sm dark:divide-gray-700">

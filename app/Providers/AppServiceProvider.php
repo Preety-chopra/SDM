@@ -13,6 +13,7 @@ use App\Contracts\Repositories\StationControllerDashboardRepositoryInterface;
 use App\Contracts\Repositories\StationHierarchyRepositoryInterface;
 use App\Contracts\Repositories\StationManagerDashboardRepositoryInterface;
 use App\Contracts\Repositories\StationRepositoryInterface;
+use App\Contracts\Repositories\UserActivityReportRepositoryInterface;
 use App\Contracts\Repositories\UserRepositoryInterface;
 use App\Contracts\Repositories\WorkflowRoleDashboardRepositoryInterface;
 use App\Models\ServiceContract;
@@ -33,6 +34,7 @@ use App\Repositories\Eloquent\StationControllerDashboardRepository;
 use App\Repositories\Eloquent\StationHierarchyRepository;
 use App\Repositories\Eloquent\StationManagerDashboardRepository;
 use App\Repositories\Eloquent\StationRepository;
+use App\Repositories\Eloquent\UserActivityReportRepository;
 use App\Repositories\Eloquent\UserRepository;
 use App\Repositories\Eloquent\WorkflowRoleDashboardRepository;
 use App\View\Composers\NavigationComposer;
@@ -50,6 +52,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(AuditLogRepositoryInterface::class, AuditLogRepository::class);
+        $this->app->bind(UserActivityReportRepositoryInterface::class, UserActivityReportRepository::class);
         $this->app->bind(DesignationRepositoryInterface::class, DesignationRepository::class);
         $this->app->bind(UserRepositoryInterface::class, UserRepository::class);
         $this->app->bind(LineManagerDashboardRepositoryInterface::class, LineManagerDashboardRepository::class);
