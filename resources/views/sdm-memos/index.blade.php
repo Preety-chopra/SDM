@@ -5,7 +5,6 @@
                 <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ match ($category) { 'pending_action' => 'Pending SDMs awaiting your action', 'urgent_pending_action' => 'Urgent SDMs awaiting your action', default => 'Service Deficiency Memos' } }}</h2>
                 <p class="text-sm text-gray-500 dark:text-gray-400">{{ in_array($category, ['pending_action', 'urgent_pending_action'], true) ? 'Only SDMs currently pending at your level, including handed-over assignments.' : 'Draft and submitted CFA/TVS records.' }}</p></div>@can('create', \App\Models\ServiceDeficiencyMemo::class)<a href="{{ route('sdm-memos.create') }}" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">New memo</a>@endcan</div></x-slot>
     <div class="py-10"><div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        @if(session('status'))<div class="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{{ session('status') }}</div>@endif
         @can(\App\Enums\UserPermission::ActOnRoutedMemos->value)
         <nav aria-label="SDM categories" class="mb-5 overflow-x-auto">
             <div class="inline-flex min-w-full gap-1 rounded-xl border border-gray-200 bg-gray-100 p-1 sm:min-w-0 dark:border-gray-700 dark:bg-gray-900">

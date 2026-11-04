@@ -8,6 +8,7 @@ import { createCmcMemoSelection } from './cmc-memo-selection';
 import { createMemoCancellationDialog } from './memo-cancellation-dialog';
 import { createContractForm } from './contract-form';
 import { createMemoForm } from './memo-form';
+import { createSdmActionFeedback } from './sdm-action-feedback';
 
 window.Alpine = Alpine;
 
@@ -80,6 +81,7 @@ Alpine.data('employeeAutocomplete', () => ({
 }));
 
 Alpine.data('memoForm', () => createMemoForm());
+Alpine.data('sdmActionFeedback', () => createSdmActionFeedback());
 
 Alpine.data('sdmActionForm', () => createSdmConfirmation());
 Alpine.data('bulkMemoSelection', () => createBulkMemoSelection());

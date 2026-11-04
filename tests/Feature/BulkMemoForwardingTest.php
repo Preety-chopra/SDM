@@ -60,6 +60,11 @@ class BulkMemoForwardingTest extends TestCase
         $this->assertSame(MemoStatus::CmcAssignment, $toScrutiny->fresh()->status);
         $this->assertSame($cmcTeamSm->id, $toScrutiny->fresh()->currentWorkflowStep->assigned_to);
 
+        $this->get(route('sdm-memos.index'))->assertOk()
+            ->assertSee('data-sdm-action-feedback', false)
+            ->assertSee('SDM action successful')
+            ->assertSee('1 SDM forwarded to CMC Team SM for scrutiny.');
+
         $this->post(route('sdm-memos.bulk-forward'), [
             'destination' => WorkflowStepType::AmCmcToDgm->value,
             'memo_ids' => [$toDgm->id],

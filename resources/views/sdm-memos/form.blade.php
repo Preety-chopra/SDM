@@ -42,9 +42,6 @@
     </x-slot>
     <div class="py-10">
         <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-            @if(session('status'))
-                <div class="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{{ session('status') }}</div>
-            @endif
             @if($errors->any())
                 <div class="mb-5 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
                     <p class="font-semibold">Please correct the following before continuing:</p>

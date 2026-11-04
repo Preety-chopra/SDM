@@ -40,6 +40,10 @@
             </div>
         </div>
 
+        @if(request()->routeIs('sdm-memos.*'))
+            <x-sdm-action-feedback />
+        @endif
+
         @if(session('pending_sdm_summary'))
             <x-modal name="pending-sdm-summary" :show="true" maxWidth="lg" focusable>
                 <section role="dialog" aria-modal="true" aria-labelledby="pending-sdm-title" aria-describedby="pending-sdm-description" class="p-6 sm:p-7">

@@ -13,9 +13,6 @@
             $isStationManagerViewer = auth()->user()->hasRole(\App\Enums\UserRole::StationManager->value);
         @endphp
         <div class="mx-auto flex max-w-5xl flex-col gap-6 px-4 sm:px-6 lg:px-8">
-            @if(session('status'))
-                <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">{{ session('status') }}</div>
-            @endif
             @if($memo->cancellationLabel())
                 <div class="rounded-lg border border-rose-200 bg-rose-50 p-4 font-semibold text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{ $memo->cancellationLabel() }}</div>
             @endif
