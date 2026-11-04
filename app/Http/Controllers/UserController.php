@@ -75,7 +75,7 @@ class UserController extends Controller
             'selectedRole' => $selectedRole,
             'roles' => $roles,
             'stations' => $stations,
-            'lines' => $stations->pluck('metroLine')->filter()->unique('id')->sortBy('name')->values(),
+            'lines' => $stations->pluck('metroLine')->filter()->unique('id')->sortBy('code', SORT_NATURAL | SORT_FLAG_CASE)->values(),
             'directStationRoleNames' => $this->roles->directStationRoleNames($roles),
             'designations' => $this->designations->active(),
             'generalCreate' => $generalCreate,
@@ -103,7 +103,7 @@ class UserController extends Controller
             'selectedRole' => $this->roles->findManagedByNameOrFail($user->roles->sole()->name),
             'roles' => $roles,
             'stations' => $stations,
-            'lines' => $stations->pluck('metroLine')->filter()->unique('id')->sortBy('name')->values(),
+            'lines' => $stations->pluck('metroLine')->filter()->unique('id')->sortBy('code', SORT_NATURAL | SORT_FLAG_CASE)->values(),
             'directStationRoleNames' => $this->roles->directStationRoleNames($roles),
             'designations' => $this->designations->active(),
         ]);

@@ -42,7 +42,11 @@ class AuthenticatedSessionController extends Controller
             $request->session()->forget('auth.station_id');
         }
 
-        $request->session()->flash('pending_sdm_summary', $this->memos->pendingActionSummary($request->user()));
+        if ($request->user()->hasAnyRole([UserRole::Administrator->value, UserRole::Station->value, 'station_controller'])) {
+            $request->session()->forget('pending_sdm_summary');
+        } else {
+            $request->session()->flash('pending_sdm_summary', $this->memos->pendingActionSummary($request->user()));
+        }
 
         $defaultDestination = $request->user()->hasAnyRole([UserRole::Station->value, 'station_controller'])
             ? route('sdm-memos.create', absolute: false)

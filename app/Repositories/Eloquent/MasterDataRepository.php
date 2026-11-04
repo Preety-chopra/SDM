@@ -12,7 +12,13 @@ final class MasterDataRepository implements MasterDataRepositoryInterface
 {
     public function lines(bool $activeOnly = false, bool $lock = false): Collection
     {
-        return Line::query()->when($activeOnly, fn ($query) => $query->where('is_active', true))->when($lock, fn ($query) => $query->lockForUpdate())->orderBy('name')->get();
+        return Line::query()
+            ->when($activeOnly, fn ($query) => $query->where('is_active', true))
+            ->when($lock, fn ($query) => $query->lockForUpdate())
+            ->orderBy('code')
+            ->get()
+            ->sortBy('code', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
     }
 
     public function stations(bool $activeOnly = false, bool $lock = false): Collection

@@ -15,6 +15,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\TestWith;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -523,6 +524,95 @@ class UserManagementTest extends TestCase
             'line_id' => $blueLine->id,
             'station_id' => $station->id,
         ])->assertSessionHasErrors('station_id');
+    }
+
+    #[TestWith(['station'])]
+    #[TestWith(['station_controller'])]
+    public function test_station_controller_can_be_updated_without_line_or_station(string $roleName): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $role = Role::findOrCreate($roleName, 'web');
+        $role->givePermissionTo(UserPermission::CreateMemos->value);
+        $managedUser = User::factory()->create(['employee_number' => '10458', 'station_id' => null]);
+        $managedUser->assignRole($role);
+        $password = $managedUser->password;
+
+        $this->actingAs($administrator)->put(route('users.update', $managedUser), [
+            ...$this->validUserData(UserRole::Station),
+            'name' => 'Updated Controller',
+            'email' => $managedUser->email,
+            'role' => $roleName,
+            'employee_number' => '10458',
+            'line_id' => '',
+            'station_id' => '',
+            'password' => '',
+            'password_confirmation' => '',
+        ])->assertSessionHasNoErrors()
+            ->assertRedirect(route('users.index', $roleName));
+
+        $managedUser->refresh();
+        $this->assertSame('Updated Controller', $managedUser->name);
+        $this->assertNull($managedUser->station_id);
+        $this->assertSame($password, $managedUser->password);
+        $this->assertTrue($managedUser->hasExactRoles($roleName));
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $administrator->id,
+            'event' => 'user.updated',
+            'auditable_type' => User::class,
+            'auditable_id' => $managedUser->id,
+        ]);
+    }
+
+    #[TestWith([true])]
+    #[TestWith([false])]
+    public function test_station_controller_can_be_updated_with_an_optional_station_mapping(bool $includeLine): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $line = Line::query()->create(['code' => 'RED', 'name' => 'Red Line', 'is_active' => true]);
+        $station = Station::query()->create([
+            'code' => 'RED-01', 'name' => 'Red Station', 'line_id' => $line->id, 'is_active' => true,
+        ]);
+        $managedUser = $this->userWithRole(UserRole::Station, ['station_id' => $station->id]);
+
+        $this->actingAs($administrator)->put(route('users.update', $managedUser), [
+            ...$this->validUserData(UserRole::Station),
+            'line_id' => $includeLine ? $line->id : null,
+            'station_id' => $station->id,
+        ])->assertSessionHasNoErrors()
+            ->assertRedirect(route('users.index', UserRole::Station->value));
+
+        $this->assertSame($station->id, $managedUser->fresh()->station_id);
+    }
+
+    #[TestWith(['mismatched_line', 'station_id'])]
+    #[TestWith(['inactive_station', 'station_id'])]
+    #[TestWith(['inactive_line', 'line_id'])]
+    #[TestWith(['missing_station', 'station_id'])]
+    #[TestWith(['missing_line', 'line_id'])]
+    public function test_user_update_rejects_invalid_optional_station_mapping(string $scenario, string $errorField): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $line = Line::query()->create([
+            'code' => 'RED', 'name' => 'Red Line', 'is_active' => $scenario !== 'inactive_line',
+        ]);
+        $station = Station::query()->create([
+            'code' => 'RED-01', 'name' => 'Red Station', 'line_id' => $line->id,
+            'is_active' => $scenario !== 'inactive_station',
+        ]);
+        $selectedLine = $scenario === 'mismatched_line'
+            ? Line::query()->create(['code' => 'BLUE', 'name' => 'Blue Line', 'is_active' => true])
+            : $line;
+        $managedUser = $this->userWithRole(UserRole::Station);
+        $originalName = $managedUser->name;
+
+        $this->actingAs($administrator)->put(route('users.update', $managedUser), [
+            ...$this->validUserData(UserRole::Station),
+            'line_id' => $scenario === 'missing_line' ? 999 : $selectedLine->id,
+            'station_id' => $scenario === 'missing_station' ? 999 : $station->id,
+        ])->assertSessionHasErrors([$errorField => 'The selected '.str_replace('_', ' ', $errorField).' is invalid.']);
+
+        $this->assertSame($originalName, $managedUser->fresh()->name);
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'user.updated', 'auditable_id' => $managedUser->id]);
     }
 
     public function test_custom_memo_creator_role_may_be_created_without_a_station_assignment(): void

@@ -314,8 +314,32 @@ class AuthenticationTest extends TestCase
             ->assertSessionHas('pending_sdm_summary', ['total' => 2, 'urgent' => 1]);
     }
 
-    #[TestWith(['station'])]
     #[TestWith(['administrator'])]
+    #[TestWith(['station'])]
+    #[TestWith(['station_controller'])]
+    public function test_login_does_not_open_the_pending_queue_popup_for_administrators_or_station_controllers(string $role): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole(Role::findOrCreate($role));
+        $station = Station::query()->create(['code' => 'NO-POPUP', 'name' => 'No Popup Station', 'is_active' => true]);
+
+        $this->withSession(['url.intended' => route('sdm-memos.index')])->post(route('login'), [
+            'username' => $user->name,
+            'password' => 'password',
+            'station_id' => $station->id,
+        ])
+            ->assertRedirect(route('sdm-memos.index'))
+            ->assertSessionMissing('pending_sdm_summary');
+
+        $this->assertAuthenticatedAs($user);
+
+        $this->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertDontSee('Pending SDMs awaiting your action');
+    }
+
+    #[TestWith(['station_manager'])]
+    #[TestWith(['assistant_manager'])]
     public function test_login_displays_zero_counts_when_the_user_has_no_pending_sdms(string $role): void
     {
         $user = User::factory()->create();
