@@ -40,6 +40,8 @@
             </div>
         </div>
 
+        <x-feedback-dialog />
+
         @if(request()->routeIs('sdm-memos.*'))
             <x-sdm-action-feedback />
         @endif

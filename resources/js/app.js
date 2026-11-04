@@ -9,8 +9,11 @@ import { createMemoCancellationDialog } from './memo-cancellation-dialog';
 import { createContractForm } from './contract-form';
 import { createMemoForm } from './memo-form';
 import { createSdmActionFeedback } from './sdm-action-feedback';
+import { createFeedbackForm } from './feedback-form';
 
 window.Alpine = Alpine;
+
+Alpine.data('feedbackForm', () => createFeedbackForm());
 
 Alpine.data('appShell', () => ({
     collapsed: false,

@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Contracts\Repositories\AuditLogRepositoryInterface;
 use App\Contracts\Repositories\DesignationRepositoryInterface;
+use App\Contracts\Repositories\FeedbackRepositoryInterface;
 use App\Contracts\Repositories\LineManagerDashboardRepositoryInterface;
 use App\Contracts\Repositories\MasterDataRepositoryInterface;
 use App\Contracts\Repositories\RoleRepositoryInterface;
@@ -25,6 +26,7 @@ use App\Policies\ServiceDeficiencyMemoPolicy;
 use App\Policies\UserPolicy;
 use App\Repositories\Eloquent\AuditLogRepository;
 use App\Repositories\Eloquent\DesignationRepository;
+use App\Repositories\Eloquent\FeedbackRepository;
 use App\Repositories\Eloquent\LineManagerDashboardRepository;
 use App\Repositories\Eloquent\MasterDataRepository;
 use App\Repositories\Eloquent\RoleRepository;
@@ -52,6 +54,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(AuditLogRepositoryInterface::class, AuditLogRepository::class);
+        $this->app->bind(FeedbackRepositoryInterface::class, FeedbackRepository::class);
         $this->app->bind(UserActivityReportRepositoryInterface::class, UserActivityReportRepository::class);
         $this->app->bind(DesignationRepositoryInterface::class, DesignationRepository::class);
         $this->app->bind(UserRepositoryInterface::class, UserRepository::class);

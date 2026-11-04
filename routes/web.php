@@ -5,6 +5,7 @@ use App\Http\Controllers\ContractorController;
 use App\Http\Controllers\DashboardChartMemosController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DesignationController;
+use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\LineController;
 use App\Http\Controllers\LineManagerDashboardMemosController;
 use App\Http\Controllers\MemoApprovalAttachmentController;
@@ -38,6 +39,8 @@ Route::get('/dashboard/chart-sdms', DashboardChartMemosController::class)
     ->name('dashboard.chart-sdms');
 
 Route::middleware(['auth', 'enabled'])->group(function () {
+    Route::post('/feedback', [FeedbackController::class, 'store'])->middleware('throttle:10,1')->name('feedback.store');
+    Route::get('/admin/feedback', [FeedbackController::class, 'index'])->name('feedback.index');
     Route::get('/admin/user-activity', [UserActivityController::class, 'index'])->name('user-activity.index');
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
 

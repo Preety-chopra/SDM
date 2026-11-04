@@ -10,6 +10,7 @@ class RestrictStationControllerAccess
 {
     /** @var list<string> */
     private const ALLOWED_ROUTES = [
+        'feedback.store',
         'sdm-memos.index',
         'sdm-memos.drafts',
         'sdm-memos.create',
