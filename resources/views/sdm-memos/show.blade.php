@@ -106,6 +106,9 @@
                     @foreach($memo->deficiencies as $deficiency)
                         <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-900">
                             <strong>{{ $deficiency->type->label() }}</strong>
+                            @if($deficiency->type === \App\Enums\DeficiencyType::Overcharging && $deficiency->overcharge_amount !== null)
+                                <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">Overcharged amount: ₹{{ number_format((float) $deficiency->overcharge_amount, 2) }}</p>
+                            @endif
                             @if($deficiency->remarks)
                                 <p class="mt-2 whitespace-pre-line text-sm text-gray-600 dark:text-gray-300">{{ $deficiency->remarks }}</p>
                             @endif

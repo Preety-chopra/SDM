@@ -85,6 +85,7 @@ abstract class MemoRequest extends FormRequest
             'outsourced_staff_acknowledged' => [$strict ? 'accepted' : 'nullable', 'boolean'],
             'deficiency_remarks' => ['nullable', 'array'],
             'deficiency_remarks.*' => ['nullable', 'string', 'max:5000'],
+            'overcharge_amount' => [Rule::excludeIf(! in_array(DeficiencyType::Overcharging->value, (array) $types, true)), 'nullable', 'numeric', 'decimal:0,2', 'between:0,9999999999.99'],
             'late_reporting' => ['nullable', 'array'],
             'late_reporting.booked_shift_from' => [Rule::requiredIf($strict && in_array(DeficiencyType::LateReporting->value, $types, true)), 'nullable', 'date_format:H:i'],
             'late_reporting.booked_shift_to' => [Rule::requiredIf($strict && in_array(DeficiencyType::LateReporting->value, $types, true)), 'nullable', 'date_format:H:i'],

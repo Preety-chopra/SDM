@@ -3,6 +3,7 @@
     $serviceType = old('service_type', $memo?->service_type?->value ?? '');
     $late = $memo?->deficiencies->first(fn ($item) => $item->type === \App\Enums\DeficiencyType::LateReporting)?->lateReporting;
     $lateTime = fn (string $field) => substr((string) old('late_reporting.'.$field, $late?->$field), 0, 5);
+    $overchargeAmount = old('overcharge_amount', $memo?->deficiencies->first(fn ($item) => $item->type === \App\Enums\DeficiencyType::Overcharging)?->overcharge_amount);
     $incidentTime = substr((string) old('incident_time', $memo?->incident_time ?? now('Asia/Kolkata')->format('H:i')), 0, 5);
     $cashAmountType = old('cash_check.amount_type', $memo?->cashCheck?->amount_type);
     $inputClass = 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100';
@@ -204,6 +205,11 @@
                                 <p x-cloak x-show="delayLabel" class="mt-2 text-sm font-semibold text-amber-700 dark:text-amber-300">Delay: <span x-text="delayLabel"></span></p>
                             </div>
                         </div>
+                    </div>
+                    <div x-cloak x-show="has('overcharging')" class="mt-6 flex flex-col gap-2 rounded-xl bg-gray-50 p-4 dark:bg-gray-900">
+                        <x-input-label for="overcharge_amount" value="Overcharged amount (₹)"/>
+                        <input id="overcharge_amount" type="text" name="overcharge_amount" inputmode="decimal" maxlength="13" value="{{ $overchargeAmount }}" :disabled="!has('overcharging')" aria-describedby="overcharge_amount_error" class="{{ $inputClass }}">
+                        <x-input-error id="overcharge_amount_error" :messages="$errors->get('overcharge_amount')"/>
                     </div>
                     <div class="mt-5">
                         <x-input-label for="station_record_brief_remarks" value="Remarks (optional)"/>

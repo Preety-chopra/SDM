@@ -38,6 +38,7 @@ erDiagram
 | Late reporting | `memo_deficiencies` and `memo_late_reporting_details` |
 | Dress code/failure to follow instructions | `memo_deficiencies` |
 | Misbehavior with customer/staff | `memo_deficiencies` |
+| Overcharging and overcharged amount | `memo_deficiencies.overcharge_amount` (nullable decimal, rupees) |
 | Public complaint number and station | `memo_public_complaints` |
 | Other discrepancy | `memo_deficiencies` |
 | TOM/CCC inspection and cash-check details (Token Vending only) | `memo_cash_checks` |

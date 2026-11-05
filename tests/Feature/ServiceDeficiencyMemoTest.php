@@ -1066,6 +1066,106 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertSee('name="station_manager_employee_number"', false);
     }
 
+    public function test_overcharging_exposes_a_conditional_amount_text_field(): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)->get(route('sdm-memos.create'))->assertOk()
+            ->assertSee('x-show="has(\'overcharging\')"', false)
+            ->assertSee('Overcharged amount (₹)')
+            ->assertSee('name="overcharge_amount"', false)
+            ->assertSee(':disabled="!has(\'overcharging\')"', false);
+    }
+
+    #[TestWith(['125.50', '125.50'])]
+    #[TestWith(['0', '0.00'])]
+    #[TestWith(['9999999999.99', '9999999999.99'])]
+    public function test_overcharged_amount_is_saved_restored_displayed_and_audited(string $amount, string $expected): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => ['overcharging'],
+            'overcharge_amount' => $amount,
+        ])->assertSessionHasNoErrors()->assertRedirect();
+
+        $memo = ServiceDeficiencyMemo::query()->sole();
+        $this->assertSame($expected, $memo->deficiencies()->sole()->overcharge_amount);
+        $this->assertSame($expected, AuditLog::query()->where('event', 'memo.created')->sole()->after_values['deficiencies'][0]['overcharge_amount']);
+        $this->get(route('sdm-memos.edit', $memo))->assertOk()
+            ->assertSee('value="'.$expected.'"', false);
+        $this->get(route('sdm-memos.show', $memo))->assertOk()
+            ->assertSee('Overcharged amount: ₹'.number_format((float) $amount, 2));
+    }
+
+    #[TestWith(['-1'])]
+    #[TestWith(['not an amount'])]
+    #[TestWith(['10000000000'])]
+    #[TestWith(['1.234'])]
+    public function test_invalid_overcharged_amount_cannot_be_saved(string $amount): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)->from(route('sdm-memos.create'))->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => ['overcharging'],
+            'overcharge_amount' => $amount,
+        ])->assertRedirect(route('sdm-memos.create'))->assertSessionHasErrors('overcharge_amount');
+
+        $this->assertDatabaseCount('service_deficiency_memos', 0);
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'memo.created']);
+        $this->get(route('sdm-memos.create'))->assertOk()->assertSee('value="'.$amount.'"', false);
+    }
+
+    public function test_overcharged_amount_is_retained_when_a_memo_is_submitted(): void
+    {
+        [$user] = $this->stationUserWithLine();
+        $contractor = Contractor::query()->create(['name' => 'Ticketing Partner', 'is_active' => true]);
+
+        $this->actingAs($user)->post(route('sdm-memos.store-and-submit'), [
+            'service_type' => SdmType::Ticketing->value,
+            'contractor_id' => $contractor->id,
+            'incident_date' => '18-08-2026',
+            'incident_time' => '10:30',
+            'staff_name' => 'Test Staff',
+            'employee_number' => 'EMP-OVERCHARGE',
+            'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
+            'deficiencies' => ['overcharging'],
+            'overcharge_amount' => '25.75',
+        ])->assertRedirect(route('sdm-memos.index'))->assertSessionHasNoErrors();
+
+        $memo = ServiceDeficiencyMemo::query()->sole();
+        $this->assertSame(MemoStatus::Submitted, $memo->status);
+        $this->assertSame('25.75', $memo->deficiencies()->sole()->overcharge_amount);
+        $this->assertSame('25.75', AuditLog::query()->where('event', 'memo.submitted')->sole()->after_values['deficiencies'][0]['overcharge_amount']);
+    }
+
+    public function test_overcharged_amount_can_be_edited_cleared_and_removed_with_its_deficiency(): void
+    {
+        [$user] = $this->stationUserWithLine();
+        $data = ['service_type' => SdmType::Ticketing->value, 'deficiencies' => ['overcharging']];
+        $this->actingAs($user)->post(route('sdm-memos.store'), [...$data, 'overcharge_amount' => '25.50'])->assertSessionHasNoErrors();
+        $memo = ServiceDeficiencyMemo::query()->sole();
+
+        $this->post(route('sdm-memos.update', $memo), [...$data, 'overcharge_amount' => '50.75'])->assertSessionHasNoErrors();
+        $this->assertSame('50.75', $memo->deficiencies()->sole()->overcharge_amount);
+        $this->post(route('sdm-memos.update', $memo), $data)->assertSessionHasNoErrors();
+        $this->assertSame('50.75', $memo->deficiencies()->sole()->overcharge_amount);
+        $this->post(route('sdm-memos.update', $memo), [...$data, 'overcharge_amount' => ''])->assertSessionHasNoErrors();
+        $this->assertNull($memo->deficiencies()->sole()->overcharge_amount);
+        $this->post(route('sdm-memos.update', $memo), [
+            'service_type' => SdmType::Ticketing->value, 'deficiencies' => ['overcharging', 'other'], 'overcharge_amount' => '25',
+        ])->assertSessionHasNoErrors();
+        $this->assertNull($memo->deficiencies()->where('type', 'other')->sole()->overcharge_amount);
+        $this->post(route('sdm-memos.update', $memo), [
+            'service_type' => SdmType::Ticketing->value, 'deficiencies' => ['other'], 'overcharge_amount' => 'invalid hidden value',
+        ])->assertSessionHasNoErrors();
+        $this->assertSame(DeficiencyType::Other, $memo->deficiencies()->sole()->type);
+        $this->assertNull($memo->deficiencies()->sole()->overcharge_amount);
+    }
+
     public function test_late_reporting_uses_custom_times_and_displays_the_calculated_delay(): void
     {
         [$user] = $this->stationUserWithLine();

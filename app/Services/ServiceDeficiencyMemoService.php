@@ -264,7 +264,8 @@ final class ServiceDeficiencyMemoService
                 $auditEvent = $isStationManagerEdit
                     ? 'memo.station_manager.edited'
                     : ($submit ? 'memo.submitted' : ($memo->wasRecentlyCreated ? 'memo.created' : 'memo.updated'));
-                $afterAuditValues = $isStationManagerEdit ? $this->auditValues($memo) : [
+                $sectionAuditValues = $this->auditValues($memo);
+                $afterAuditValues = $isStationManagerEdit ? $sectionAuditValues : [
                     'status' => $memo->status->value,
                     'service_type' => $memo->service_type->value,
                     'serial_number' => $memo->serial_number,
@@ -273,7 +274,8 @@ final class ServiceDeficiencyMemoService
                     'service_contract_id' => $memo->service_contract_id,
                     'station_id' => $memo->station_id,
                     'incident_time' => $memo->incident_time,
-                    'cash_check' => $this->auditValues($memo)['cash_check'],
+                    'cash_check' => $sectionAuditValues['cash_check'],
+                    'deficiencies' => $sectionAuditValues['deficiencies'],
                 ];
                 $this->audit->record($memo, $user, $auditEvent, $beforeAuditValues, $afterAuditValues);
 
@@ -661,6 +663,7 @@ final class ServiceDeficiencyMemoService
                 ->map(fn ($deficiency): array => [
                     'type' => $deficiency->type->value,
                     'remarks' => $deficiency->remarks,
+                    'overcharge_amount' => $deficiency->overcharge_amount,
                     'late_reporting' => $deficiency->lateReporting ? [
                         'booked_shift_from' => $deficiency->lateReporting->booked_shift_from,
                         'booked_shift_to' => $deficiency->lateReporting->booked_shift_to,
@@ -744,12 +747,16 @@ final class ServiceDeficiencyMemoService
 
     private function syncSections(ServiceDeficiencyMemo $memo, array $data): void
     {
-        $existingRemarks = $memo->deficiencies()->pluck('remarks', 'type');
+        $existingDeficiencies = $memo->deficiencies()->get()
+            ->keyBy(fn ($deficiency): string => $deficiency->type->value);
         $memo->deficiencies()->delete();
         foreach ($data['deficiencies'] ?? [] as $type) {
             $deficiency = $memo->deficiencies()->create([
                 'type' => $type,
-                'remarks' => $data['deficiency_remarks'][$type] ?? $existingRemarks->get($type),
+                'remarks' => $data['deficiency_remarks'][$type] ?? $existingDeficiencies->get($type)?->remarks,
+                'overcharge_amount' => $type === DeficiencyType::Overcharging->value
+                    ? (array_key_exists('overcharge_amount', $data) ? $data['overcharge_amount'] : $existingDeficiencies->get($type)?->overcharge_amount)
+                    : null,
             ]);
             if ($type === DeficiencyType::LateReporting->value && filled($data['late_reporting'] ?? null)) {
                 $deficiency->lateReporting()->create($data['late_reporting']);

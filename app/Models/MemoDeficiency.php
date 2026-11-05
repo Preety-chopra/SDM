@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['memo_id', 'type', 'remarks'])]
+#[Fillable(['memo_id', 'type', 'remarks', 'overcharge_amount'])]
 class MemoDeficiency extends Model
 {
     public function memo(): BelongsTo
@@ -23,6 +23,6 @@ class MemoDeficiency extends Model
 
     protected function casts(): array
     {
-        return ['type' => DeficiencyType::class];
+        return ['type' => DeficiencyType::class, 'overcharge_amount' => 'decimal:2'];
     }
 }
