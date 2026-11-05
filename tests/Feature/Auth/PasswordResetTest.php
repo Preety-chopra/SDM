@@ -5,7 +5,9 @@ namespace Tests\Feature\Auth;
 use App\Models\User;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Password;
 use Tests\TestCase;
 
 class PasswordResetTest extends TestCase
@@ -59,15 +61,35 @@ class PasswordResetTest extends TestCase
             $response = $this->post('/reset-password', [
                 'token' => $notification->token,
                 'email' => $user->email,
-                'password' => 'password',
-                'password_confirmation' => 'password',
+                'password' => 'Abcdef1!',
+                'password_confirmation' => 'Abcdef1!',
             ]);
 
             $response
                 ->assertSessionHasNoErrors()
                 ->assertRedirect(route('login'));
 
+            $this->assertTrue(Hash::check('Abcdef1!', $user->refresh()->password));
+
             return true;
         });
+    }
+
+    public function test_password_reset_rejects_a_password_without_a_symbol_and_preserves_the_token(): void
+    {
+        $user = User::factory()->create();
+        $originalPassword = $user->password;
+        $token = Password::createToken($user);
+
+        $this->from(route('password.reset', $token))->post(route('password.store'), [
+            'token' => $token,
+            'email' => $user->email,
+            'password' => 'Abcdef12',
+            'password_confirmation' => 'Abcdef12',
+        ])->assertSessionHasErrors(['password' => 'The password field must contain at least one symbol.'])
+            ->assertRedirect(route('password.reset', $token));
+
+        $this->assertSame($originalPassword, $user->refresh()->password);
+        $this->assertTrue(Password::tokenExists($user, $token));
     }
 }

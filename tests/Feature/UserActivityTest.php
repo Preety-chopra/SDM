@@ -237,7 +237,7 @@ class UserActivityTest extends TestCase
         $data = [
             'name' => 'Audit Staff', 'email' => 'audit-staff@example.com', 'employee_number' => 'AUD-123',
             'phone' => null, 'designation' => null, 'role' => UserRole::AssistantManager->value,
-            'password' => 'secure-password-123', 'password_confirmation' => 'secure-password-123', 'is_enabled' => true,
+            'password' => 'Secure-password-123!', 'password_confirmation' => 'Secure-password-123!', 'is_enabled' => true,
         ];
         $this->actingAs($admin)->post(route('users.store'), $data)->assertSessionHasNoErrors()->assertRedirect();
         $user = User::query()->where('name', 'Audit Staff')->sole();
@@ -251,7 +251,7 @@ class UserActivityTest extends TestCase
 
         $this->patch(route('users.status', $user), ['is_enabled' => false])->assertSessionHasNoErrors()->assertRedirect();
         $this->assertDatabaseHas('audit_logs', ['actor_id' => $admin->id, 'auditable_id' => $user->id, 'event' => 'user.disabled']);
-        $this->assertStringNotContainsString('secure-password-123', AuditLog::all()->toJson());
+        $this->assertStringNotContainsString('Secure-password-123!', AuditLog::all()->toJson());
         $this->assertStringNotContainsString($user->password, AuditLog::all()->toJson());
     }
 

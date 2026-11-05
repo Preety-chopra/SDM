@@ -69,7 +69,8 @@
         </div>
         <div>
             <x-input-label for="password" :value="$managedUser ? 'New password (optional)' : 'Password'" :required="! $managedUser" />
-            <x-text-input id="password" name="password" type="password" class="mt-1 block w-full" :required="! $managedUser" autocomplete="new-password" />
+            <x-text-input id="password" name="password" type="password" class="mt-1 block w-full" :required="! $managedUser" minlength="8" aria-describedby="password-requirements" autocomplete="new-password" />
+            <x-password-requirements id="password-requirements" />
             <x-input-error :messages="$errors->get('password')" class="mt-2" />
         </div>
         <div>

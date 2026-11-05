@@ -43,15 +43,15 @@ class StationControllerPasswordTest extends TestCase
         $this->actingAs($user)->from(route('profile.edit'))
             ->put(route('password.update'), [
                 'current_password' => 'password',
-                'password' => 'new-password',
-                'password_confirmation' => 'new-password',
+                'password' => 'Abcdef1!',
+                'password_confirmation' => 'Abcdef1!',
                 'user_id' => $otherUser->id,
             ])
             ->assertSessionHasNoErrors()
             ->assertSessionHas('status', 'password-updated')
             ->assertRedirect(route('profile.edit'));
 
-        $this->assertTrue(Hash::check('new-password', $user->refresh()->password));
+        $this->assertTrue(Hash::check('Abcdef1!', $user->refresh()->password));
         $this->assertSame($otherPassword, $otherUser->refresh()->password);
 
         $audit = AuditLog::query()->where('event', 'user.password_changed')->sole();
@@ -62,10 +62,10 @@ class StationControllerPasswordTest extends TestCase
         $this->assertSame(['password_changed' => true], $audit->after_values);
     }
 
-    #[TestWith(['station', 'wrong-password', 'new-password', 'new-password', 'current_password'])]
-    #[TestWith(['station_controller', 'wrong-password', 'new-password', 'new-password', 'current_password'])]
-    #[TestWith(['station', 'password', 'new-password', 'different-password', 'password'])]
-    #[TestWith(['station_controller', 'password', 'new-password', 'different-password', 'password'])]
+    #[TestWith(['station', 'wrong-password', 'Abcdef1!', 'Abcdef1!', 'current_password'])]
+    #[TestWith(['station_controller', 'wrong-password', 'Abcdef1!', 'Abcdef1!', 'current_password'])]
+    #[TestWith(['station', 'password', 'Abcdef1!', 'different-password', 'password'])]
+    #[TestWith(['station_controller', 'password', 'Abcdef1!', 'different-password', 'password'])]
     #[TestWith(['station', 'password', 'short', 'short', 'password'])]
     public function test_invalid_password_changes_leave_the_password_unchanged(
         string $role,

@@ -420,6 +420,36 @@ class UserManagementTest extends TestCase
         $this->assertTrue(Hash::check('Replacement Password 456!', $managedUser->fresh()->password));
     }
 
+    public function test_user_creation_rejects_a_password_without_a_number(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+
+        $this->actingAs($administrator)->post(route('users.store'), [
+            ...$this->validUserData(UserRole::Station),
+            'password' => 'Abcdefgh!',
+            'password_confirmation' => 'Abcdefgh!',
+        ])->assertSessionHasErrors(['password' => 'The password field must contain at least one number.']);
+
+        $this->assertDatabaseMissing('users', ['email' => 'managed@example.com']);
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'user.created']);
+    }
+
+    public function test_administrator_password_changes_reject_a_password_without_a_number(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $managedUser = $this->userWithRole(UserRole::Station);
+        $originalPassword = $managedUser->password;
+
+        $this->actingAs($administrator)->put(route('users.update', $managedUser), [
+            ...$this->validUserData(UserRole::Station),
+            'password' => 'Abcdefgh!',
+            'password_confirmation' => 'Abcdefgh!',
+        ])->assertSessionHasErrors(['password' => 'The password field must contain at least one number.']);
+
+        $this->assertSame($originalPassword, $managedUser->refresh()->password);
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'user.updated']);
+    }
+
     public function test_email_and_employee_number_must_be_unique(): void
     {
         $administrator = $this->userWithRole(UserRole::Administrator);

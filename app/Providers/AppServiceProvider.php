@@ -40,10 +40,12 @@ use App\Repositories\Eloquent\UserActivityReportRepository;
 use App\Repositories\Eloquent\UserRepository;
 use App\Repositories\Eloquent\WorkflowRoleDashboardRepository;
 use App\View\Composers\NavigationComposer;
+use Closure;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\Rules\Password;
 use Spatie\Permission\Models\Role;
 
 class AppServiceProvider extends ServiceProvider
@@ -75,6 +77,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Password::defaults(fn (): Password => Password::min(8)->mixedCase()->numbers()->rules([
+            // Laravel's symbols() rule also accepts spaces; require a symbol or punctuation.
+            function (string $attribute, mixed $value, Closure $fail): void {
+                if (is_string($value) && ! preg_match('/[\p{P}\p{S}]/u', $value)) {
+                    $fail(__('validation.password.symbols', ['attribute' => $attribute]));
+                }
+            },
+        ]));
+
         DB::prohibitDestructiveCommands(! $this->app->environment('testing'));
 
         Gate::policy(User::class, UserPolicy::class);

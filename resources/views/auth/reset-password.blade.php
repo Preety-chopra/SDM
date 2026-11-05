@@ -15,7 +15,8 @@
         <!-- Password -->
         <div class="mt-4">
             <x-input-label for="password" :value="__('Password')" required />
-            <x-text-input id="password" class="block mt-1 w-full" type="password" name="password" required autocomplete="new-password" />
+            <x-text-input id="password" class="block mt-1 w-full" type="password" name="password" required minlength="8" aria-describedby="password-requirements" autocomplete="new-password" />
+            <x-password-requirements id="password-requirements" />
             <x-input-error :messages="$errors->get('password')" class="mt-2" />
         </div>
 
