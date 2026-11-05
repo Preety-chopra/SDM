@@ -98,6 +98,10 @@ abstract class MemoRequest extends FormRequest
             'cash_check.check_date' => ['nullable', 'required_with:cash_check.check_time', 'date_format:Y-m-d', 'before_or_equal:today'],
             'cash_check.check_time' => ['nullable', 'required_with:cash_check.check_date', 'date_format:H:i'],
             'cash_check.difference_amount' => ['nullable', 'numeric', 'between:-9999999999.99,9999999999.99'],
+            'cash_check.excess_amount' => ['nullable', 'numeric', 'between:0,9999999999.99'],
+            'cash_check.short_amount' => ['nullable', 'numeric', 'between:0,9999999999.99'],
+            'cash_check.amount_type' => ['nullable', 'required_with:cash_check.amount', 'string', Rule::in(['excess', 'short'])],
+            'cash_check.amount' => ['nullable', 'numeric', 'between:0,9999999999.99'],
             'cash_check.hidden_cash_amount' => ['nullable', 'numeric', 'between:0,9999999999.99'],
             'cash_check.checking_official_name' => ['nullable', 'string', 'max:255'],
             'cash_check.checking_official_designation' => ['nullable', 'string', 'max:100'],
@@ -126,6 +130,14 @@ abstract class MemoRequest extends FormRequest
         return [function (Validator $validator): void {
             $types = $this->input('deficiencies', []);
             $cashSelected = in_array(DeficiencyType::CashCheck->value, $types, true);
+
+            if (! $validator->errors()->hasAny(['cash_check.excess_amount', 'cash_check.short_amount'])
+                && (float) $this->input('cash_check.excess_amount', 0) > 0
+                && (float) $this->input('cash_check.short_amount', 0) > 0) {
+                foreach (['excess_amount', 'short_amount'] as $field) {
+                    $validator->errors()->add('cash_check.'.$field, 'Enter either an excess amount or a short amount, not both.');
+                }
+            }
 
             if ($cashSelected && SdmType::tryFrom($this->string('service_type')->toString()) !== SdmType::Ticketing) {
                 $validator->errors()->add('deficiencies', 'TOM / CCC Inspection is available only for Ticketing memos.');

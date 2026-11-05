@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\DeficiencyType;
 use App\Enums\SdmType;
 use App\Enums\UserRole;
 use App\Models\Line;
@@ -60,6 +61,30 @@ class SdmActionFeedbackTest extends TestCase
             ->assertSee('SDM action could not be completed')
             ->assertSee('The contractor id field is required.')
             ->assertSee('Keep this name');
+    }
+
+    public function test_create_form_validation_errors_appear_once_in_the_popup_and_are_absent_from_the_form(): void
+    {
+        $user = $this->stationUser();
+
+        $this->actingAs($user)->from(route('sdm-memos.create'))->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => [DeficiencyType::CashCheck->value],
+            'cash_check' => ['excess_amount' => '10', 'short_amount' => '20'],
+        ])->assertRedirect(route('sdm-memos.create'))->assertSessionHasErrors('cash_check.excess_amount');
+
+        $response = $this->withCookie(config('session.cookie'), session()->getId())
+            ->get(route('sdm-memos.create'))->assertOk()
+            ->assertDontSee('Please correct the following before continuing:');
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $popup = $xpath->query('//*[@data-sdm-action-feedback]')->item(0);
+        $this->assertInstanceOf(\DOMElement::class, $popup);
+        $this->assertSame(['Enter either an excess amount or a short amount, not both.'], json_decode($popup->getAttribute('data-messages'), true));
+        $form = $xpath->query('//form[@enctype="multipart/form-data"]')->item(0);
+        $this->assertInstanceOf(\DOMElement::class, $form);
+        $this->assertStringNotContainsString('Enter either an excess amount or a short amount, not both.', $form->textContent);
     }
 
     public function test_station_controller_list_displays_submission_feedback_and_drafts_display_errors(): void

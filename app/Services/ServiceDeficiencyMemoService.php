@@ -195,6 +195,9 @@ final class ServiceDeficiencyMemoService
                     $this->markStationManagerOpened($memo, $user);
                 }
                 $beforeAuditValues = $isStationManagerEdit ? $this->auditValues($memo) : [];
+                if ($memo !== null && ! $isStationManagerEdit) {
+                    $beforeAuditValues['cash_check'] = $this->auditValues($memo)['cash_check'];
+                }
                 $stationId = $this->submissionStationId($user, $data, $memo);
                 $station = Station::query()->with('metroLine')->whereKey($stationId)->where('is_active', true)->firstOrFail();
                 abort_unless($station->metroLine?->is_active, 422, 'Your station must be assigned to an active line.');
@@ -270,6 +273,7 @@ final class ServiceDeficiencyMemoService
                     'service_contract_id' => $memo->service_contract_id,
                     'station_id' => $memo->station_id,
                     'incident_time' => $memo->incident_time,
+                    'cash_check' => $this->auditValues($memo)['cash_check'],
                 ];
                 $this->audit->record($memo, $user, $auditEvent, $beforeAuditValues, $afterAuditValues);
 
@@ -672,6 +676,8 @@ final class ServiceDeficiencyMemoService
                 'end_of_shift_receipt_number' => $memo->cashCheck->end_of_shift_receipt_number,
                 'checked_at' => $memo->cashCheck->checked_at?->toDateTimeString(),
                 'difference_amount' => $memo->cashCheck->difference_amount,
+                'excess_amount' => $memo->cashCheck->excess_amount,
+                'short_amount' => $memo->cashCheck->short_amount,
                 'hidden_cash_amount' => $memo->cashCheck->hidden_cash_amount,
                 'checking_official_name' => $memo->cashCheck->checking_official_name,
                 'checking_official_designation' => $memo->cashCheck->checking_official_designation,
@@ -763,7 +769,20 @@ final class ServiceDeficiencyMemoService
         $memo->cashCheck()->delete();
         $cashSelected = in_array(DeficiencyType::CashCheck->value, $data['deficiencies'] ?? [], true);
         if (SdmType::from($data['service_type']) === SdmType::Ticketing && $cashSelected) {
-            $cash = Arr::except($data['cash_check'] ?? [], ['check_date', 'check_time']);
+            $cashCheck = $data['cash_check'] ?? [];
+            $cash = Arr::except($cashCheck, ['check_date', 'check_time', 'excess_amount', 'short_amount', 'amount_type', 'amount']);
+            if (array_key_exists('amount', $cashCheck) || array_key_exists('amount_type', $cashCheck)) {
+                $amount = $cashCheck['amount'] ?? null;
+                $cash['difference_amount'] = filled($amount)
+                    ? (($cashCheck['amount_type'] ?? null) === 'short' ? -(float) $amount : $amount)
+                    : null;
+            } elseif (array_key_exists('excess_amount', $cashCheck) || array_key_exists('short_amount', $cashCheck)) {
+                $excess = $cashCheck['excess_amount'] ?? null;
+                $short = $cashCheck['short_amount'] ?? null;
+                $cash['difference_amount'] = (float) $short > 0
+                    ? -(float) $short
+                    : (filled($excess) ? $excess : (filled($short) ? 0 : null));
+            }
             $checkDate = $data['cash_check']['check_date'] ?? null;
             $checkTime = $data['cash_check']['check_time'] ?? null;
             $cash['checked_at'] = filled($checkDate) && filled($checkTime)

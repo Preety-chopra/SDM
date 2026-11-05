@@ -15,6 +15,7 @@
         }
     }
 
+    $messages = array_values(array_unique($messages));
     $feedbackTitle = $type === 'error' ? 'SDM action could not be completed' : 'SDM action successful';
 @endphp
 

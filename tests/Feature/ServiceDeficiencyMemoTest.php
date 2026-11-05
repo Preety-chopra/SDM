@@ -8,6 +8,7 @@ use App\Enums\SdmType;
 use App\Enums\UserPermission;
 use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
+use App\Models\AuditLog;
 use App\Models\Contractor;
 use App\Models\Line;
 use App\Models\ServiceContract;
@@ -21,6 +22,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use PHPUnit\Framework\Attributes\TestWith;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -219,6 +221,226 @@ class ServiceDeficiencyMemoTest extends TestCase
             $this->assertFalse($input->hasAttribute('readonly'));
             $this->assertFalse($input->hasAttribute('disabled'));
         }
+    }
+
+    public function test_cash_check_time_defaults_to_the_current_ist_time_on_the_create_form(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-05 10:07:30', 'UTC'));
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertSee('id="cash_check_time" type="time" name="cash_check[check_time]" value="15:37"', false);
+    }
+
+    public function test_cash_check_time_preserves_previously_entered_input_on_the_create_form(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-05 10:07:30', 'UTC'));
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)
+            ->withSession(['_old_input' => ['cash_check' => ['check_time' => '09:20']]])
+            ->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertSee('id="cash_check_time" type="time" name="cash_check[check_time]" value="09:20"', false);
+    }
+
+    public function test_cash_check_time_preserves_the_saved_time_on_the_edit_form(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-05 10:07:30', 'UTC'));
+        [$user] = $this->stationUserWithLine();
+        $memo = $this->draft($user, SdmType::Ticketing, 'CASH-TIME');
+        $memo->cashCheck()->create(['checked_at' => '2026-11-04 08:25:00']);
+
+        $this->actingAs($user)->get(route('sdm-memos.edit', $memo))
+            ->assertOk()
+            ->assertSee('id="cash_check_time" type="time" name="cash_check[check_time]" value="08:25"', false);
+    }
+
+    public function test_cash_check_form_has_one_amount_with_exclusive_excess_short_radios_and_separate_hidden_cash(): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $response = $this->actingAs($user)->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertSee('Excess amount')
+            ->assertSee('Short amount')
+            ->assertSee('Hidden cash amount')
+            ->assertSee('name="cash_check[amount_type]" value="excess"', false)
+            ->assertSee('name="cash_check[amount_type]" value="short"', false)
+            ->assertSee('name="cash_check[amount]"', false)
+            ->assertSee('name="cash_check[hidden_cash_amount]"', false)
+            ->assertDontSee('name="cash_check[excess_amount]"', false)
+            ->assertDontSee('name="cash_check[short_amount]"', false)
+            ->assertDontSee('name="cash_check[difference_amount]"', false);
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $this->assertSame(2, $xpath->query('//input[@type="radio" and @name="cash_check[amount_type]"]')->length);
+        $this->assertSame(0, $xpath->query('//input[@name="cash_check[amount_type]" and @checked]')->length);
+        $this->assertSame(1, $xpath->query('//input[@type="number" and @name="cash_check[amount]"]')->length);
+    }
+
+    #[TestWith(['excess', '50.25', '50.25', '50.25', '', '50.25'])]
+    #[TestWith(['short', '50.25', '-50.25', '', '50.25', '50.25'])]
+    #[TestWith(['excess', '0', '0.00', '0.00', '', '0.00'])]
+    public function test_cash_amount_and_radio_choice_are_saved_audited_and_restored_on_edit(string $type, ?string $amount, ?string $difference, string $savedExcess, string $savedShort, string $savedAmount): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $response = $this->actingAs($user)->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => [DeficiencyType::CashCheck->value],
+            'cash_check' => ['amount_type' => $type, 'amount' => $amount, 'hidden_cash_amount' => '25.75'],
+        ]);
+
+        $response->assertSessionHasNoErrors()->assertRedirect();
+        $memo = ServiceDeficiencyMemo::query()->sole();
+        $this->assertSame($difference, $memo->cashCheck->difference_amount);
+        $this->assertSame('25.75', $memo->cashCheck->hidden_cash_amount);
+        $audit = AuditLog::query()->where('auditable_type', ServiceDeficiencyMemo::class)->where('auditable_id', $memo->id)->latest('id')->firstOrFail();
+        $this->assertSame($difference, data_get($audit->after_values, 'cash_check.difference_amount'));
+        $this->assertSame('25.75', data_get($audit->after_values, 'cash_check.hidden_cash_amount'));
+        $this->assertSame($savedExcess === '' ? null : $savedExcess, data_get($audit->after_values, 'cash_check.excess_amount'));
+        $this->assertSame($savedShort === '' ? null : $savedShort, data_get($audit->after_values, 'cash_check.short_amount'));
+
+        $edit = $this->get(route('sdm-memos.edit', $memo))->assertOk();
+        $document = new \DOMDocument;
+        @$document->loadHTML($edit->getContent());
+        $xpath = new \DOMXPath($document);
+        foreach (['amount' => $savedAmount, 'hidden_cash_amount' => '25.75'] as $field => $expected) {
+            $input = $xpath->query(sprintf('//input[@name="cash_check[%s]"]', $field))->item(0);
+            $this->assertInstanceOf(\DOMElement::class, $input);
+            $this->assertSame($expected, $input->getAttribute('value'));
+        }
+        $radio = $xpath->query('//input[@name="cash_check[amount_type]" and @checked]');
+        $this->assertSame(1, $radio->length);
+        $this->assertSame($type, $radio->item(0)->getAttribute('value'));
+    }
+
+    #[TestWith([null])]
+    #[TestWith([''])]
+    public function test_blank_cash_amount_does_not_require_or_restore_a_default_type(?string $amount): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => [DeficiencyType::CashCheck->value],
+            'cash_check' => ['amount' => $amount, 'hidden_cash_amount' => '25.75'],
+        ])->assertSessionHasNoErrors()->assertRedirect();
+
+        $memo = ServiceDeficiencyMemo::query()->sole();
+        $this->assertNull($memo->cashCheck->difference_amount);
+        $this->assertSame('25.75', $memo->cashCheck->hidden_cash_amount);
+        $response = $this->get(route('sdm-memos.edit', $memo))->assertOk();
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $this->assertSame(0, $xpath->query('//input[@name="cash_check[amount_type]" and @checked]')->length);
+    }
+
+    #[TestWith(['excess_amount', '-1'])]
+    #[TestWith(['short_amount', '-1'])]
+    #[TestWith(['excess_amount', '10000000000'])]
+    #[TestWith(['short_amount', 'invalid'])]
+    public function test_invalid_cash_amounts_are_rejected(string $field, string $amount): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => [DeficiencyType::CashCheck->value],
+            'cash_check' => [$field => $amount],
+        ])->assertSessionHasErrors('cash_check.'.$field);
+
+        $this->assertDatabaseCount('service_deficiency_memos', 0);
+    }
+
+    public function test_excess_and_short_amounts_cannot_both_be_positive(): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => [DeficiencyType::CashCheck->value],
+            'cash_check' => ['excess_amount' => '10', 'short_amount' => '20'],
+        ])->assertSessionHasErrors([
+            'cash_check.excess_amount' => 'Enter either an excess amount or a short amount, not both.',
+            'cash_check.short_amount' => 'Enter either an excess amount or a short amount, not both.',
+        ]);
+
+        $this->assertDatabaseCount('service_deficiency_memos', 0);
+    }
+
+    public function test_cash_amount_edits_replace_the_previous_amount_and_audit_the_change(): void
+    {
+        [$user] = $this->stationUserWithLine();
+        $memo = $this->draft($user, SdmType::Ticketing, 'CASH-EDIT');
+        $memo->cashCheck()->create(['difference_amount' => '-50.25', 'hidden_cash_amount' => '25.75']);
+
+        $this->actingAs($user)->post(route('sdm-memos.update', $memo), [
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => [DeficiencyType::CashCheck->value],
+            'cash_check' => ['amount_type' => 'excess', 'amount' => '12.50', 'hidden_cash_amount' => null],
+        ])->assertSessionHasNoErrors()->assertRedirect();
+
+        $memo->refresh();
+        $this->assertSame('12.50', $memo->cashCheck->difference_amount);
+        $this->assertNull($memo->cashCheck->hidden_cash_amount);
+        $audit = AuditLog::query()->where('event', 'memo.updated')->where('auditable_id', $memo->id)->sole();
+        $this->assertSame('50.25', data_get($audit->before_values, 'cash_check.short_amount'));
+        $this->assertSame('12.50', data_get($audit->after_values, 'cash_check.excess_amount'));
+        $this->assertNull(data_get($audit->after_values, 'cash_check.short_amount'));
+
+        $this->get(route('sdm-memos.show', $memo))->assertOk()
+            ->assertSeeInOrder(['Excess amount', '12.50', 'Short amount', 'Hidden cash amount']);
+    }
+
+    public function test_invalid_cash_amount_submission_preserves_the_amount_radio_choice_and_hidden_cash(): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)->from(route('sdm-memos.create'))->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => [DeficiencyType::CashCheck->value],
+            'cash_check' => ['amount_type' => 'short', 'amount' => '-20.50', 'hidden_cash_amount' => '30.75'],
+        ])->assertRedirect(route('sdm-memos.create'))->assertSessionHasErrors('cash_check.amount');
+
+        $response = $this->get(route('sdm-memos.create'))->assertOk();
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        foreach (['amount' => '-20.50', 'hidden_cash_amount' => '30.75'] as $field => $expected) {
+            $input = $xpath->query(sprintf('//input[@name="cash_check[%s]"]', $field))->item(0);
+            $this->assertInstanceOf(\DOMElement::class, $input);
+            $this->assertSame($expected, $input->getAttribute('value'));
+        }
+        $radio = $xpath->query('//input[@name="cash_check[amount_type]" and @checked]');
+        $this->assertSame(1, $radio->length);
+        $this->assertSame('short', $radio->item(0)->getAttribute('value'));
+    }
+
+    #[TestWith(['excess', '-1', 'cash_check.amount'])]
+    #[TestWith(['short', '10000000000', 'cash_check.amount'])]
+    #[TestWith(['short', 'invalid', 'cash_check.amount'])]
+    #[TestWith(['both', '10', 'cash_check.amount_type'])]
+    #[TestWith([null, '10', 'cash_check.amount_type'])]
+    #[TestWith([null, '0', 'cash_check.amount_type'])]
+    #[TestWith(['', '10', 'cash_check.amount_type'])]
+    #[TestWith([['excess', 'short'], '10', 'cash_check.amount_type'])]
+    public function test_cash_amount_requires_a_valid_single_type_and_nonnegative_amount(string|array|null $type, string $amount, string $error): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $this->actingAs($user)->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => [DeficiencyType::CashCheck->value],
+            'cash_check' => ['amount_type' => $type, 'amount' => $amount],
+        ])->assertSessionHasErrors($error);
+
+        $this->assertDatabaseCount('service_deficiency_memos', 0);
     }
 
     public function test_create_form_provides_every_ssc_penalty_clause_for_each_sdm_type(): void
@@ -652,7 +874,7 @@ class ServiceDeficiencyMemoTest extends TestCase
             ],
             'cash_check' => [
                 'check_date' => '2026-08-18',
-                'check_time' => null,
+                'check_time' => '09:25',
             ],
         ])->assertRedirect();
 
