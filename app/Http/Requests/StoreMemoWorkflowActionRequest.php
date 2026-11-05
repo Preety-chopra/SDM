@@ -31,7 +31,7 @@ class StoreMemoWorkflowActionRequest extends FormRequest
         $stage = $memo->current_stage;
         $allowedActions = match ($stage) {
             WorkflowStage::StationManager => ['forward', 'request_cancellation'],
-            WorkflowStage::LineManager => ['forward', 'cancel', 'cancel_after_counselling'],
+            WorkflowStage::LineManager => ['forward', 'return', 'cancel', 'cancel_after_counselling'],
             default => ['forward', 'approve', 'cancel', 'request_cancellation'],
         };
 
@@ -43,7 +43,7 @@ class StoreMemoWorkflowActionRequest extends FormRequest
                 'string',
                 'max:100',
             ],
-            'remarks' => [Rule::requiredIf($isCancellation), 'nullable', 'string', 'max:5000'],
+            'remarks' => [Rule::requiredIf($isCancellation || $action === 'return'), 'nullable', 'string', 'max:5000'],
             'evidence' => ['nullable', 'array', 'max:10'],
             'evidence.*' => ['file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
         ];
@@ -70,7 +70,7 @@ class StoreMemoWorkflowActionRequest extends FormRequest
         $requiresCmcAssessment = $stage === WorkflowStepType::CmcAssessment && $action === 'forward';
         $allowedActions = match ($stage) {
             WorkflowStepType::StationManager => ['forward', 'request_cancellation'],
-            WorkflowStepType::LineReview => ['forward', 'cancel', 'cancel_after_counselling'],
+            WorkflowStepType::LineReview => ['forward', 'return', 'cancel', 'cancel_after_counselling'],
             default => ['forward', 'approve', 'return', 'cancel', 'request_cancellation'],
         };
 

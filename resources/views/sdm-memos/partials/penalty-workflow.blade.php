@@ -333,6 +333,9 @@
             </div>
             <x-sdm-confirmation-preview />
         </form>
+        @if($lineReviewStage)
+            <x-memo-line-revert-form :memo="$memo" />
+        @endif
         @if($currentStep->stage === \App\Enums\WorkflowStepType::StationManager)
             @can('reassignStationManager', $memo)
                 <x-memo-handover-dialog

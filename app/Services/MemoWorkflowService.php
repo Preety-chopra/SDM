@@ -100,7 +100,13 @@ final class MemoWorkflowService
 
         try {
             return DB::transaction(function () use ($memo, $actor, $data, &$storedPaths): ServiceDeficiencyMemo {
-                $memo = ServiceDeficiencyMemo::query()->lockForUpdate()->findOrFail($memo->id);
+                $memo = $this->memos->findForUpdate($memo->id);
+                $isLineReview = $memo->workflow_version >= 2
+                    ? $memo->currentWorkflowStep?->stage === WorkflowStepType::LineReview
+                    : $memo->current_stage === WorkflowStage::LineManager;
+                if ($data['action'] === 'return' && $isLineReview) {
+                    return $this->returnToStationManager($memo, $actor, $data['remarks'] ?? null);
+                }
                 if ($memo->workflow_version >= 2) {
                     return $this->actVersionTwo($memo, $actor, $data, $storedPaths);
                 }
@@ -188,6 +194,34 @@ final class MemoWorkflowService
             Storage::disk('local')->delete($storedPaths);
             throw $exception;
         }
+    }
+
+    private function returnToStationManager(ServiceDeficiencyMemo $memo, User $actor, ?string $remarks): ServiceDeficiencyMemo
+    {
+        abort_unless($actor->hasRole(UserRole::AssistantManager->value) && $actor->can('act', $memo), 403);
+        if (blank($remarks)) {
+            throw ValidationException::withMessages(['remarks' => 'The remarks field is required.']);
+        }
+
+        $step = $memo->currentWorkflowStep;
+        $before = [
+            'status' => $memo->status->value,
+            'station_manager_action' => $memo->workflow_version < 2
+                ? $memo->stationManagerApproval?->only(['assigned_to', 'acted_by', 'signer_name', 'signer_employee_number', 'decision', 'remarks', 'acted_at'])
+                : null,
+        ];
+        $sender = $this->memos->findForwardingStationManager($memo);
+        if ($sender === null) {
+            throw ValidationException::withMessages(['action' => 'The Station Manager who sent this SDM must be enabled before it can be reverted.']);
+        }
+        $this->memos->returnToStationManager($memo, $actor, $sender, $remarks);
+        $this->audit->record($memo, $actor, 'memo.workflow.return', $before, [
+            'step_id' => $step?->id,
+            'stage' => $memo->workflow_version >= 2 ? WorkflowStepType::LineReview->value : WorkflowStage::LineManager->value,
+            'returned_to' => $sender->id, 'remarks' => $remarks, 'status' => $memo->status->value,
+        ]);
+
+        return $memo->refresh();
     }
 
     private function actVersionTwo(ServiceDeficiencyMemo $memo, User $actor, array $data, array &$storedPaths): ServiceDeficiencyMemo

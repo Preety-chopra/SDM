@@ -9,12 +9,14 @@ use App\Enums\WorkflowStage;
 use App\Enums\WorkflowStepType;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable(['service_type', 'serial_number', 'is_urgent', 'station_id', 'station_name', 'line_name', 'line_code', 'contractor_id', 'service_contract_id', 'cmc_staff_id', 'contractor_name', 'staff_name', 'employee_number', 'incident_date', 'incident_time', 'station_record_brief_remarks', 'status', 'cancellation_type', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'created_by', 'updated_by', 'submitted_at'])]
@@ -52,8 +54,7 @@ class ServiceDeficiencyMemo extends Model
     public function stationManagerWorkflowStep(): HasOne
     {
         return $this->hasOne(MemoWorkflowStep::class, 'memo_id')
-            ->where('stage', WorkflowStepType::StationManager->value)
-            ->oldestOfMany();
+            ->ofMany(['sequence' => 'max'], fn (Builder $query) => $query->where('stage', WorkflowStepType::StationManager->value));
     }
 
     public function workflowSteps(): HasMany
@@ -144,8 +145,7 @@ class ServiceDeficiencyMemo extends Model
     public function lineReviewWorkflowStep(): HasOne
     {
         return $this->hasOne(MemoWorkflowStep::class, 'memo_id')
-            ->where('stage', WorkflowStepType::LineReview->value)
-            ->oldest('sequence');
+            ->ofMany(['sequence' => 'max'], fn (Builder $query) => $query->where('stage', WorkflowStepType::LineReview->value));
     }
 
     public function cancellationApproval(): HasOne
@@ -165,8 +165,20 @@ class ServiceDeficiencyMemo extends Model
     public function latestRevertedWorkflowStep(): HasOne
     {
         return $this->hasOne(MemoWorkflowStep::class, 'memo_id')
-            ->where('decision', 'returned')
-            ->latestOfMany('acted_at');
+            ->ofMany(['acted_at' => 'max', 'id' => 'max'], fn (Builder $query) => $query->where('decision', 'returned'));
+    }
+
+    public function latestLineReturnAudit(): MorphOne
+    {
+        return $this->morphOne(AuditLog::class, 'auditable')
+            ->ofMany(['id' => 'max'], fn (Builder $query) => $query->where('event', 'memo.workflow.return'));
+    }
+
+    public function revertRemarks(): ?string
+    {
+        return $this->workflow_version >= 2
+            ? $this->latestRevertedWorkflowStep?->remarks
+            : ($this->latestLineReturnAudit?->after_values['remarks'] ?? null);
     }
 
     public function latestActedApproval(): HasOne

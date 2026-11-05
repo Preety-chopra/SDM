@@ -28,6 +28,7 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
             'latestActedApproval',
             'latestActedWorkflowStep',
             'latestRevertedWorkflowStep' => fn ($query) => $query->select(['memo_workflow_steps.id', 'memo_workflow_steps.memo_id', 'memo_workflow_steps.remarks', 'memo_workflow_steps.acted_at']),
+            'latestLineReturnAudit',
             'cmcStaff:id,name',
             'cancellationApproval' => fn ($query) => $query->select(['memo_approvals.id', 'memo_approvals.memo_id', 'memo_approvals.role', 'memo_approvals.decision', 'memo_approvals.acted_at']),
             'cancellationWorkflowStep' => fn ($query) => $query->select(['memo_workflow_steps.id', 'memo_workflow_steps.memo_id', 'memo_workflow_steps.stage', 'memo_workflow_steps.decision', 'memo_workflow_steps.acted_at']),
@@ -206,6 +207,8 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
                 'deficiencies:id,memo_id,type',
                 'approvals:id,memo_id,role,decision',
                 'currentWorkflowStep:id,stage,decision',
+                'latestRevertedWorkflowStep',
+                'latestLineReturnAudit',
                 'stationManagerApproval' => fn ($query) => $query->select([
                     'memo_approvals.id',
                     'memo_approvals.memo_id',
@@ -391,6 +394,70 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
     public function findForUpdate(int $id): ServiceDeficiencyMemo
     {
         return ServiceDeficiencyMemo::query()->whereKey($id)->lockForUpdate()->firstOrFail();
+    }
+
+    public function findForwardingStationManager(ServiceDeficiencyMemo $memo): ?User
+    {
+        $current = $memo->currentWorkflowStep;
+        $previous = $memo->workflow_version >= 2
+            ? $memo->workflowSteps()->where('stage', WorkflowStepType::StationManager->value)
+                ->where('sequence', '<', $current->sequence)->where('decision', 'forwarded')
+                ->reorder('sequence', 'desc')->firstOrFail()
+            : $memo->stationManagerApproval;
+
+        return User::query()->role(UserRole::StationManager->value)
+            ->whereKey($previous->acted_by ?? $previous->assigned_to)->where('is_enabled', true)->first();
+    }
+
+    public function returnToStationManager(ServiceDeficiencyMemo $memo, User $lineManager, User $stationManager, string $remarks): void
+    {
+        if ($memo->workflow_version >= 2) {
+            $current = $memo->currentWorkflowStep;
+            $current->update([
+                'decision' => 'returned', 'acted_by' => $lineManager->id,
+                'actor_name' => $lineManager->name, 'actor_employee_number' => $lineManager->employee_number,
+                'remarks' => $remarks, 'acted_at' => now(),
+            ]);
+            $round = ((int) $memo->workflowSteps()->max('round')) + 1;
+            foreach ($memo->workflowSteps()->where('sequence', '>', $current->sequence)->reorder('sequence', 'desc')->get() as $step) {
+                $step->update(['sequence' => $step->sequence + 2]);
+            }
+
+            $sequence = $current->sequence;
+            $stationManagerStep = null;
+            foreach ([WorkflowStepType::StationManager->value => $stationManager, WorkflowStepType::LineReview->value => $lineManager] as $stage => $assignee) {
+                $step = $memo->workflowSteps()->create([
+                    'round' => $round, 'sequence' => ++$sequence, 'stage' => $stage,
+                    'role' => WorkflowStepType::from($stage)->role()->value,
+                    'assigned_to' => $assignee->id, 'assigned_name' => $assignee->name,
+                    'assigned_employee_number' => $assignee->employee_number, 'decision' => 'pending',
+                ]);
+                $stationManagerStep ??= $step;
+            }
+
+            $memo->forceFill([
+                'status' => MemoStatus::AwaitingStationManager->value,
+                'current_workflow_step_id' => $stationManagerStep->id,
+                'line_manager_opened_at' => null,
+            ])->save();
+        } else {
+            $previous = $memo->stationManagerApproval;
+            foreach ([$previous, $memo->lineManagerApproval] as $approval) {
+                $approval->update([
+                    'decision' => 'pending', 'acted_by' => null, 'acted_at' => null,
+                    'signer_name' => null, 'signer_employee_number' => null, 'remarks' => null,
+                ]);
+            }
+            $previous->update([
+                'assigned_to' => $stationManager->id, 'assigned_name' => $stationManager->name,
+                'assigned_employee_number' => $stationManager->employee_number,
+            ]);
+            $memo->forceFill([
+                'status' => MemoStatus::Submitted->value, 'current_stage' => WorkflowStage::StationManager->value,
+                'line_manager_opened_at' => null,
+            ])->save();
+        }
+
     }
 
     public function markOpenedByStationManager(ServiceDeficiencyMemo $memo): ServiceDeficiencyMemo

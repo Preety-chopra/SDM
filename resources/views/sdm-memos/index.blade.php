@@ -304,20 +304,9 @@
                                                     aria-label="Open SDM {{ $memo->serial_number }}"
                                                     class="inline-flex items-center gap-2 text-emerald-700 transition hover:underline focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:text-emerald-400 dark:focus:ring-offset-gray-900"
                                                 ><span>{{ $memo->serial_number }}</span><x-urgent-flag :memo="$memo" /></a>
-                                                @if($category === null && $memo->latestRevertedWorkflowStep)
-                                                    <span aria-label="Reverted SDM" title="This SDM was reverted" class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                                                        <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                            <path d="M9 7 4 12l5 5" stroke-linecap="round" stroke-linejoin="round" />
-                                                            <path d="M5 12h9a5 5 0 0 1 5 5v1" stroke-linecap="round" />
-                                                        </svg>
-                                                    </span>
-                                                @endif
                                             </div>
-                                            @if($category === null && $memo->latestRevertedWorkflowStep)
-                                                <p class="max-w-xs break-words text-xs font-normal leading-5 text-amber-800 dark:text-amber-200">
-                                                    <span class="font-semibold">Revert remarks:</span>
-                                                    {{ $memo->latestRevertedWorkflowStep->remarks }}
-                                                </p>
+                                            @if($category === null)
+                                                <x-memo-revert-remarks :memo="$memo" />
                                             @endif
                                         </div>
                                     @else

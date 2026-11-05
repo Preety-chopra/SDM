@@ -31,7 +31,10 @@
                                 @endphp
                                 <tr>
                                     <td class="px-4 py-4 text-sm font-semibold text-gray-900 dark:text-white">{{ $loop->iteration }}</td>
-                                    <td class="whitespace-nowrap px-4 py-4 text-sm text-gray-700 dark:text-gray-200"><span class="inline-flex items-center gap-2"><span>{{ $memo->serial_number ?: '—' }}</span><x-urgent-flag :memo="$memo" /></span></td>
+                                    <td class="min-w-64 px-4 py-4 text-sm text-gray-700 dark:text-gray-200">
+                                        <span class="inline-flex items-center gap-2"><span>{{ $memo->serial_number ?: '—' }}</span><x-urgent-flag :memo="$memo" /></span>
+                                        <x-memo-revert-remarks :memo="$memo" />
+                                    </td>
                                     <td class="whitespace-nowrap px-4 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $typeLabel }}</td>
                                     <td class="min-w-64 px-4 py-4 text-sm text-gray-700 dark:text-gray-200">
                                         {{ $memo->deficiencies->map(fn ($deficiency) => $deficiency->type->label())->join(', ') ?: '—' }}

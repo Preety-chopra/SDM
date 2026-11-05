@@ -54,6 +54,10 @@ interface ServiceDeficiencyMemoRepositoryInterface
 
     public function findForUpdate(int $id): ServiceDeficiencyMemo;
 
+    public function findForwardingStationManager(ServiceDeficiencyMemo $memo): ?User;
+
+    public function returnToStationManager(ServiceDeficiencyMemo $memo, User $lineManager, User $stationManager, string $remarks): void;
+
     public function markOpenedByStationManager(ServiceDeficiencyMemo $memo): ServiceDeficiencyMemo;
 
     public function markOpenedByLineManager(ServiceDeficiencyMemo $memo): ServiceDeficiencyMemo;
