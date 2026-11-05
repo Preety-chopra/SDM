@@ -68,6 +68,7 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
+            'feedback_last_seen_id' => 'integer',
             'email_verified_at' => 'datetime',
             'is_enabled' => 'boolean',
             'password' => 'hashed',

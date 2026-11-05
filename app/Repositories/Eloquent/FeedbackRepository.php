@@ -21,4 +21,14 @@ final class FeedbackRepository implements FeedbackRepositoryInterface
             ->latest('id')
             ->paginate(25);
     }
+
+    public function latestId(): int
+    {
+        return (int) Feedback::query()->max('id');
+    }
+
+    public function countAfter(int $id): int
+    {
+        return Feedback::query()->where('id', '>', $id)->count();
+    }
 }

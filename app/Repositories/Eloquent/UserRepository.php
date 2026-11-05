@@ -86,4 +86,11 @@ final class UserRepository implements UserRepositoryInterface
 
         return $user->refresh();
     }
+
+    public function acknowledgeFeedback(User $user, int $feedbackId): bool
+    {
+        return User::query()->whereKey($user->id)
+            ->where('feedback_last_seen_id', '<', $feedbackId)
+            ->update(['feedback_last_seen_id' => $feedbackId]) > 0;
+    }
 }

@@ -42,6 +42,12 @@
 
         <x-feedback-dialog />
 
+        @can('viewAny', \App\Models\Feedback::class)
+            @if(session('new_feedback_count'))
+                <x-feedback-notification :count="session('new_feedback_count')" />
+            @endif
+        @endcan
+
         @if(request()->routeIs('sdm-memos.*'))
             <x-sdm-action-feedback />
         @endif

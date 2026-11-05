@@ -25,4 +25,6 @@ interface UserRepositoryInterface
     public function update(User $user, array $attributes): User;
 
     public function setEnabled(User $user, bool $enabled): User;
+
+    public function acknowledgeFeedback(User $user, int $feedbackId): bool;
 }

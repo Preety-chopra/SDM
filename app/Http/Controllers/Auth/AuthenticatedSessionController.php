@@ -6,6 +6,7 @@ use App\Contracts\Repositories\StationRepositoryInterface;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Services\FeedbackService;
 use App\Services\ServiceDeficiencyMemoService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,6 +18,7 @@ class AuthenticatedSessionController extends Controller
     public function __construct(
         private StationRepositoryInterface $stations,
         private ServiceDeficiencyMemoService $memos,
+        private FeedbackService $feedback,
     ) {}
 
     /**
@@ -46,6 +48,13 @@ class AuthenticatedSessionController extends Controller
             $request->session()->forget('pending_sdm_summary');
         } else {
             $request->session()->flash('pending_sdm_summary', $this->memos->pendingActionSummary($request->user()));
+        }
+
+        $request->session()->forget('new_feedback_count');
+        $newFeedbackCount = $this->feedback->newCount($request->user());
+
+        if ($newFeedbackCount > 0) {
+            $request->session()->flash('new_feedback_count', $newFeedbackCount);
         }
 
         $defaultDestination = $request->user()->hasAnyRole([UserRole::Station->value, 'station_controller'])
