@@ -10,6 +10,9 @@ import { createContractForm } from './contract-form';
 import { createMemoForm } from './memo-form';
 import { createSdmActionFeedback } from './sdm-action-feedback';
 import { createFeedbackForm } from './feedback-form';
+import { preventInputWheelChanges } from './input-wheel-guard';
+
+preventInputWheelChanges();
 
 window.Alpine = Alpine;
 
