@@ -77,14 +77,7 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div>
-                            <x-input-label value="Line" required/>
-                            <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ collect([$station->metroLine?->code, $station->metroLine?->name])->filter()->join(' · ') ?: 'Not assigned' }}</p>
-                        </div>
-                        <div>
-                            <x-input-label value="Station" required/>
-                            <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ collect([$station->code, $station->name])->filter()->join(' · ') ?: 'Not assigned' }}</p>
-                        </div>
+                        
                         {{-- @if($issuanceStations->isNotEmpty())
                             <div class="md:col-span-2">
                                 <x-input-label for="station_id" value="Issuing station" required/>
@@ -142,6 +135,14 @@
                                     <option :value="String(contractor.id)" :selected="contractorId === String(contractor.id)" x-text="contractor.name"></option>
                                 </template>
                             </select>
+                        </div>
+                        <div>
+                            <x-input-label value="Line" required/>
+                            <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ collect([$station->metroLine?->code, $station->metroLine?->name])->filter()->join(' · ') ?: 'Not assigned' }}</p>
+                        </div>
+                        <div>
+                            <x-input-label value="Station" required/>
+                            <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ collect([$station->code, $station->name])->filter()->join(' · ') ?: 'Not assigned' }}</p>
                         </div>
                         <div>
                             <x-input-label for="incident_date" value="Date of incident" required/>

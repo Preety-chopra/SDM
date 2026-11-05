@@ -85,6 +85,16 @@ final class UserService
         });
     }
 
+    public function changePassword(User $user, string $password): User
+    {
+        return DB::transaction(function () use ($user, $password): User {
+            $user = $this->users->update($user, ['password' => $password]);
+            $this->audit->record($user, $user, 'user.password_changed', after: ['password_changed' => true]);
+
+            return $user;
+        });
+    }
+
     public function setEnabled(User $user, bool $enabled, ?User $actor = null): User
     {
         return DB::transaction(function () use ($user, $enabled, $actor): User {

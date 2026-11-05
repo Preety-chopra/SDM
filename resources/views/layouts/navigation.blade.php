@@ -169,9 +169,7 @@
             </x-slot>
             <x-slot name="content">
                 <div class="border-b border-gray-100 px-4 py-3 dark:border-gray-600"><p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ Auth::user()->name }}</p><p class="truncate text-xs text-gray-500 dark:text-gray-400">{{ Auth::user()->email }}</p></div>
-                @unless ($isStationController)
-                    <x-dropdown-link :href="route('profile.edit')">Change password</x-dropdown-link>
-                @endunless
+                <x-dropdown-link :href="route('profile.edit')">Change password</x-dropdown-link>
                 @can('viewAny', \App\Models\Feedback::class)
                     <x-dropdown-link :href="route('feedback.index')">User feedback</x-dropdown-link>
                 @endcan

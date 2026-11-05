@@ -78,6 +78,8 @@ class ApplicationShellTest extends TestCase
                 ->assertDontSee('>Open sidebar</span>', false)
                 ->assertSee('data-account-header', false)
                 ->assertSee('data-station-controller-navigation', false)
+                ->assertSee('Change password')
+                ->assertSee(route('profile.edit'), false)
                 ->assertSee('action="'.route('logout').'"', false);
         }
     }

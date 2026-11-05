@@ -46,7 +46,7 @@ class StationControllerMemoPortalTest extends TestCase
             ->assertSee('Drafts')
             ->assertDontSee('data-app-sidebar', false)
             ->assertDontSee(route('dashboard'), false)
-            ->assertDontSee(route('profile.edit'), false);
+            ->assertSee(route('profile.edit'), false);
     }
 
     public function test_view_all_lists_only_the_latest_ten_submitted_sdms_created_by_the_station_controller(): void
@@ -252,7 +252,6 @@ class StationControllerMemoPortalTest extends TestCase
             route('dashboard'),
             route('dashboard.chart-sdms'),
             route('dashboard.line-sdms'),
-            route('profile.edit'),
             route('users.create_any'),
         ] as $url) {
             $this->actingAs($controller)->get($url)->assertForbidden();
