@@ -454,9 +454,14 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertViewHas('deficiencyOptionsByType', function (array $optionsByType): bool {
                 foreach (SdmType::cases() as $type) {
                     $expectedDescriptions = collect(PenaltyClauseTemplates::for($type))
-                        ->pluck('description')
-                        ->push(DeficiencyType::Other->label())
-                        ->all();
+                        ->pluck('description');
+                    if ($type !== SdmType::BaggageHandling) {
+                        $expectedDescriptions->splice(3, 1, [
+                            'Late reporting',
+                            'Leaving duty before scheduled time or leaving without informing the on-duty SM/SC',
+                        ]);
+                    }
+                    $expectedDescriptions = $expectedDescriptions->push(DeficiencyType::Other->label())->all();
                     $options = collect($optionsByType[$type->value] ?? []);
 
                     if ($options->pluck('label')->all() !== $expectedDescriptions) {
@@ -483,6 +488,48 @@ class ServiceDeficiencyMemoTest extends TestCase
         ])->assertRedirect();
 
         $this->assertSame('undervalued_tickets', ServiceDeficiencyMemo::query()->sole()->deficiencies()->sole()->type->value);
+    }
+
+    #[TestWith([SdmType::Cfs])]
+    #[TestWith([SdmType::Ticketing])]
+    #[TestWith([SdmType::WandW])]
+    #[TestWith([SdmType::Marshall])]
+    public function test_leaving_duty_is_separate_from_late_reporting_and_can_be_submitted_without_reporting_times(SdmType $type): void
+    {
+        [$user] = $this->stationUserWithLine();
+        $contractor = Contractor::query()->create(['name' => 'Duty Partner', 'is_active' => true]);
+
+        $this->actingAs($user)->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertViewHas('deficiencyOptionsByType', function (array $options) use ($type): bool {
+                return array_slice($options[$type->value], 3, 2) === [
+                    ['value' => 'late_reporting', 'label' => 'Late reporting', 'serial_number' => 4],
+                    ['value' => 'leaving_duty', 'label' => 'Leaving duty before scheduled time or leaving without informing the on-duty SM/SC', 'serial_number' => 4],
+                ];
+            });
+
+        $this->post(route('sdm-memos.store-and-submit'), [
+            'service_type' => $type->value,
+            'contractor_id' => $contractor->id,
+            'incident_date' => '18-08-2026',
+            'incident_time' => '16:30',
+            'staff_name' => 'Test Staff',
+            'employee_number' => 'EMP-DUTY',
+            'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
+            'deficiencies' => ['leaving_duty'],
+            'deficiency_remarks' => ['leaving_duty' => 'Left without informing the on-duty SM.'],
+        ])->assertRedirect(route('sdm-memos.index'))->assertSessionHasNoErrors();
+
+        $memo = ServiceDeficiencyMemo::query()->sole();
+        $this->assertSame(MemoStatus::Submitted, $memo->status);
+        $deficiency = $memo->deficiencies()->sole();
+        $this->assertSame('leaving_duty', $deficiency->type->value);
+        $this->assertSame('Left without informing the on-duty SM.', $deficiency->remarks);
+        $this->assertNull($deficiency->lateReporting);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'memo.submitted', 'auditable_id' => $memo->id]);
+        $this->get(route('sdm-memos.show', $memo))->assertOk()
+            ->assertSee('Leaving duty before scheduled time or leaving without informing the on-duty SM/SC');
     }
 
     public function test_station_user_can_save_a_draft_with_every_available_deficiency(): void

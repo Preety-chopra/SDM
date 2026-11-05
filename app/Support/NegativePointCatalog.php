@@ -13,6 +13,7 @@ final class NegativePointCatalog
             DeficiencyType::MobilePhoneOnDuty,
             DeficiencyType::ImproperCleanliness,
             DeficiencyType::LateReporting,
+            DeficiencyType::LeavingDuty,
             DeficiencyType::LossOfLoginIdOrCard => 0,
             DeficiencyType::BreachOfInstructions,
             DeficiencyType::BusinessRulesViolation => 3,

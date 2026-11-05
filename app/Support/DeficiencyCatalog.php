@@ -22,11 +22,25 @@ final class DeficiencyCatalog
 
         $options = collect(PenaltyClauseTemplates::for($type))
             ->values()
-            ->map(fn (array $clause, int $index): array => [
-                'value' => $types[$index]->value,
-                'label' => $clause['description'],
-                'serial_number' => $clause['serial_number'],
-            ]);
+            ->flatMap(function (array $clause, int $index) use ($types): array {
+                $deficiency = $types[$index];
+                $option = [
+                    'value' => $deficiency->value,
+                    'label' => $deficiency === DeficiencyType::LateReporting ? 'Late reporting' : $clause['description'],
+                    'serial_number' => $clause['serial_number'],
+                ];
+
+                if ($deficiency !== DeficiencyType::LateReporting) {
+                    return [$option];
+                }
+
+                // Both deficiencies retain the original contractual penalty and conditions.
+                return [$option, [
+                    'value' => DeficiencyType::LeavingDuty->value,
+                    'label' => DeficiencyType::LeavingDuty->label(),
+                    'serial_number' => $clause['serial_number'],
+                ]];
+            });
 
         return $options->push([
             'value' => DeficiencyType::Other->value,

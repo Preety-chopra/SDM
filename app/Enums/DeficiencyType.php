@@ -5,6 +5,7 @@ namespace App\Enums;
 enum DeficiencyType: string
 {
     case LateReporting = 'late_reporting';
+    case LeavingDuty = 'leaving_duty';
     case DressCode = 'dress_code_or_instructions';
     case MobilePhoneOnDuty = 'mobile_phone_on_duty';
     case ImproperCleanliness = 'improper_cleanliness';
@@ -28,6 +29,7 @@ enum DeficiencyType: string
     {
         return match ($this) {
             self::LateReporting => 'Late Reporting',
+            self::LeavingDuty => 'Leaving duty before scheduled time or leaving without informing the on-duty SM/SC',
             self::DressCode => 'Poor Dress Code / Failure to Follow Instructions',
             self::MobilePhoneOnDuty => 'Mobile Phone on Duty',
             self::ImproperCleanliness => 'Improper Cleanliness',

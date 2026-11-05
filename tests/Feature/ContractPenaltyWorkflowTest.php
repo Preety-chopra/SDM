@@ -1465,6 +1465,39 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->assertSame('100.00', $assessmentItem->proposed_amount);
     }
 
+    #[TestWith([500, true])]
+    #[TestWith([350, false])]
+    public function test_leaving_duty_keeps_the_existing_contract_penalty_amount_and_conditions(int $maximum, bool $capped): void
+    {
+        [$stationUser] = $this->workflowUsers();
+        $cmcStaff = $this->user(UserRole::CmcStaff);
+        $contractor = Contractor::query()->create(['name' => 'Leaving Duty Partner', 'is_active' => true]);
+        $contract = $this->contract($contractor, $cmcStaff, SdmType::Cfs, 'CFA/LEAVING-DUTY');
+        $contract->update(['status' => 'published', 'published_at' => now()]);
+        $clause = $contract->penaltyClauses()->where('serial_number', 4)->sole();
+        $clause->update(['maximum_amount' => $maximum, 'cap_applicable' => $capped]);
+        $memo = $this->submittedMemo($stationUser, $contractor, $contract);
+        $memo->deficiencies()->sole()->update(['type' => 'leaving_duty']);
+        $assessments = app(MemoAssessmentService::class);
+
+        $prefill = $assessments->lineReviewPrefill($memo);
+
+        $this->assertCount(1, $prefill);
+        $this->assertSame(number_format($maximum, 2, '.', ''), $prefill[$clause->id]['proposed_amount']);
+        $this->assertSame(0, $assessments->negativePointsPrefill($memo));
+
+        $assessment = $assessments->create($memo, $cmcStaff, WorkflowStepType::CmcAssessment, 1, [
+            'items' => [['contract_penalty_clause_id' => $clause->id, 'proposed_amount' => 300]],
+        ]);
+
+        $item = $assessment->items->sole();
+        $this->assertSame($clause->id, $item->contract_penalty_clause_id);
+        $this->assertSame('300.00', $item->proposed_amount);
+        $this->assertSame(number_format($maximum, 2, '.', ''), $item->maximum_amount);
+        $this->assertSame($capped, $item->cap_applicable);
+        $this->assertSame($clause->calculation_type, $item->calculation_type);
+    }
+
     public function test_tvs_template_and_contract_calculations_are_snapshotted(): void
     {
         $cmcStaff = $this->user(UserRole::CmcStaff);
