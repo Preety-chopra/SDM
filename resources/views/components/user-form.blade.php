@@ -28,6 +28,16 @@
             <x-input-error :messages="$errors->get('role')" class="mt-2" />
         </div>
         <div>
+            <x-input-label for="designation" value="Designation" />
+            <select id="designation" name="designation" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                <option value="">Select a designation</option>
+                @foreach ($designations as $designation)
+                    <option value="{{ $designation->code }}" @selected(old('designation', $managedUser?->designation) === $designation->code)>{{ $designation->name }} ({{ $designation->code }})</option>
+                @endforeach
+            </select>
+            <x-input-error :messages="$errors->get('designation')" class="mt-2" />
+        </div>
+        <div>
             <x-input-label for="line_id" value="Line" />
             <select id="line_id" name="line_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
                 <option value="">Select a line</option>
@@ -58,22 +68,6 @@
             <x-input-error :messages="$errors->get('phone')" class="mt-2" />
         </div>
         <div>
-            <x-input-label for="designation" value="Designation" />
-            <select id="designation" name="designation" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
-                <option value="">Select a designation</option>
-                @foreach ($designations as $designation)
-                    <option value="{{ $designation->code }}" @selected(old('designation', $managedUser?->designation) === $designation->code)>{{ $designation->name }} ({{ $designation->code }})</option>
-                @endforeach
-            </select>
-            <x-input-error :messages="$errors->get('designation')" class="mt-2" />
-        </div>
-        <div class="flex items-center gap-3 self-end pb-2">
-            <input name="is_enabled" type="hidden" value="0">
-            <input id="is_enabled" name="is_enabled" type="checkbox" value="1" @checked(old('is_enabled', $managedUser?->is_enabled ?? true)) class="h-4 w-4 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500">
-            <label for="is_enabled" class="text-sm font-medium text-gray-700 dark:text-gray-300">User is enabled <span data-required-marker aria-hidden="true" class="font-bold !text-red-600 dark:!text-red-400">*</span><span class="sr-only"> (required)</span></label>
-            <x-input-error :messages="$errors->get('is_enabled')" class="mt-2" />
-        </div>
-        <div>
             <x-input-label for="password" :value="$managedUser ? 'New password (optional)' : 'Password'" :required="! $managedUser" />
             <x-text-input id="password" name="password" type="password" class="mt-1 block w-full" :required="! $managedUser" autocomplete="new-password" />
             <x-input-error :messages="$errors->get('password')" class="mt-2" />
@@ -82,6 +76,13 @@
             <x-input-label for="password_confirmation" value="Confirm password" :required="! $managedUser" />
             <x-text-input id="password_confirmation" name="password_confirmation" type="password" class="mt-1 block w-full" :required="! $managedUser" autocomplete="new-password" />
         </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3">
+        <input name="is_enabled" type="hidden" value="0">
+        <input id="is_enabled" name="is_enabled" type="checkbox" value="1" @checked(old('is_enabled', $managedUser?->is_enabled ?? true)) class="h-4 w-4 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500">
+        <label for="is_enabled" class="text-sm font-medium text-gray-700 dark:text-gray-300">User is enabled <span data-required-marker aria-hidden="true" class="font-bold !text-red-600 dark:!text-red-400">*</span><span class="sr-only"> (required)</span></label>
+        <x-input-error :messages="$errors->get('is_enabled')" class="mt-2" />
     </div>
 
     <div class="flex items-center justify-end gap-3 border-t border-gray-200 pt-6 dark:border-gray-700">

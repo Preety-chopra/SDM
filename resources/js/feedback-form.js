@@ -9,6 +9,10 @@ export function createFeedbackForm({
         errors: [],
         success: '',
         submitting: false,
+        submitUrl: '',
+        init() {
+            this.submitUrl = this.$el.dataset.submitUrl;
+        },
         open() {
             this.pageUrl = currentUrl();
             this.errors = [];
@@ -24,7 +28,7 @@ export function createFeedbackForm({
             this.errors = [];
             this.success = '';
             try {
-                const response = await request(this.$el.dataset.submitUrl, {
+                const response = await request(this.submitUrl, {
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: {

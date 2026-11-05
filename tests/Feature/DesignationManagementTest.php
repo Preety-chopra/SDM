@@ -9,6 +9,7 @@ use App\Models\User;
 use Database\Seeders\DesignationSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\TestWith;
 use Tests\TestCase;
 
 class DesignationManagementTest extends TestCase
@@ -55,6 +56,50 @@ class DesignationManagementTest extends TestCase
         ])->assertRedirect(route('users.index', UserRole::CmcTeamLead->value));
 
         $this->assertSame('AM', User::query()->where('email', 'lead@example.com')->value('designation'));
+    }
+
+    #[TestWith(['create'])]
+    #[TestWith(['edit'])]
+    public function test_user_form_lists_designations_in_the_requested_id_order(string $form): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $managedUser = $this->userWithRole(UserRole::CmcTeamLead);
+
+        foreach (range(6, 16) as $id) {
+            Designation::query()->insert([
+                'id' => $id,
+                'code' => 'DES-'.$id,
+                'name' => 'Designation '.$id,
+                'is_active' => $id !== 16,
+            ]);
+        }
+
+        $url = $form === 'create'
+            ? route('users.create', UserRole::CmcTeamLead->value)
+            : route('users.edit', $managedUser);
+
+        $response = $this->actingAs($administrator)->get($url)->assertOk();
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $options = (new \DOMXPath($document))->query('//select[@name="designation"]/option');
+
+        $this->assertSame([
+            '', 'DGM', 'MGR', 'AM', 'Sr. SM', 'SM',
+            'DES-13', 'DES-12', 'DES-11', 'DES-10', 'DES-9', 'DES-8', 'DES-7', 'DES-6',
+            'DES-14', 'DES-15',
+        ], array_map(fn (\DOMElement $option): string => $option->getAttribute('value'), iterator_to_array($options)));
+    }
+
+    public function test_user_form_excludes_inactive_designations_from_the_requested_order(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        Designation::query()->where('code', 'AM')->update(['is_active' => false]);
+
+        $this->actingAs($administrator)
+            ->get(route('users.create', UserRole::CmcTeamLead->value))
+            ->assertOk()
+            ->assertDontSee('Assistant Manager (AM)');
     }
 
     public function test_administrator_can_add_a_designation_for_future_user_forms(): void

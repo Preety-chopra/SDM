@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { createFeedbackForm } from '../../resources/js/feedback-form.js';
 
 const form = (request) => {
@@ -10,8 +12,45 @@ const form = (request) => {
     });
     state.$el = { dataset: { submitUrl: '/feedback' } };
     state.$refs = { dialog: { open: false, showModal() { this.open = true; }, close() { this.open = false; } } };
+    state.init();
     return state;
 };
+
+test('submitting from the form retains the endpoint captured from the component root', async () => {
+    let sentUrl;
+    const state = form(async (url) => {
+        sentUrl = url;
+        return { ok: true, json: async () => ({ message: 'Submitted.' }) };
+    });
+    state.message = 'Feedback from the create memo page.';
+    state.$el = { tagName: 'FORM', dataset: {} };
+
+    await state.submit();
+
+    assert.equal(sentUrl, '/feedback');
+    assert.equal(state.success, 'Submitted.');
+});
+
+test('the dialog event calls the feedback component instead of the browser open function', () => {
+    const template = readFileSync(new URL('../../resources/views/components/feedback-dialog.blade.php', import.meta.url), 'utf8');
+    const expression = template.match(/@open-feedback\.window="([^"]+)"/)[1];
+    const state = form();
+    let openedTabs = 0;
+
+    runInNewContext(expression, { $data: state, open: () => { openedTabs++; } });
+
+    assert.equal(openedTabs, 0);
+    assert.equal(state.$refs.dialog.open, true);
+});
+
+test('a missing feedback component cannot fall back to opening a browser tab', () => {
+    const template = readFileSync(new URL('../../resources/views/components/feedback-dialog.blade.php', import.meta.url), 'utf8');
+    const expression = template.match(/@open-feedback\.window="([^"]+)"/)[1];
+    let openedTabs = 0;
+
+    assert.throws(() => runInNewContext(expression, { $data: {}, open: () => { openedTabs++; } }));
+    assert.equal(openedTabs, 0);
+});
 
 test('feedback captures the current URL and submits without navigation', async () => {
     let sent;
