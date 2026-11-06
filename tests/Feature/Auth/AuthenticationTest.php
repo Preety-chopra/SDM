@@ -13,6 +13,7 @@ use App\Models\Station;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use PHPUnit\Framework\Attributes\TestWith;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -150,6 +151,65 @@ class AuthenticationTest extends TestCase
         ])->assertRedirect(route('dashboard', absolute: false));
 
         $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_new_device_login_ends_the_previous_session_and_remembered_login(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole(UserRole::Administrator->value);
+        $credentials = ['username' => $user->name, 'password' => 'password', 'remember' => 'on'];
+        $sessionCookie = config('session.cookie');
+        $rememberCookie = Auth::guard('web')->getRecallerName();
+
+        $firstLogin = $this->post(route('login'), $credentials)->assertRedirect(route('dashboard', absolute: false));
+        $firstSession = $firstLogin->getCookie($sessionCookie, decrypt: false)->getValue();
+        $firstRemember = $firstLogin->getCookie($rememberCookie, decrypt: false)->getValue();
+
+        $this->resetBrowserRequest();
+        $secondLogin = $this->post(route('login'), $credentials)->assertRedirect(route('dashboard', absolute: false));
+        $secondSession = $secondLogin->getCookie($sessionCookie, decrypt: false)->getValue();
+        $secondRemember = $secondLogin->getCookie($rememberCookie, decrypt: false)->getValue();
+
+        $this->resetBrowserRequest();
+        $this->call('GET', route('dashboard'), cookies: [$sessionCookie => $firstSession])
+            ->assertRedirect(route('login'));
+
+        $this->resetBrowserRequest();
+        $this->call('GET', route('dashboard'), cookies: [$rememberCookie => $firstRemember])
+            ->assertRedirect(route('login'));
+
+        $this->resetBrowserRequest();
+        $this->call('GET', route('dashboard'), cookies: [$sessionCookie => $secondSession])->assertOk();
+
+        $this->resetBrowserRequest();
+        $this->call('GET', route('dashboard'), cookies: [$rememberCookie => $secondRemember])->assertOk();
+
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $user->id,
+            'auditable_id' => $user->id,
+            'event' => 'auth.other_devices_revoked',
+        ]);
+    }
+
+    public function test_failed_login_on_another_device_keeps_the_current_session(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole(UserRole::Administrator->value);
+        $sessionCookie = config('session.cookie');
+        $login = $this->post(route('login'), [
+            'username' => $user->name,
+            'password' => 'password',
+        ])->assertRedirect(route('dashboard', absolute: false));
+        $session = $login->getCookie($sessionCookie, decrypt: false)->getValue();
+
+        $this->resetBrowserRequest();
+        $this->post(route('login'), [
+            'username' => $user->name,
+            'password' => 'invalid-password',
+        ])->assertSessionHasErrors('username');
+
+        $this->resetBrowserRequest();
+        $this->call('GET', route('dashboard'), cookies: [$sessionCookie => $session])->assertOk();
     }
 
     public function test_login_lists_only_active_stations(): void
@@ -470,6 +530,36 @@ class AuthenticationTest extends TestCase
 
         $this->assertGuest();
         $response->assertRedirect('/');
+    }
+
+    public function test_logout_revokes_the_current_remembered_login(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole(UserRole::Administrator->value);
+        $sessionCookie = config('session.cookie');
+        $rememberCookie = Auth::guard('web')->getRecallerName();
+
+        $login = $this->post(route('login'), [
+            'username' => $user->name,
+            'password' => 'password',
+            'remember' => 'on',
+        ])->assertRedirect(route('dashboard', absolute: false));
+        $session = $login->getCookie($sessionCookie, decrypt: false)->getValue();
+        $remember = $login->getCookie($rememberCookie, decrypt: false)->getValue();
+
+        $this->resetBrowserRequest();
+        $this->call('POST', route('logout'), cookies: [$sessionCookie => $session, $rememberCookie => $remember])
+            ->assertRedirect('/');
+
+        $this->resetBrowserRequest();
+        $this->call('GET', route('dashboard'), cookies: [$rememberCookie => $remember])
+            ->assertRedirect(route('login'));
+    }
+
+    private function resetBrowserRequest(): void
+    {
+        Auth::forgetGuards();
+        $this->flushSession();
     }
 
     private function workflowMemo(User $user, Station $station, WorkflowStepType $stage, string $serialNumber, bool $urgent = false, string $decision = 'pending'): ServiceDeficiencyMemo

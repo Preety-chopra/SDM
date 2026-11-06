@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Services\FeedbackService;
 use App\Services\ServiceDeficiencyMemoService;
+use App\Services\UserSessionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -19,6 +20,7 @@ class AuthenticatedSessionController extends Controller
         private StationRepositoryInterface $stations,
         private ServiceDeficiencyMemoService $memos,
         private FeedbackService $feedback,
+        private UserSessionService $sessions,
     ) {}
 
     /**
@@ -34,7 +36,7 @@ class AuthenticatedSessionController extends Controller
      */
     public function store(LoginRequest $request): RedirectResponse
     {
-        $request->authenticate();
+        $request->authenticate($this->sessions);
 
         $request->session()->regenerate();
 
@@ -69,7 +71,8 @@ class AuthenticatedSessionController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
-        Auth::guard('web')->logout();
+        $this->sessions->end($request->user());
+        Auth::guard('web')->logoutCurrentDevice();
 
         $request->session()->invalidate();
 

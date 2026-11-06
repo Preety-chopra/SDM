@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureCurrentLogin;
 use App\Http\Middleware\EnsureUserIsEnabled;
 use App\Http\Middleware\RecordUserActivity;
 use App\Http\Middleware\RestrictStationControllerAccess;
@@ -16,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->appendToGroup('web', EnsureCurrentLogin::class);
         $middleware->appendToGroup('web', RecordUserActivity::class);
         $middleware->appendToGroup('web', RestrictStationControllerAccess::class);
         $middleware->alias([

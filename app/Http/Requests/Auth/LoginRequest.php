@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Models\Station;
 use App\Models\User;
 use App\Rules\Username;
+use App\Services\UserSessionService;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -44,7 +45,7 @@ class LoginRequest extends FormRequest
      *
      * @throws ValidationException
      */
-    public function authenticate(): void
+    public function authenticate(UserSessionService $sessions): void
     {
         $this->ensureIsNotRateLimited();
 
@@ -52,14 +53,15 @@ class LoginRequest extends FormRequest
             'name' => $this->string('username')->toString(),
             'password' => $this->string('password')->toString(),
             'is_enabled' => true,
-        ], function (User $user): bool {
+        ], function (User $user) use ($sessions): bool {
             $this->ensureStationIsSelectedWhenRequired($user);
 
-            return true;
+            return $sessions->start($user);
         }, $this->boolean('remember'))) {
             $this->failAuthentication();
         }
 
+        $this->session()->put(UserSessionService::FINGERPRINT_KEY, $sessions->fingerprint($this->user()));
         RateLimiter::clear($this->throttleKey());
     }
 
