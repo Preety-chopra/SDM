@@ -24,7 +24,11 @@ RUN echo "Acquire::http::Pipeline-Depth 0;" > /etc/apt/apt.conf.d/99custom && \
     echo "Acquire::BrokenProxy    true;" >> /etc/apt/apt.conf.d/99custom && \
     echo 'Acquire::Retries "3";' >> /etc/apt/apt.conf.d/99custom
 
-RUN apt-get update && apt-get upgrade -y \
+# Provide a trusted CA bundle for the first HTTPS fetch, before Ubuntu installs its own.
+COPY --from=alpine:3.23 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+RUN sed -i '/^URIs:/s|http://|https://|g' /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get update --error-on=any && apt-get upgrade -y \
     && mkdir -p /etc/apt/keyrings \
     && apt-get install -y gnupg gosu curl ca-certificates zip unzip git supervisor sqlite3 libcap2-bin libpng-dev python3 dnsutils librsvg2-bin fswatch ffmpeg nano \
     && curl -sS 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xb8dc7e53946656efbce4c1dd71daeaab4ad4cab6' | gpg --dearmor | tee /etc/apt/keyrings/ppa_ondrej_php.gpg > /dev/null \
