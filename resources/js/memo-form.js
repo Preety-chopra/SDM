@@ -1,14 +1,20 @@
 import { createSdmConfirmation } from './sdm-confirmation.js';
+import { createStaffLookup } from './staff-lookup.js';
 
 export function createMemoForm() {
     return {
         ...createSdmConfirmation(),
+        ...createStaffLookup(),
+        get staffNameReadOnly() {
+            return ['loading', 'found', 'ambiguous'].includes(this.staffLookupStatus);
+        },
         selected: [],
         optionsByType: {},
         serviceType: '',
         contractorId: '',
         contractors: [],
         contractorContracts: [],
+        stationId: '',
         incidentDate: '',
         restoredContractorId: '',
         deficiencyOpen: false,
@@ -23,6 +29,7 @@ export function createMemoForm() {
             this.restoredContractorId = this.contractorId;
             this.contractors = JSON.parse(this.$el.dataset.contractors || '[]');
             this.contractorContracts = JSON.parse(this.$el.dataset.contractorContracts || '[]');
+            this.stationId = this.$el.dataset.stationId || '';
             this.incidentDate = this.$el.dataset.incidentDate || '';
             if (!this.contractorId) {
                 this.syncContractor();
@@ -30,6 +37,7 @@ export function createMemoForm() {
             this.bookedShiftFrom = this.$el.dataset.bookedShiftFrom || '';
             this.bookedShiftTo = this.$el.dataset.bookedShiftTo || '';
             this.actualReportingTime = this.$el.dataset.actualReportingTime || '';
+            this.initStaffLookup();
         },
         has(type) {
             return this.selected.includes(type);
@@ -47,6 +55,8 @@ export function createMemoForm() {
 
             return [...new Set(this.contractorContracts
                 .filter((contract) => contract.service_type === this.serviceType
+                    && (!contract.station_ids || (this.stationId && (contract.station_ids.length === 0
+                        || contract.station_ids.map(String).includes(String(this.stationId)))))
                     && contract.effective_from <= this.incidentDate
                     && contract.effective_to >= this.incidentDate)
                 .map((contract) => String(contract.contractor_id)))];

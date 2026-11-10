@@ -15,6 +15,8 @@ enum MemoStatus: string
     case CmcAssignment = 'cmc_assignment';
     case CmcScrutiny = 'cmc_scrutiny';
     case DgmApproval = 'dgm_approval';
+    case DgmAftReview = 'dgm_aft_review';
+    case DgmCmcReview = 'dgm_cmc_review';
     case PendingPenaltyLetter = 'pending_penalty_letter';
     case ObjectionWindow = 'objection_window';
     case ObjectionReview = 'objection_review';
@@ -29,6 +31,8 @@ enum MemoStatus: string
             self::CmcAssignment => 'CMC Assignment',
             self::CmcScrutiny => 'CMC Scrutiny',
             self::DgmApproval => 'DGM Approval',
+            self::DgmAftReview => 'DGM AFT Review',
+            self::DgmCmcReview => 'DGM CMC Inspection Review',
             default => Str::headline($this->value),
         };
     }

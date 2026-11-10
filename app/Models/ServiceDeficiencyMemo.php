@@ -51,6 +51,13 @@ class ServiceDeficiencyMemo extends Model
         return $this->belongsTo(MemoWorkflowStep::class, 'current_workflow_step_id');
     }
 
+    public function isAftInspection(): bool
+    {
+        return $this->relationLoaded('workflowSteps')
+            ? $this->workflowSteps->contains('stage', WorkflowStepType::DgmAftReview)
+            : $this->workflowSteps()->where('stage', WorkflowStepType::DgmAftReview->value)->exists();
+    }
+
     public function stationManagerWorkflowStep(): HasOne
     {
         return $this->hasOne(MemoWorkflowStep::class, 'memo_id')

@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
-class EnsureCurrentLogin
+class EnsureSessionIsActive
 {
     public function __construct(private UserSessionService $sessions) {}
 
@@ -24,21 +24,20 @@ class EnsureCurrentLogin
             return $next($request);
         }
 
-        $fingerprint = $this->sessions->fingerprint($user);
+        $now = now()->getTimestamp();
+        $lastActivity = $session->get(UserSessionService::LAST_ACTIVITY_KEY);
+        $expired = is_int($lastActivity) && $now - $lastActivity >= UserSessionService::INACTIVITY_TIMEOUT_SECONDS;
 
-        if ($fingerprint !== null && $guard->viaRemember()) {
-            $session->put(UserSessionService::FINGERPRINT_KEY, $fingerprint);
-        }
-
-        $storedFingerprint = $session->get(UserSessionService::FINGERPRINT_KEY);
-
-        if ($fingerprint === null || ! is_string($storedFingerprint) || ! hash_equals($fingerprint, $storedFingerprint)) {
+        if ($guard->viaRemember() || ! is_int($lastActivity) || $expired) {
+            $this->sessions->end($user, $expired ? 'inactivity' : 'fresh_login_required');
             $guard->logoutCurrentDevice();
             $session->invalidate();
             $session->regenerateToken();
 
             throw new AuthenticationException('Unauthenticated.', ['web']);
         }
+
+        $session->put(UserSessionService::LAST_ACTIVITY_KEY, $now);
 
         return $next($request);
     }

@@ -16,6 +16,8 @@ class RestrictStationControllerAccess
         'sdm-memos.index',
         'sdm-memos.drafts',
         'sdm-memos.create',
+        'sdm-memos.staff-lookup',
+        'sdm-memos.staff-lookup-for-edit',
         'sdm-memos.store',
         'sdm-memos.store-and-submit',
         'sdm-memos.show',

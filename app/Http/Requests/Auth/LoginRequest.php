@@ -45,7 +45,7 @@ class LoginRequest extends FormRequest
      *
      * @throws ValidationException
      */
-    public function authenticate(UserSessionService $sessions): void
+    public function authenticate(): void
     {
         $this->ensureIsNotRateLimited();
 
@@ -53,15 +53,15 @@ class LoginRequest extends FormRequest
             'name' => $this->string('username')->toString(),
             'password' => $this->string('password')->toString(),
             'is_enabled' => true,
-        ], function (User $user) use ($sessions): bool {
+        ], function (User $user): bool {
             $this->ensureStationIsSelectedWhenRequired($user);
 
-            return $sessions->start($user);
-        }, $this->boolean('remember'))) {
+            return true;
+        })) {
             $this->failAuthentication();
         }
 
-        $this->session()->put(UserSessionService::FINGERPRINT_KEY, $sessions->fingerprint($this->user()));
+        $this->session()->put(UserSessionService::LAST_ACTIVITY_KEY, now()->getTimestamp());
         RateLimiter::clear($this->throttleKey());
     }
 

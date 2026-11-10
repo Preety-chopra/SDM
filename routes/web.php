@@ -13,8 +13,11 @@ use App\Http\Controllers\MemoAttachmentController;
 use App\Http\Controllers\MemoPenaltyLifecycleController;
 use App\Http\Controllers\MemoPrivateDocumentController;
 use App\Http\Controllers\MemoWorkflowController;
+use App\Http\Controllers\OutsourcedStaffController;
+use App\Http\Controllers\OutsourcedStaffImportController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\SdmOutsourcedStaffLookupController;
 use App\Http\Controllers\ServiceContractController;
 use App\Http\Controllers\ServiceDeficiencyMemoController;
 use App\Http\Controllers\StationController;
@@ -58,6 +61,8 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
     Route::patch('/users/{user}/status', [UserController::class, 'status'])->name('users.status');
 
+    Route::post('/sdm-memos/staff-lookup', SdmOutsourcedStaffLookupController::class)->middleware('throttle:60,1,sdm-staff-lookup:')->name('sdm-memos.staff-lookup');
+    Route::post('/sdm-memos/{sdm_memo}/staff-lookup', SdmOutsourcedStaffLookupController::class)->middleware('throttle:60,1,sdm-staff-lookup:')->name('sdm-memos.staff-lookup-for-edit');
     Route::post('/sdm-memos/submit', [ServiceDeficiencyMemoController::class, 'storeAndSubmit'])->name('sdm-memos.store-and-submit');
     Route::post('/sdm-memos/bulk-forward', [MemoWorkflowController::class, 'bulkForward'])->name('sdm-memos.bulk-forward');
     Route::post('/sdm-memos/bulk-cmc-action', [MemoWorkflowController::class, 'bulkCmcAction'])->name('sdm-memos.bulk-cmc-action');
@@ -84,6 +89,8 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::resource('lines', LineController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::resource('stations', StationController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::resource('contractors', ContractorController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::post('/outsourced-staff/import', OutsourcedStaffImportController::class)->middleware('throttle:5,1')->name('outsourced-staff.import');
+    Route::resource('outsourced-staff', OutsourcedStaffController::class)->except(['show', 'destroy']);
     Route::post('/contracts/{contract}/publish', [ServiceContractController::class, 'publish'])->name('contracts.publish');
     Route::post('/contracts/{contract}/revise', [ServiceContractController::class, 'revise'])->name('contracts.revise');
     Route::post('/contracts/{contract}/retire', [ServiceContractController::class, 'retire'])->name('contracts.retire');

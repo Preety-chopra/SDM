@@ -83,6 +83,12 @@ final class WorkflowRoleDashboardService
     private function presentation(UserRole $role): array
     {
         return match ($role) {
+            UserRole::DgmAft => [
+                'title' => 'DGM AFT Dashboard',
+                'eyebrow' => 'Anti Fraud Team inspections',
+                'description' => 'Review inspection reports and forward them to DGM CMC.',
+                'completed_label' => 'Reports forwarded',
+            ],
             UserRole::ManagerOperations => [
                 'title' => 'Manager CMC Dashboard',
                 'eyebrow' => 'My CMC review portfolio',

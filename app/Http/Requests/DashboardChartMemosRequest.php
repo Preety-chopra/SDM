@@ -18,6 +18,7 @@ class DashboardChartMemosRequest extends DashboardRequest
                 UserRole::CmcTeamLead->value,
                 UserRole::CmcStaff->value,
                 UserRole::DeputyGeneralManager->value,
+                UserRole::DgmAft->value,
             ], true),
         ) ?? false;
     }

@@ -33,6 +33,7 @@ final class ServiceDeficiencyMemoService
         private ServiceDeficiencyMemoRepositoryInterface $memos,
         private UserRepositoryInterface $users,
         private AuditService $audit,
+        private OutsourcedStaffService $outsourcedStaff,
     ) {}
 
     /** @param array<string, int|string> $filters */
@@ -179,6 +180,7 @@ final class ServiceDeficiencyMemoService
 
     private function persist(?ServiceDeficiencyMemo $memo, User $user, array $data, bool $submit): ServiceDeficiencyMemo
     {
+        $data = $this->outsourcedStaff->resolveMemoStaff($data);
         $storedPaths = [];
 
         try {
@@ -202,7 +204,8 @@ final class ServiceDeficiencyMemoService
                 $station = Station::query()->with('metroLine')->whereKey($stationId)->where('is_active', true)->firstOrFail();
                 abort_unless($station->metroLine?->is_active, 422, 'Your station must be assigned to an active line.');
                 $contractor = filled($data['contractor_id'] ?? null) ? Contractor::query()->whereKey($data['contractor_id'])->firstOrFail() : null;
-                $contract = $submit ? $this->resolveContract($data, true, $station->id) : $memo?->serviceContract;
+                $isAft = $user->hasRole(UserRole::Aft->value);
+                $contract = $submit ? $this->resolveContract($data, true, $station->id, $isAft) : $memo?->serviceContract;
                 $issuedAt = CarbonImmutable::now();
 
                 $attributes = [
@@ -488,9 +491,9 @@ final class ServiceDeficiencyMemoService
         });
     }
 
-    private function resolveContract(array $data, bool $submit, int $stationId): ?ServiceContract
+    private function resolveContract(array $data, bool $submit, int $stationId, bool $forceContract = false): ?ServiceContract
     {
-        if (! $submit || ! config('sdm.require_contract_workflow')) {
+        if (! $submit || (! $forceContract && ! config('sdm.require_contract_workflow'))) {
             return null;
         }
 
@@ -544,7 +547,13 @@ final class ServiceDeficiencyMemoService
             WorkflowStepType::DgmApproval->value => $legacyAssignments[WorkflowStage::DeputyGeneralManager->value],
         ];
 
-        $steps = collect(WorkflowStepType::cases())->map(function (WorkflowStepType $stage, int $index) use ($memo, $assignments) {
+        $isAft = $creator->hasRole(UserRole::Aft->value);
+        if ($isAft) {
+            $assignments[WorkflowStepType::DgmAftReview->value] = $this->resolveDefaultAssignee(UserRole::DgmAft, 'DGM AFT');
+            $assignments[WorkflowStepType::DgmCmcToReview->value] = $legacyAssignments[WorkflowStage::DeputyGeneralManager->value];
+        }
+        $stages = $isAft ? WorkflowStepType::aftRoute() : WorkflowStepType::generalRoute();
+        $steps = collect($stages)->map(function (WorkflowStepType $stage, int $index) use ($memo, $assignments) {
             $assignee = $assignments[$stage->value];
 
             return $memo->workflowSteps()->create([
@@ -564,6 +573,9 @@ final class ServiceDeficiencyMemoService
         });
 
         $current = $steps->first();
+        if ($isAft) {
+            $memo->status = MemoStatus::DgmAftReview;
+        }
         if ($creator->hasRole(UserRole::StationManager->value) && $current->assigned_to === $creator->id) {
             $current->update([
                 'decision' => 'forwarded',
@@ -693,6 +705,14 @@ final class ServiceDeficiencyMemoService
     /** @return array<string, User|null> */
     private function resolveSubmissionAssignments(User $user, array $data): array
     {
+        if ($user->hasRole(UserRole::Aft->value)) {
+            return [
+                WorkflowStage::StationManager->value => null,
+                WorkflowStage::LineManager->value => null,
+                WorkflowStage::OperationsManager->value => $this->resolveDefaultAssignee(UserRole::ManagerOperations, 'Manager CMC'),
+                WorkflowStage::DeputyGeneralManager->value => $this->resolveDefaultAssignee(UserRole::DeputyGeneralManager, 'DGM/CMC'),
+            ];
+        }
         $isStationManager = $user->hasRole(UserRole::StationManager->value);
         $stationManager = $isStationManager
             ? $user

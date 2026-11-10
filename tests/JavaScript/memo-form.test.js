@@ -120,3 +120,30 @@ test('draft and validation selections are restored until the type or date change
     assert.equal(form.contractorId, '1');
     assert.deepEqual(form.availableContractors.map((contractor) => contractor.id), [1]);
 });
+
+test('AFT contractor choices follow the inspected station and clear an invalid prior choice', () => {
+    const form = contractorForm();
+    form.contractorContracts[0].station_ids = [10, 20];
+    form.contractorContracts.push({ ...form.contractorContracts[0], contractor_id: 2, station_ids: [30] });
+    form.stationId = '20';
+    form.syncContractor();
+    assert.equal(form.contractorId, '1');
+
+    form.stationId = '30';
+    form.syncContractor();
+    assert.equal(form.contractorId, '2');
+    assert.deepEqual(form.availableContractors.map((contractor) => contractor.id), [2]);
+
+    form.stationId = '';
+    form.syncContractor();
+    assert.equal(form.contractorId, '');
+    assert.deepEqual(form.availableContractors, []);
+});
+
+test('AFT legacy contracts without a station restriction remain available at every selected station', () => {
+    const form = contractorForm();
+    form.contractorContracts[0].station_ids = [];
+    form.stationId = '30';
+    form.syncContractor();
+    assert.equal(form.contractorId, '1');
+});

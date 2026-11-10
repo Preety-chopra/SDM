@@ -24,6 +24,7 @@
                     <button class="rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-700">Save</button>
                 </form>
                 <form method="POST" action="{{ route('contractors.destroy',$contractor) }}" class="mt-3 text-right">@csrf @method('DELETE')<button class="text-sm font-semibold text-rose-700">Delete</button></form>
+                <a href="{{ route('outsourced-staff.index', ['contractor_id' => $contractor->id]) }}" class="mt-3 inline-block text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-300">View outsourced staff</a>
             </div>
         @endforeach
     </div>

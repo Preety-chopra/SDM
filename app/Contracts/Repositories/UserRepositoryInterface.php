@@ -26,9 +26,5 @@ interface UserRepositoryInterface
 
     public function setEnabled(User $user, bool $enabled): User;
 
-    public function setLoginToken(User $user, string $token): bool;
-
-    public function clearLoginToken(User $user): void;
-
     public function acknowledgeFeedback(User $user, int $feedbackId): bool;
 }

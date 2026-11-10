@@ -87,31 +87,6 @@ final class UserRepository implements UserRepositoryInterface
         return $user->refresh();
     }
 
-    public function setLoginToken(User $user, string $token): bool
-    {
-        $updated = User::query()->whereKey($user->getKey())
-            ->where('name', $user->name)
-            ->where('password', $user->getAuthPassword())
-            ->where('is_enabled', true)
-            ->toBase()
-            ->update(['remember_token' => $token]);
-
-        if ($updated === 1) {
-            $user->setRememberToken($token);
-            $user->syncOriginalAttribute($user->getRememberTokenName());
-        }
-
-        return $updated === 1;
-    }
-
-    public function clearLoginToken(User $user): void
-    {
-        User::query()->whereKey($user->getKey())
-            ->where('remember_token', $user->getRememberToken())
-            ->toBase()
-            ->update(['remember_token' => null]);
-    }
-
     public function acknowledgeFeedback(User $user, int $feedbackId): bool
     {
         return User::query()->whereKey($user->id)

@@ -22,6 +22,11 @@ class Contractor extends Model
         return $this->hasMany(ServiceContract::class);
     }
 
+    public function outsourcedStaff(): HasMany
+    {
+        return $this->hasMany(OutsourcedStaff::class);
+    }
+
     protected function casts(): array
     {
         return ['is_active' => 'boolean'];

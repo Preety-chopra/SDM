@@ -132,10 +132,12 @@ class UserManagementTest extends TestCase
         $this->actingAs($administrator)
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertViewHas('workflowStepTypes', fn (array $stepTypes): bool => count($stepTypes) === 8)
+            ->assertViewHas('workflowStepTypes', fn (array $stepTypes): bool => count($stepTypes) === 10)
             ->assertSee('data-workflow-board', false)
             ->assertSee('data-workflow-stage="station_manager_signoff"', false)
-            ->assertSee('aria-label="Stage 1 of 8"', false)
+            ->assertSee('aria-label="Stage 1 of 10"', false)
+            ->assertSee('data-workflow-stage="dgm_aft_review"', false)
+            ->assertSee('data-workflow-stage="dgm_cmc_to_review"', false)
             ->assertSee('Queue clear');
     }
 

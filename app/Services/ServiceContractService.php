@@ -30,10 +30,10 @@ final class ServiceContractService
         return $this->contracts->paginate($status, $serviceType);
     }
 
-    public function memoContractorOptions(int $stationId): Collection
+    public function memoContractorOptions(?int $stationId): Collection
     {
         return $this->contracts->activeFor(null, stationId: $stationId)
-            ->loadMissing('contractor:id,is_active')
+            ->loadMissing(['contractor:id,is_active', 'stations:id'])
             ->filter(fn (ServiceContract $contract): bool => $contract->contractor?->is_active === true)
             ->map(fn (ServiceContract $contract): array => [
                 'id' => $contract->id,
@@ -41,6 +41,9 @@ final class ServiceContractService
                 'service_type' => $contract->service_type->value,
                 'effective_from' => $contract->effective_from->toDateString(),
                 'effective_to' => $contract->effective_to->toDateString(),
+                ...($stationId === null ? ['station_ids' => $contract->stations->isNotEmpty()
+                    ? $contract->stations->modelKeys()
+                    : ($contract->station_id ? [$contract->station_id] : [])] : []),
             ])
             ->values();
     }

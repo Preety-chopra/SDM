@@ -55,7 +55,7 @@ class StoreMemoWorkflowActionRequest extends FormRequest
         $stage = $memo->currentWorkflowStep?->stage;
         if ($stage === WorkflowStepType::CmcAssignment) {
             return [
-                'action' => ['required', Rule::in(['assign', 'verify'])],
+                'action' => ['required', Rule::in($memo->isAftInspection() ? ['assign'] : ['assign', 'verify'])],
                 'cmc_staff_id' => [
                     Rule::requiredIf($action === 'assign'),
                     'nullable',
@@ -69,6 +69,7 @@ class StoreMemoWorkflowActionRequest extends FormRequest
             && $action === 'forward';
         $requiresCmcAssessment = $stage === WorkflowStepType::CmcAssessment && $action === 'forward';
         $allowedActions = match ($stage) {
+            WorkflowStepType::DgmAftReview, WorkflowStepType::DgmCmcToReview => ['forward'],
             WorkflowStepType::StationManager => ['forward', 'request_cancellation'],
             WorkflowStepType::LineReview => ['forward', 'return', 'cancel', 'cancel_after_counselling'],
             default => ['forward', 'approve', 'return', 'cancel', 'request_cancellation'],

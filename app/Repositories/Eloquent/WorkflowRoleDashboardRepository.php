@@ -125,7 +125,8 @@ final class WorkflowRoleDashboardRepository implements WorkflowRoleDashboardRepo
             UserRole::ManagerOperations => [WorkflowStepType::AmCmcToScrutiny->value, WorkflowStepType::AmCmcToDgm->value],
             UserRole::CmcTeamLead => [WorkflowStepType::CmcAssignment->value],
             UserRole::CmcStaff => [WorkflowStepType::CmcAssessment->value],
-            UserRole::DeputyGeneralManager => [WorkflowStepType::DgmApproval->value],
+            UserRole::DeputyGeneralManager => [WorkflowStepType::DgmCmcToReview->value, WorkflowStepType::DgmApproval->value],
+            UserRole::DgmAft => [WorkflowStepType::DgmAftReview->value],
             default => [],
         };
     }

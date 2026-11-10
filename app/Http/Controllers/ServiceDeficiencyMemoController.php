@@ -63,6 +63,8 @@ class ServiceDeficiencyMemoController extends Controller
         $isLineManager = $request->user()->hasRole(UserRole::AssistantManager->value);
         $isCmcTeamLead = $request->user()->hasRole(UserRole::CmcTeamLead->value);
         $usesHeaderFilterTable = $request->user()->hasAnyRole([
+            UserRole::Aft->value,
+            UserRole::DgmAft->value,
             UserRole::StationManager->value,
             UserRole::AssistantManager->value,
             UserRole::ManagerOperations->value,
@@ -71,6 +73,7 @@ class ServiceDeficiencyMemoController extends Controller
             UserRole::DeputyGeneralManager->value,
         ]);
         $isDownstreamWorkflowUser = $request->user()->hasAnyRole([
+            UserRole::DgmAft->value,
             UserRole::ManagerOperations->value,
             UserRole::CmcTeamLead->value,
             UserRole::CmcStaff->value,
@@ -377,12 +380,15 @@ class ServiceDeficiencyMemoController extends Controller
     private function formView(Request $request, ?ServiceDeficiencyMemo $memo = null): View
     {
         $stations = $this->masterData->stations(true);
+        $isAft = $request->user()->hasRole(UserRole::Aft->value);
+        abort_if($isAft && $stations->isEmpty(), 422, 'No active stations are available for inspection.');
         $selectedStationId = $memo?->station_id
             ?? $request->session()->get('auth.station_id', $request->user()->station_id);
         $station = $stations->firstWhere('id', (int) $selectedStationId);
-        abort_unless($station, 422, 'Select an active station when signing in.');
+        abort_unless($isAft || $station, 422, 'Select an active station when signing in.');
 
         $forwardingRole = match (true) {
+            $isAft => null,
             $request->user()->hasRole(UserRole::StationManager->value) => UserRole::AssistantManager,
             ! $request->user()->hasRole(UserRole::Administrator->value)
                 && $request->user()->can(UserPermission::SubmitOwnDraftMemos->value) => UserRole::StationManager,
@@ -393,9 +399,9 @@ class ServiceDeficiencyMemoController extends Controller
             'memo' => $memo,
             'station' => $station,
             'contractors' => $this->masterData->contractors(true),
-            'contractorContracts' => $this->contracts->memoContractorOptions($station->id),
+            'contractorContracts' => $this->contracts->memoContractorOptions($isAft ? null : $station->id),
             'stations' => $stations,
-            'issuanceStations' => collect(),
+            'issuanceStations' => $isAft ? $stations : collect(),
             'sdmTypes' => SdmType::cases(),
             'deficiencyOptionsByType' => DeficiencyCatalog::grouped(),
             'forwardingRole' => $forwardingRole,

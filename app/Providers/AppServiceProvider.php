@@ -7,6 +7,7 @@ use App\Contracts\Repositories\DesignationRepositoryInterface;
 use App\Contracts\Repositories\FeedbackRepositoryInterface;
 use App\Contracts\Repositories\LineManagerDashboardRepositoryInterface;
 use App\Contracts\Repositories\MasterDataRepositoryInterface;
+use App\Contracts\Repositories\OutsourcedStaffRepositoryInterface;
 use App\Contracts\Repositories\RoleRepositoryInterface;
 use App\Contracts\Repositories\ServiceContractRepositoryInterface;
 use App\Contracts\Repositories\ServiceDeficiencyMemoRepositoryInterface;
@@ -29,6 +30,7 @@ use App\Repositories\Eloquent\DesignationRepository;
 use App\Repositories\Eloquent\FeedbackRepository;
 use App\Repositories\Eloquent\LineManagerDashboardRepository;
 use App\Repositories\Eloquent\MasterDataRepository;
+use App\Repositories\Eloquent\OutsourcedStaffRepository;
 use App\Repositories\Eloquent\RoleRepository;
 use App\Repositories\Eloquent\ServiceContractRepository;
 use App\Repositories\Eloquent\ServiceDeficiencyMemoRepository;
@@ -69,6 +71,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(StationManagerDashboardRepositoryInterface::class, StationManagerDashboardRepository::class);
         $this->app->bind(ServiceContractRepositoryInterface::class, ServiceContractRepository::class);
         $this->app->bind(MasterDataRepositoryInterface::class, MasterDataRepository::class);
+        $this->app->bind(OutsourcedStaffRepositoryInterface::class, OutsourcedStaffRepository::class);
         $this->app->bind(RoleRepositoryInterface::class, RoleRepository::class);
     }
 

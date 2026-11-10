@@ -111,11 +111,6 @@
                             <x-input-error :messages="$errors->get('station_id')" class="mt-2 text-sm" />
                         </div>
 
-                        <label for="remember_me" class="flex w-fit cursor-pointer items-center gap-3 text-sm text-slate-600">
-                            <input id="remember_me" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-[#0f766e] focus:ring-emerald-500" name="remember">
-                            <span>Keep me signed in</span>
-                        </label>
-
                         <button type="submit" class="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-emerald-900/15 transition hover:bg-[#115e59] hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-emerald-200 active:translate-y-px">
                             Sign in
                             <svg class="h-4 w-4 transition group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round" /></svg>

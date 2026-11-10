@@ -25,6 +25,7 @@ class DashboardChartMemosController extends Controller
             UserRole::CmcTeamLead,
             UserRole::CmcStaff,
             UserRole::DeputyGeneralManager,
+            UserRole::DgmAft,
         ])->first(fn (UserRole $role): bool => $user->hasRole($role->value));
 
         $memos = $workflowRole

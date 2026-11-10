@@ -93,6 +93,7 @@
             [\App\Enums\UserPermission::ManageLines->value, 'lines.index', 'lines.*', 'Lines'],
             [\App\Enums\UserPermission::ManageStations->value, 'stations.index', 'stations.*', 'Stations'],
             [\App\Enums\UserPermission::ManageContractors->value, 'contractors.index', 'contractors.*', 'Contractors'],
+            [\App\Enums\UserPermission::ManageContractors->value, 'outsourced-staff.index', 'outsourced-staff.*', 'Outsourced staff'],
             [\App\Enums\UserPermission::ManageContracts->value, 'contracts.index', 'contracts.*', 'Service contracts'],
         ] as [$permission, $route, $pattern, $label])
             @can($permission)

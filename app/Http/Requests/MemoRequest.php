@@ -13,6 +13,8 @@ use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
 use App\Models\User;
 use App\Support\DeficiencyCatalog;
+use App\Support\OutsourcedStaffIdentifier;
+use Illuminate\Contracts\Validation\Validator as ValidatorContract;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -22,6 +24,29 @@ abstract class MemoRequest extends FormRequest
 {
     abstract protected function isSubmission(): bool;
 
+    protected function failedValidation(ValidatorContract $validator): void
+    {
+        $this->maskEmployeeIdentifier();
+        parent::failedValidation($validator);
+    }
+
+    protected function passedValidation(): void
+    {
+        // Keep the validator's original value for server-side resolution, but never flash Aadhaar on a later workflow error.
+        $this->maskEmployeeIdentifier();
+    }
+
+    private function maskEmployeeIdentifier(): void
+    {
+        $identifier = $this->input('employee_number');
+        if (is_string($identifier)) {
+            $input = ['employee_number' => OutsourcedStaffIdentifier::mask($identifier)];
+            $this->merge($input);
+            // Form requests are copied from the base request, which the exception handler flashes.
+            $this->container->make('request')->merge($input);
+        }
+    }
+
     protected function prepareForValidation(): void
     {
         $memo = $this->route('sdm_memo');
@@ -29,7 +54,7 @@ abstract class MemoRequest extends FormRequest
             ? $memo->station_id
             : $this->session()->get('auth.station_id', $this->user()?->station_id);
 
-        if ($stationId !== null) {
+        if ($stationId !== null && ! $this->user()?->hasRole(UserRole::Aft->value)) {
             $this->merge(['station_id' => $stationId]);
         }
 
@@ -221,7 +246,7 @@ abstract class MemoRequest extends FormRequest
 
     private function requiresContractWorkflow(): bool
     {
-        return $this->isSubmission() && (bool) config('sdm.require_contract_workflow');
+        return $this->isSubmission() && (config('sdm.require_contract_workflow') || $this->user()?->hasRole(UserRole::Aft->value));
     }
 
     private function isStationControllerUser(): bool
@@ -231,6 +256,7 @@ abstract class MemoRequest extends FormRequest
         return $user !== null
             && ! $user->hasRole(UserRole::StationManager->value)
             && ! $user->hasRole(UserRole::Administrator->value)
+            && ! $user->hasRole(UserRole::Aft->value)
             && $user->can(UserPermission::SubmitOwnDraftMemos->value);
     }
 }

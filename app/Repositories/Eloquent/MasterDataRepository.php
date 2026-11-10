@@ -39,6 +39,11 @@ final class MasterDataRepository implements MasterDataRepositoryInterface
         return $line->refresh();
     }
 
+    public function contractorHasOutsourcedStaff(Contractor $contractor): bool
+    {
+        return $contractor->outsourcedStaff()->exists();
+    }
+
     public function saveStation(?Station $station, array $attributes): Station
     {
         $station ??= new Station;

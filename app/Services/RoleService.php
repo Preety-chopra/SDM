@@ -111,7 +111,7 @@ final class RoleService
 
     private function roleRequiresDirectStationAssignment(Role $role): bool
     {
-        return $role->name !== UserRole::StationManager->value
+        return ! in_array($role->name, [UserRole::StationManager->value, UserRole::Aft->value], true)
             && $role->permissions->contains('name', UserPermission::CreateMemos->value);
     }
 }

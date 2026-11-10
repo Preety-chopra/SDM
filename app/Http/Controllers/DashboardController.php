@@ -46,6 +46,7 @@ class DashboardController extends Controller
             UserRole::CmcTeamLead,
             UserRole::CmcStaff,
             UserRole::DeputyGeneralManager,
+            UserRole::DgmAft,
         ])->first(fn (UserRole $role): bool => $request->user()->hasRole($role->value));
 
         return view('dashboard', [

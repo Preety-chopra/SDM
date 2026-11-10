@@ -48,6 +48,8 @@ final class MemoTimelineService
             UserRole::CmcTeamLead->value,
             UserRole::CmcStaff->value,
             UserRole::DeputyGeneralManager->value,
+            UserRole::Aft->value,
+            UserRole::DgmAft->value,
         ])) {
             return $this->throughNextPendingStep($steps);
         }

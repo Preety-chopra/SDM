@@ -18,8 +18,10 @@
         : 'Manager/Assistant Manager (O)-Line employee number';
     $confirmationPreview = [];
     $confirmationFields = [
-        ['label' => 'Line', 'value' => collect([$station?->metroLine?->code, $station?->metroLine?->name])->filter()->join(' · ')],
-        ['label' => 'Station', 'value' => collect([$station?->code, $station?->name])->filter()->join(' · ')],
+        ...($issuanceStations->isEmpty() ? [['label' => 'Line', 'value' => collect([$station?->metroLine?->code, $station?->metroLine?->name])->filter()->join(' · ')]] : []),
+        $issuanceStations->isNotEmpty()
+            ? ['label' => 'Inspected station', 'name' => 'station_id']
+            : ['label' => 'Station', 'value' => collect([$station?->code, $station?->name])->filter()->join(' · ')],
         ['label' => 'SDM type', 'name' => 'service_type'],
         ['label' => 'Deficiencies', 'name' => 'deficiencies[]'],
         ['label' => 'Incident date', 'name' => 'incident_date'],
@@ -46,6 +48,10 @@
         <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
             <form method="POST" enctype="multipart/form-data" action="{{ $memo ? route('sdm-memos.update', $memo) : route('sdm-memos.store') }}" class="flex flex-col gap-6" x-data="memoForm" @submit="requestSdmConfirmation($event)" data-selected-deficiencies='@json($selected)' data-service-type="{{ $serviceType }}" data-deficiency-options='@json($deficiencyOptionsByType)' data-booked-shift-from="{{ $lateTime('booked_shift_from') }}" data-booked-shift-to="{{ $lateTime('booked_shift_to') }}" data-actual-reporting-time="{{ $lateTime('actual_reporting_time') }}" data-confirmation-show-action="false" data-confirmation-preview="{{ json_encode($confirmationPreview) }}" data-confirmation-fields="{{ json_encode($confirmationFields) }}"
                 data-contractor-id="{{ old('contractor_id', $memo?->contractor_id) }}"
+                data-staff-lookup-url="{{ $memo ? route('sdm-memos.staff-lookup-for-edit', $memo) : route('sdm-memos.staff-lookup') }}"
+                data-staff-identifier="{{ old('employee_number', $memo?->employee_number) }}"
+                data-staff-name="{{ old('staff_name', $memo?->staff_name) }}"
+                data-station-id="{{ old('station_id', $memo?->station_id ?? $station?->id) }}"
                 data-contractors="{{ $contractors->map->only(['id', 'name'])->values()->toJson() }}"
                 data-contractor-contracts="{{ $contractorContracts->toJson() }}"
                 data-incident-date="{{ old('incident_date', $memo?->incident_date?->toDateString() ?? now('Asia/Kolkata')->toDateString()) }}">
@@ -54,9 +60,9 @@
                     <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div class="flex items-baseline gap-2">
                             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Memo details</h3>
-                            @unless($memo)
+                            @if(! $memo && $issuanceStations->isEmpty())
                                 <p data-memo-location class="text-lg font-semibold text-gray-900 dark:text-white">[{{ $memoLocation }}]</p>
-                            @endunless
+                            @endif
                         </div>
                         @if($showUrgentOption)
                             <div class="w-full sm:w-auto sm:max-w-sm">
@@ -69,6 +75,18 @@
                         @endif
                     </div>
                     <div class="mt-5 grid gap-5 md:grid-cols-2">
+                        @if($issuanceStations->isNotEmpty())
+                            <div>
+                                <x-input-label for="station_id" value="Inspected station" required/>
+                                <select id="station_id" name="station_id" x-model="stationId" @change="syncContractor()" class="{{ $inputClass }}" required>
+                                    <option value="">Select inspected station</option>
+                                    @foreach($issuanceStations as $issuanceStation)
+                                        <option value="{{ $issuanceStation->id }}">{{ $issuanceStation->code }} · {{ $issuanceStation->name }} ({{ $issuanceStation->metroLine?->name }})</option>
+                                    @endforeach
+                                </select>
+                                <x-input-error :messages="$errors->get('station_id')" class="mt-2"/>
+                            </div>
+                        @endif
                         <div>
                             <x-input-label for="service_type" value="SDM type" required/>
                             <select id="service_type" name="service_type" x-model="serviceType" @change="syncSelectedDeficiencies(); syncContractor()" class="{{ $inputClass }}" required>
@@ -137,6 +155,7 @@
                                 </template>
                             </select>
                         </div>
+                        @if($issuanceStations->isEmpty())
                         <div>
                             <x-input-label value="Line" required/>
                             <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ collect([$station->metroLine?->code, $station->metroLine?->name])->filter()->join(' · ') ?: 'Not assigned' }}</p>
@@ -145,6 +164,7 @@
                             <x-input-label value="Station" required/>
                             <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ collect([$station->code, $station->name])->filter()->join(' · ') ?: 'Not assigned' }}</p>
                         </div>
+                        @endif
                         <div>
                             <x-input-label for="incident_date" value="Date of incident" required/>
                             <x-text-input id="incident_date" type="date" name="incident_date" x-model="incidentDate" @change="syncContractor()" max="{{ now('Asia/Kolkata')->toDateString() }}" class="mt-1 block w-full" :value="old('incident_date', $memo?->incident_date?->toDateString() ?? now('Asia/Kolkata')->toDateString())"/>
@@ -155,11 +175,15 @@
                         </div>
                         <div>
                             <x-input-label for="employee_number" value="Outsourced Staff- Employee number" required/>
-                            <x-text-input id="employee_number" name="employee_number" class="mt-1 block w-full" :value="old('employee_number',$memo?->employee_number)"/>
+                            <x-text-input id="employee_number" name="employee_number" class="mt-1 block w-full" x-model="staffIdentifier" @input="resetStaffLookup()" @input.debounce.400ms="lookupStaff()" maxlength="100" autocomplete="off" aria-describedby="staff_identifier_help staff_lookup_status" :value="old('employee_number',$memo?->employee_number)"/>
+                            <p id="staff_identifier_help" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Enter EMP ID or Aadhaar number to fetch the employee name.</p>
+                            <p id="staff_lookup_status" role="status" aria-live="polite" x-text="staffLookupMessage" class="mt-1 text-xs text-gray-600 dark:text-gray-300"></p>
+                            <x-input-error :messages="$errors->get('employee_number')" class="mt-1"/>
                         </div>
                         <div>
                             <x-input-label for="staff_name" value="Outsourced Staff name" required/>
-                            <x-text-input id="staff_name" name="staff_name" class="mt-1 block w-full" :value="old('staff_name',$memo?->staff_name)"/>
+                            <x-text-input id="staff_name" name="staff_name" class="mt-1 block w-full read-only:bg-gray-50 dark:read-only:bg-gray-900" x-model="staffName" x-bind:readonly="staffNameReadOnly" maxlength="255" :value="old('staff_name',$memo?->staff_name)"/>
+                            <x-input-error :messages="$errors->get('staff_name')" class="mt-1"/>
                         </div>
                     </div>
                 </section>

@@ -12,6 +12,8 @@ enum UserRole: string
     case CmcTeamLead = 'cmc_team_lead';
     case CmcStaff = 'cmc_staff';
     case DeputyGeneralManager = 'deputy_general_manager';
+    case Aft = 'aft';
+    case DgmAft = 'dgm_aft';
 
     public function label(): string
     {
@@ -24,6 +26,8 @@ enum UserRole: string
             self::CmcTeamLead => 'CMC SM',
             self::CmcStaff => 'CMC Staff',
             self::DeputyGeneralManager => 'DGM/CMC',
+            self::Aft => 'AFT (Anti Fraud Team)',
+            self::DgmAft => 'DGM AFT',
         };
     }
 
@@ -38,6 +42,8 @@ enum UserRole: string
             self::CmcTeamLead => 'CMC SMs',
             self::CmcStaff => 'CMC Staff Users',
             self::DeputyGeneralManager => 'DGM/O Users',
+            self::Aft => 'AFT Users',
+            self::DgmAft => 'DGM AFT Users',
         };
     }
 
@@ -48,7 +54,7 @@ enum UserRole: string
 
     public function requiresEmployeeNumber(): bool
     {
-        return in_array($this, [self::StationManager, self::AssistantManager, self::ManagerOperations, self::CmcTeamLead, self::CmcStaff, self::DeputyGeneralManager], true);
+        return in_array($this, [self::StationManager, self::AssistantManager, self::ManagerOperations, self::CmcTeamLead, self::CmcStaff, self::DeputyGeneralManager, self::Aft, self::DgmAft], true);
     }
 
     public function isManaged(): bool

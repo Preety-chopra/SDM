@@ -12,6 +12,8 @@ enum WorkflowStepType: string
     case CmcVerification = 'cmc_verification';
     case AmCmcToDgm = 'am_cmc_to_dgm';
     case DgmApproval = 'dgm_cmc_approval';
+    case DgmAftReview = 'dgm_aft_review';
+    case DgmCmcToReview = 'dgm_cmc_to_review';
 
     public function label(): string
     {
@@ -24,6 +26,8 @@ enum WorkflowStepType: string
             self::CmcVerification => 'CMC SM verification',
             self::AmCmcToDgm => 'Manager CMC forwarding to DGM/CMC',
             self::DgmApproval => 'DGM/CMC approval',
+            self::DgmAftReview => 'DGM AFT inspection report review',
+            self::DgmCmcToReview => 'DGM/CMC forwarding inspection report to AM CMC',
         };
     }
 
@@ -35,7 +39,22 @@ enum WorkflowStepType: string
             self::AmCmcToScrutiny, self::AmCmcToDgm => UserRole::ManagerOperations,
             self::CmcAssignment, self::CmcVerification => UserRole::CmcTeamLead,
             self::CmcAssessment => UserRole::CmcStaff,
-            self::DgmApproval => UserRole::DeputyGeneralManager,
+            self::DgmApproval, self::DgmCmcToReview => UserRole::DeputyGeneralManager,
+            self::DgmAftReview => UserRole::DgmAft,
         };
+    }
+
+    /** @return list<self> */
+    public static function generalRoute(): array
+    {
+        return [self::StationManager, self::LineReview, self::AmCmcToScrutiny, self::CmcAssignment,
+            self::CmcAssessment, self::CmcVerification, self::AmCmcToDgm, self::DgmApproval];
+    }
+
+    /** @return list<self> */
+    public static function aftRoute(): array
+    {
+        return [self::DgmAftReview, self::DgmCmcToReview, self::AmCmcToScrutiny, self::CmcAssignment,
+            self::CmcAssessment, self::CmcVerification, self::AmCmcToDgm, self::DgmApproval];
     }
 }

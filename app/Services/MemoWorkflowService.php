@@ -231,6 +231,7 @@ final class MemoWorkflowService
         $isCancellationRequest = $action === 'request_cancellation';
         $isCancellation = in_array($action, ['cancel', 'cancel_after_counselling'], true);
         $isCmcTeamLeadVerification = $step->stage === WorkflowStepType::CmcAssessment
+            && ! $memo->isAftInspection()
             && $actor->is_enabled
             && $actor->hasRole(UserRole::CmcTeamLead->value)
             && $actor->can(UserPermission::ActOnRoutedMemos->value);
@@ -255,6 +256,9 @@ final class MemoWorkflowService
         }
         if ($isCmcAssignment && ! in_array($action, ['assign', 'verify'], true)) {
             throw ValidationException::withMessages(['action' => 'The CMC SM must assign CMC Staff or verify the SDM directly.']);
+        }
+        if ($isCmcAssignment && $action === 'verify' && $memo->isAftInspection()) {
+            throw ValidationException::withMessages(['action' => 'Assign CMC Staff to review the AFT inspection report.']);
         }
         if (! $isCmcAssignment && $isDgm && ! in_array($action, ['approve', 'return', 'cancel'], true)) {
             throw ValidationException::withMessages(['action' => 'DGM must approve, return, or cancel the SDM.']);
@@ -499,6 +503,8 @@ final class MemoWorkflowService
             WorkflowStepType::CmcAssignment => MemoStatus::CmcAssignment,
             WorkflowStepType::CmcAssessment, WorkflowStepType::CmcVerification => MemoStatus::CmcScrutiny,
             WorkflowStepType::DgmApproval => MemoStatus::DgmApproval,
+            WorkflowStepType::DgmAftReview => MemoStatus::DgmAftReview,
+            WorkflowStepType::DgmCmcToReview => MemoStatus::DgmCmcReview,
         };
     }
 

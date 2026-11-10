@@ -70,6 +70,7 @@ final class MasterDataService
 
     public function deleteContractor(Contractor $contractor): void
     {
+        throw_if($this->repository->contractorHasOutsourcedStaff($contractor), ValidationException::withMessages(['contractor' => 'This contractor has outsourced staff and cannot be deleted. Disable it instead.']));
         throw_if($contractor->memos()->exists(), ValidationException::withMessages(['contractor' => 'This contractor is used by memos and cannot be deleted. Disable it instead.']));
         $contractor->delete();
     }

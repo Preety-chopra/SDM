@@ -309,7 +309,9 @@
             <div class="flex flex-wrap justify-end gap-3">
                 @if($assignmentStage)
                     <button name="action" value="assign" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">Assign for scrutiny</button>
-                    <button name="action" value="verify" formnovalidate class="rounded-lg border border-emerald-700 bg-white px-5 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:bg-gray-900 dark:text-emerald-200 dark:hover:bg-emerald-900/50 dark:focus:ring-offset-emerald-950">Verify this SDM directly</button>
+                    @unless($memo->isAftInspection())
+                        <button name="action" value="verify" formnovalidate class="rounded-lg border border-emerald-700 bg-white px-5 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:bg-gray-900 dark:text-emerald-200 dark:hover:bg-emerald-900/50 dark:focus:ring-offset-emerald-950">Verify this SDM directly</button>
+                    @endunless
                 @elseif($cmcVerificationStage)
                     <button name="action" value="return" class="rounded-lg border border-amber-600 px-5 py-2.5 text-sm font-semibold text-amber-800 dark:text-amber-300">Revert for rechecking</button>
                     <button name="action" value="forward" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Forward to Manager CMC</button>
@@ -320,6 +322,10 @@
                     <button name="action" value="return" class="rounded-lg border border-amber-600 px-5 py-2.5 text-sm font-semibold text-amber-800 dark:text-amber-300">Return to CMC</button>
                     <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel</button>
                     <button name="action" value="approve" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Approve assessment</button>
+                @elseif($currentStep->stage === \App\Enums\WorkflowStepType::DgmAftReview)
+                    <button name="action" value="forward" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Forward to DGM/CMC</button>
+                @elseif($currentStep->stage === \App\Enums\WorkflowStepType::DgmCmcToReview)
+                    <button name="action" value="forward" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Forward to AM CMC for review</button>
                 @else
                     <button name="action" value="forward" data-sdm-confirm data-confirmation-action="Forward SDM" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white">Verify and forward</button>
                     @if($currentStep->stage === \App\Enums\WorkflowStepType::StationManager)

@@ -147,8 +147,15 @@ class LineManagerMemoRevertTest extends TestCase
 
         foreach (UserRole::cases() as $role) {
             $viewer = $role === UserRole::Station ? $memo->creator : $this->user($role);
-            $this->actingAs($viewer)->get(route('sdm-memos.index'))
-                ->assertOk()
+            $response = $this->actingAs($viewer)->get(route('sdm-memos.index'))->assertOk();
+
+            if ($role === UserRole::Aft) {
+                $response->assertDontSee($memo->serial_number)->assertDontSee(e($remark), false);
+
+                continue;
+            }
+
+            $response
                 ->assertSeeInOrder([$memo->serial_number, 'Revert remarks:', e($remark)], false)
                 ->assertSee('aria-label="Reverted SDM"', false)
                 ->assertDontSee($remark, false)
@@ -190,7 +197,7 @@ class LineManagerMemoRevertTest extends TestCase
         ]);
 
         if ($version === 2) {
-            foreach (WorkflowStepType::cases() as $index => $stage) {
+            foreach (WorkflowStepType::generalRoute() as $index => $stage) {
                 $assignee = match ($stage) {
                     WorkflowStepType::StationManager => $originalSm,
                     WorkflowStepType::LineReview => $am,

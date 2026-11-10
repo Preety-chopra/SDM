@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Middleware\EnsureCurrentLogin;
+use App\Http\Middleware\EnsureSessionIsActive;
 use App\Http\Middleware\EnsureUserIsEnabled;
 use App\Http\Middleware\RecordUserActivity;
 use App\Http\Middleware\RestrictStationControllerAccess;
@@ -17,7 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->appendToGroup('web', EnsureCurrentLogin::class);
+        $middleware->appendToGroup('web', EnsureSessionIsActive::class);
         $middleware->appendToGroup('web', RecordUserActivity::class);
         $middleware->appendToGroup('web', RestrictStationControllerAccess::class);
         $middleware->alias([
@@ -25,8 +25,10 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontFlash(['aadhaar_number', 'staff_identifier']);
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*')
+                || ($request->routeIs('sdm-memos.staff-lookup', 'sdm-memos.staff-lookup-for-edit') && $request->expectsJson())
                 || ($request->routeIs('feedback.store') && $request->expectsJson()),
         );
 

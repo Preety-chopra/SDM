@@ -15,6 +15,8 @@ interface MasterDataRepositoryInterface
 
     public function contractors(bool $activeOnly = false): Collection;
 
+    public function contractorHasOutsourcedStaff(Contractor $contractor): bool;
+
     public function saveLine(?Line $line, array $attributes): Line;
 
     public function saveStation(?Station $station, array $attributes): Station;

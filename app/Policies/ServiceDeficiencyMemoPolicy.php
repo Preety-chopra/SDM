@@ -60,6 +60,7 @@ class ServiceDeficiencyMemoPolicy
                 && $currentStep?->decision === 'pending'
                 && ($currentStep->assigned_to === $user->id
                     || ($currentStep->stage === WorkflowStepType::CmcAssessment
+                        && ! $memo->isAftInspection()
                         && $user->hasRole(UserRole::CmcTeamLead->value)));
         }
 
