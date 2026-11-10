@@ -14,8 +14,8 @@
             <x-input-error :messages="$errors->get('name')" class="mt-2" />
         </div>
         <div>
-            <x-input-label for="email" value="Email address" required />
-            <x-text-input id="email" name="email" type="email" class="mt-1 block w-full" :value="old('email', $managedUser?->email)" required />
+            <x-input-label for="email" value="Email address (optional)" />
+            <x-text-input id="email" name="email" type="email" class="mt-1 block w-full" :value="old('email', $managedUser?->email)" />
             <x-input-error :messages="$errors->get('email')" class="mt-2" />
         </div>
         <div>

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AftCashCheckReportController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ContractorController;
 use App\Http\Controllers\DashboardChartMemosController;
@@ -60,6 +61,10 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::get('/users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
     Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
     Route::patch('/users/{user}/status', [UserController::class, 'status'])->name('users.status');
+
+    Route::post('/aft-cash-check-reports/{aft_cash_check_report}/submit', [AftCashCheckReportController::class, 'submit'])->name('aft-cash-check-reports.submit');
+    Route::post('/aft-cash-check-reports/{aft_cash_check_report}/workflow', [AftCashCheckReportController::class, 'workflow'])->name('aft-cash-check-reports.workflow');
+    Route::resource('aft-cash-check-reports', AftCashCheckReportController::class)->except('destroy');
 
     Route::post('/sdm-memos/staff-lookup', SdmOutsourcedStaffLookupController::class)->middleware('throttle:60,1,sdm-staff-lookup:')->name('sdm-memos.staff-lookup');
     Route::post('/sdm-memos/{sdm_memo}/staff-lookup', SdmOutsourcedStaffLookupController::class)->middleware('throttle:60,1,sdm-staff-lookup:')->name('sdm-memos.staff-lookup-for-edit');

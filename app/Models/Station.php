@@ -34,6 +34,11 @@ class Station extends Model
         return $this->belongsToMany(ServiceContract::class, 'service_contract_station');
     }
 
+    public function aftCashCheckEntries(): HasMany
+    {
+        return $this->hasMany(AftCashCheckEntry::class);
+    }
+
     protected function casts(): array
     {
         return ['is_active' => 'boolean', 'station_id' => 'integer', 'sequence_no' => 'integer'];

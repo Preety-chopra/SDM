@@ -5,6 +5,7 @@ namespace App\Repositories\Eloquent;
 use App\Contracts\Repositories\StationHierarchyRepositoryInterface;
 use App\Enums\MemoStatus;
 use App\Enums\UserRole;
+use App\Models\AftCashCheckReportStep;
 use App\Models\MemoApproval;
 use App\Models\MemoWorkflowStep;
 use App\Models\ReportingRelationship;
@@ -52,9 +53,12 @@ final class StationHierarchyRepository implements StationHierarchyRepositoryInte
             || MemoWorkflowStep::query()->whereBelongsTo($user, 'assignee')->where('decision', 'pending')
                 ->whereHas('memo', fn ($query) => $query->whereColumn('memo_workflow_steps.id', 'service_deficiency_memos.current_workflow_step_id'))
                 ->exists()
-            || ServiceDeficiencyMemo::query()
-                ->whereBelongsTo($user, 'cmcStaff')
-                ->whereNotIn('status', [MemoStatus::Closed->value, MemoStatus::Cancelled->value])
-                ->exists();
+              || AftCashCheckReportStep::query()->whereBelongsTo($user, 'assignee')->where('decision', 'pending')
+                  ->whereHas('report', fn ($query) => $query->whereIn('status', ['submitted', 'under_review']))
+                  ->exists()
+              || ServiceDeficiencyMemo::query()
+                  ->whereBelongsTo($user, 'cmcStaff')
+                  ->whereNotIn('status', [MemoStatus::Closed->value, MemoStatus::Cancelled->value])
+                  ->exists();
     }
 }

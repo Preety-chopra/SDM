@@ -452,6 +452,80 @@ class UserManagementTest extends TestCase
         $this->assertDatabaseMissing('audit_logs', ['event' => 'user.updated']);
     }
 
+    #[TestWith([[]])]
+    #[TestWith([['email' => '']])]
+    #[TestWith([['email' => null]])]
+    public function test_administrator_can_create_multiple_users_without_email(array $emailData): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $data = $this->validUserData(UserRole::Station);
+        unset($data['email']);
+
+        foreach (['First Station', 'Second Station'] as $name) {
+            $this->actingAs($administrator)->post(route('users.store'), [
+                ...$data,
+                ...$emailData,
+                'name' => $name,
+            ])->assertSessionHasNoErrors()
+                ->assertRedirect(route('users.index', UserRole::Station->value));
+
+            $user = User::query()->where('name', $name)->sole();
+            $this->assertNull($user->email);
+            $this->assertTrue($user->hasExactRoles(UserRole::Station->value));
+            $this->assertDatabaseHas('audit_logs', [
+                'event' => 'user.created',
+                'auditable_id' => $user->id,
+                'actor_id' => $administrator->id,
+            ]);
+        }
+    }
+
+    public function test_email_is_optional_in_the_create_user_form(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $response = $this->actingAs($administrator)->get(route('users.create_any'))->assertOk();
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+
+        $this->assertSame(1, $xpath->query('//input[@name="email"]')->length);
+        $this->assertSame(0, $xpath->query('//input[@name="email"][@required]')->length);
+        $this->assertSame(0, $xpath->query('//label[@for="email"]//*[@data-required-marker]')->length);
+    }
+
+    public function test_administrator_can_update_a_user_without_email(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $managedUser = $this->userWithRole(UserRole::Station);
+
+        $this->actingAs($administrator)->put(route('users.update', $managedUser), [
+            ...$this->validUserData(UserRole::Station),
+            'email' => '',
+        ])->assertSessionHasNoErrors()
+            ->assertRedirect(route('users.index', UserRole::Station->value));
+
+        $this->assertNull($managedUser->fresh()->email);
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'user.updated',
+            'auditable_id' => $managedUser->id,
+            'actor_id' => $administrator->id,
+        ]);
+    }
+
+    public function test_user_creation_rejects_an_invalid_optional_email(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+
+        $this->actingAs($administrator)->post(route('users.store'), [
+            ...$this->validUserData(UserRole::Station),
+            'email' => 'invalid-email',
+        ])->assertSessionHasErrors(['email' => 'The email field must be a valid email address.']);
+
+        $this->assertDatabaseMissing('users', ['name' => 'Managed User']);
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'user.created']);
+    }
+
     public function test_email_and_employee_number_must_be_unique(): void
     {
         $administrator = $this->userWithRole(UserRole::Administrator);

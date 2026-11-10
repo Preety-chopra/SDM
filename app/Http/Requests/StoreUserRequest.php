@@ -27,7 +27,7 @@ class StoreUserRequest extends FormRequest
 
         return [
             'name' => ['required', 'string', 'max:255', new Username, Rule::unique(User::class)],
-            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class)],
+            'email' => ['nullable', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class)],
             'role' => [
                 'required',
                 Rule::exists(PermissionRole::class, 'name')->where(fn (Builder $query) => $query

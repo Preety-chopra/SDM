@@ -8,6 +8,7 @@ import { createCmcMemoSelection } from './cmc-memo-selection';
 import { createMemoCancellationDialog } from './memo-cancellation-dialog';
 import { createContractForm } from './contract-form';
 import { createMemoForm } from './memo-form';
+import { createAftCashCheckForm } from './aft-cash-check-form';
 import { createSdmActionFeedback } from './sdm-action-feedback';
 import { createFeedbackForm } from './feedback-form';
 import { preventInputWheelChanges } from './input-wheel-guard';
@@ -87,6 +88,7 @@ Alpine.data('employeeAutocomplete', () => ({
 }));
 
 Alpine.data('memoForm', () => createMemoForm());
+Alpine.data('aftCashCheckForm', () => createAftCashCheckForm());
 Alpine.data('sdmActionFeedback', () => createSdmActionFeedback());
 
 Alpine.data('sdmActionForm', () => createSdmConfirmation());

@@ -68,6 +68,14 @@
             </a>
         @endcan
 
+        @can('viewAny', \App\Models\AftCashCheckReport::class)
+            <a href="{{ route('aft-cash-check-reports.index') }}" title="AFT cash-check reports" class="{{ $baseClasses }} {{ request()->routeIs('aft-cash-check-reports.*') ? $activeClasses : $idleClasses }}">
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 3h10v18H7zM10 7h4M10 11h4M10 15h4" /></svg>
+                <span x-show="! collapsed || mobileOpen" class="flex-1">AFT cash checks</span>
+                @if($pendingCashCheckCount > 0)<span data-cash-check-pending-count="{{ $pendingCashCheckCount }}" class="rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white" aria-label="{{ $pendingCashCheckCount }} cash-check reports awaiting your action">{{ $pendingCashCheckCount }}</span>@endif
+            </a>
+        @endcan
+
         @can(\App\Enums\UserPermission::ViewUsers->value)
             <p x-show="! collapsed || mobileOpen" class="px-3 pb-1 pt-5 text-xs font-bold uppercase tracking-wider text-gray-400">User management</p>
             @can(\App\Enums\UserPermission::CreateUsers->value)

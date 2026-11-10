@@ -28,7 +28,7 @@ class UpdateUserRequest extends FormRequest
 
         return [
             'name' => ['required', 'string', 'max:255', new Username, Rule::unique(User::class)->ignore($managedUser)],
-            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class)->ignore($managedUser)],
+            'email' => ['nullable', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class)->ignore($managedUser)],
             'role' => [
                 'required',
                 Rule::exists(PermissionRole::class, 'name')->where(fn (Builder $query) => $query

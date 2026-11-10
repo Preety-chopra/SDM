@@ -64,7 +64,7 @@ final class MasterDataService
 
     public function deleteStation(Station $station): void
     {
-        throw_if($station->users()->exists() || $station->memos()->exists() || $station->serviceContracts()->exists(), ValidationException::withMessages(['station' => 'This station is in use and cannot be deleted. Disable it instead.']));
+        throw_if($station->users()->exists() || $station->memos()->exists() || $station->serviceContracts()->exists() || $station->aftCashCheckEntries()->exists(), ValidationException::withMessages(['station' => 'This station is in use and cannot be deleted. Disable it instead.']));
         $station->delete();
     }
 

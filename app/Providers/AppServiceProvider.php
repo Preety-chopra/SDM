@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\Repositories\AftCashCheckReportRepositoryInterface;
 use App\Contracts\Repositories\AuditLogRepositoryInterface;
 use App\Contracts\Repositories\DesignationRepositoryInterface;
 use App\Contracts\Repositories\FeedbackRepositoryInterface;
@@ -18,13 +19,16 @@ use App\Contracts\Repositories\StationRepositoryInterface;
 use App\Contracts\Repositories\UserActivityReportRepositoryInterface;
 use App\Contracts\Repositories\UserRepositoryInterface;
 use App\Contracts\Repositories\WorkflowRoleDashboardRepositoryInterface;
+use App\Models\AftCashCheckReport;
 use App\Models\ServiceContract;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
+use App\Policies\AftCashCheckReportPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\ServiceContractPolicy;
 use App\Policies\ServiceDeficiencyMemoPolicy;
 use App\Policies\UserPolicy;
+use App\Repositories\Eloquent\AftCashCheckReportRepository;
 use App\Repositories\Eloquent\AuditLogRepository;
 use App\Repositories\Eloquent\DesignationRepository;
 use App\Repositories\Eloquent\FeedbackRepository;
@@ -57,6 +61,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(AftCashCheckReportRepositoryInterface::class, AftCashCheckReportRepository::class);
         $this->app->bind(AuditLogRepositoryInterface::class, AuditLogRepository::class);
         $this->app->bind(FeedbackRepositoryInterface::class, FeedbackRepository::class);
         $this->app->bind(UserActivityReportRepositoryInterface::class, UserActivityReportRepository::class);
@@ -80,6 +85,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::policy(AftCashCheckReport::class, AftCashCheckReportPolicy::class);
         Password::defaults(fn (): Password => Password::min(8)->mixedCase()->numbers()->rules([
             // Laravel's symbols() rule also accepts spaces; require a symbol or punctuation.
             function (string $attribute, mixed $value, Closure $fail): void {
