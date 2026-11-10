@@ -5,12 +5,11 @@ namespace App\Http\Requests\Auth;
 use App\Enums\UserRole;
 use App\Models\Station;
 use App\Models\User;
-use App\Rules\Username;
+use App\Services\AuthenticationService;
 use App\Services\UserSessionService;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -34,7 +33,7 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'username' => ['required', 'string', 'max:255', new Username],
+            'username' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string'],
             'station_id' => ['nullable', 'integer', Rule::exists(Station::class, 'id')->where('is_active', true)],
         ];
@@ -45,19 +44,19 @@ class LoginRequest extends FormRequest
      *
      * @throws ValidationException
      */
-    public function authenticate(): void
+    public function authenticate(AuthenticationService $authentication): void
     {
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attemptWhen([
-            'name' => $this->string('username')->toString(),
-            'password' => $this->string('password')->toString(),
-            'is_enabled' => true,
-        ], function (User $user): bool {
-            $this->ensureStationIsSelectedWhenRequired($user);
+        if (! $authentication->attempt(
+            $this->string('username')->toString(),
+            $this->string('password')->toString(),
+            function (User $user): bool {
+                $this->ensureStationIsSelectedWhenRequired($user);
 
-            return true;
-        })) {
+                return true;
+            },
+        )) {
             $this->failAuthentication();
         }
 

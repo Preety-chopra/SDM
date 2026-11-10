@@ -6,6 +6,7 @@ use App\Contracts\Repositories\StationRepositoryInterface;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Services\AuthenticationService;
 use App\Services\FeedbackService;
 use App\Services\ServiceDeficiencyMemoService;
 use App\Services\UserSessionService;
@@ -34,9 +35,9 @@ class AuthenticatedSessionController extends Controller
     /**
      * Handle an incoming authentication request.
      */
-    public function store(LoginRequest $request): RedirectResponse
+    public function store(LoginRequest $request, AuthenticationService $authentication): RedirectResponse
     {
-        $request->authenticate();
+        $request->authenticate($authentication);
 
         $request->session()->regenerate();
 

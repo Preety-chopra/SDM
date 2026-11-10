@@ -8,6 +8,8 @@ use Illuminate\Support\Collection;
 
 interface UserRepositoryInterface
 {
+    public function findByLoginIdentifier(string $identifier): ?User;
+
     public function paginateByRole(string $role, ?string $search, ?bool $enabled): LengthAwarePaginator;
 
     /** @param list<string> $roles */

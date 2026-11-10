@@ -35,6 +35,126 @@ class AuthenticationTest extends TestCase
         $response->assertStatus(200);
     }
 
+    public function test_login_screen_offers_username_or_employee_number(): void
+    {
+        $this->get(route('login'))
+            ->assertOk()
+            ->assertSee('Username or Employee Number')
+            ->assertSee('placeholder="Enter your username or employee number"', false);
+    }
+
+    #[TestWith(['name', 'sm02'])]
+    #[TestWith(['employee_number', '001234'])]
+    #[TestWith(['employee_number', 'EMP-001'])]
+    #[TestWith(['employee_number', 'EMP/001_A'])]
+    public function test_users_can_authenticate_with_username_or_employee_number(string $field, string $identifier): void
+    {
+        $user = User::factory()->create([$field => $identifier]);
+        $user->assignRole(UserRole::Administrator->value);
+
+        $this->post(route('login'), [
+            'username' => $identifier,
+            'password' => 'password',
+        ])->assertSessionHasNoErrors()
+            ->assertRedirect(route('dashboard', absolute: false));
+
+        $this->assertAuthenticatedAs($user);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $user->id,
+            'event' => 'auth.login',
+        ]);
+    }
+
+    public function test_employee_number_login_requires_the_correct_password_and_audits_failure(): void
+    {
+        $user = User::factory()->create(['employee_number' => 'EMP/001_A']);
+
+        $this->post(route('login'), [
+            'username' => $user->employee_number,
+            'password' => 'wrong-password',
+        ])->assertSessionHasErrors(['username' => trans('auth.failed')]);
+
+        $this->assertGuest();
+        $this->assertDatabaseHas('audit_logs', [
+            'auditable_id' => $user->id,
+            'auditable_type' => User::class,
+            'event' => 'auth.failed',
+        ]);
+    }
+
+    public function test_disabled_users_cannot_login_with_employee_number(): void
+    {
+        $user = User::factory()->disabled()->create(['employee_number' => 'EMP-001']);
+
+        $this->post(route('login'), [
+            'username' => $user->employee_number,
+            'password' => 'password',
+        ])->assertSessionHasErrors(['username' => trans('auth.failed')]);
+
+        $this->assertGuest();
+    }
+
+    public function test_unknown_employee_number_cannot_authenticate_another_user(): void
+    {
+        User::factory()->create(['employee_number' => 'EMP-001']);
+
+        $this->post(route('login'), [
+            'username' => 'EMP-999',
+            'password' => 'password',
+        ])->assertSessionHasErrors(['username' => trans('auth.failed')]);
+
+        $this->assertGuest();
+    }
+
+    public function test_station_manager_employee_number_login_still_requires_a_station(): void
+    {
+        $user = User::factory()->create(['employee_number' => 'SM-001']);
+        $user->assignRole(UserRole::StationManager->value);
+
+        $this->post(route('login'), [
+            'username' => $user->employee_number,
+            'password' => 'password',
+        ])->assertSessionHasErrors([
+            'station_id' => 'Select a station to sign in as a Station Controller or Station Manager.',
+        ]);
+
+        $this->assertGuest();
+    }
+
+    public function test_employee_number_login_is_rate_limited_after_five_failed_attempts(): void
+    {
+        $this->freezeTime();
+        $user = User::factory()->create(['employee_number' => 'EMP/001_A']);
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->post(route('login'), [
+                'username' => $user->employee_number,
+                'password' => 'wrong-password',
+            ])->assertSessionHasErrors(['username' => trans('auth.failed')]);
+        }
+
+        $this->post(route('login'), [
+            'username' => $user->employee_number,
+            'password' => 'password',
+        ])->assertSessionHasErrors(['username' => trans('auth.throttle', ['seconds' => 60, 'minutes' => 1])]);
+
+        $this->assertGuest();
+    }
+
+    public function test_existing_username_takes_priority_over_another_users_employee_number(): void
+    {
+        User::factory()->create(['employee_number' => '001234', 'password' => 'other-password']);
+        $user = User::factory()->create(['name' => '001234']);
+        $user->assignRole(UserRole::Administrator->value);
+
+        $this->post(route('login'), [
+            'username' => $user->name,
+            'password' => 'password',
+        ])->assertRedirect(route('dashboard', absolute: false));
+
+        $this->assertAuthenticatedAs($user);
+    }
+
     public function test_forgot_password_link_displays_it_cell_contact_popup(): void
     {
         $this->get('/login')

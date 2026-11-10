@@ -74,10 +74,10 @@
                         @csrf
 
                         <div>
-                            <label for="username" class="mb-2 block text-sm font-semibold text-slate-700">Username <span data-required-marker aria-hidden="true" class="font-bold !text-red-600">*</span><span class="sr-only"> (required)</span></label>
+                            <label for="username" class="mb-2 block text-sm font-semibold text-slate-700">Username or Employee Number <span data-required-marker aria-hidden="true" class="font-bold !text-red-600">*</span><span class="sr-only"> (required)</span></label>
                             <div class="relative">
                                 <svg class="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" stroke-linecap="round" /></svg>
-                                <input id="username" class="block h-[52px] w-full rounded-xl border border-slate-200 bg-white py-3.5 pl-12 pr-4 text-[15px] text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" type="text" name="username" value="{{ old('username') }}" placeholder="Enter your username" required autofocus autocomplete="username" />
+                                <input id="username" class="block h-[52px] w-full rounded-xl border border-slate-200 bg-white py-3.5 pl-12 pr-4 text-[15px] text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" type="text" name="username" value="{{ old('username') }}" placeholder="Enter your username or employee number" required autofocus autocomplete="username" />
                             </div>
                             <x-input-error :messages="$errors->get('username')" class="mt-2 text-sm" />
                         </div>

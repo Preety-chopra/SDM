@@ -10,6 +10,12 @@ use Illuminate\Support\Collection;
 
 final class UserRepository implements UserRepositoryInterface
 {
+    public function findByLoginIdentifier(string $identifier): ?User
+    {
+        return User::query()->where('name', $identifier)->first()
+            ?? User::query()->where('employee_number', $identifier)->first();
+    }
+
     public function paginateByRole(string $role, ?string $search, ?bool $enabled): LengthAwarePaginator
     {
         return User::query()
