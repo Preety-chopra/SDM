@@ -104,8 +104,8 @@
                             <label for="station_id" class="mb-2 block text-sm font-semibold text-slate-700">Station <span class="font-normal text-slate-500">(required for Station Controller and Station Manager)</span></label>
                             <select id="station_id" name="station_id" class="block h-[52px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-[15px] text-slate-900 shadow-sm outline-none transition hover:border-slate-300 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100">
                                 <option value="">Select station</option>
-                                @foreach($stations as $station)
-                                    <option value="{{ $station->id }}" @selected((string) old('station_id') === (string) $station->id)>{{ $station->name }}</option>
+                                @foreach($stationOptions as $station)
+                                    <option value="{{ $station['id'] }}" @selected((string) old('station_id') === (string) $station['id'])>{{ $station['label'] }}</option>
                                 @endforeach
                             </select>
                             <x-input-error :messages="$errors->get('station_id')" class="mt-2 text-sm" />

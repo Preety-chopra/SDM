@@ -333,6 +333,37 @@ class AuthenticationTest extends TestCase
             ->assertDontSee('name="station_id" required', false);
     }
 
+    public function test_login_labels_station_options_in_line_code_order(): void
+    {
+        $stationIds = [];
+        foreach (['AEL', '10', '9', '8', '7', '6', '5', '4', '3', '2', '1', 'L-1W'] as $lineCode) {
+            $line = Line::query()->create(['code' => $lineCode, 'name' => 'Metro Line', 'is_active' => $lineCode !== '2']);
+            $stationIds[$lineCode] = $line->stations()->create(['code' => 'KG-'.$lineCode, 'name' => 'Kashmere Gate', 'is_active' => true])->id;
+        }
+        $unassignedStation = Station::query()->create(['code' => 'LEGACY', 'name' => 'Legacy Station', 'is_active' => true]);
+
+        $this->withSession(['_old_input' => ['station_id' => (string) $stationIds[2]]])
+            ->get(route('login'))
+            ->assertOk()
+            ->assertSeeInOrder([
+                '<option value="'.$stationIds[1].'"',
+                '>L-1 Kashmere Gate</option>',
+                '<option value="'.$stationIds[2].'" selected>L-2 Kashmere Gate</option>',
+                '>L-3 Kashmere Gate</option>',
+                '>L-4 Kashmere Gate</option>',
+                '>L-5 Kashmere Gate</option>',
+                '>L-6 Kashmere Gate</option>',
+                '>L-7 Kashmere Gate</option>',
+                '>L-8 Kashmere Gate</option>',
+                '>L-9 Kashmere Gate</option>',
+                '>L-10 Kashmere Gate</option>',
+                '>L-AEL Kashmere Gate</option>',
+                '>L-1W Kashmere Gate</option>',
+                '<option value="'.$unassignedStation->id.'"',
+                '>Legacy Station</option>',
+            ], false);
+    }
+
     public function test_station_controller_and_station_manager_must_select_an_active_station(): void
     {
         $disabled = Station::query()->create([

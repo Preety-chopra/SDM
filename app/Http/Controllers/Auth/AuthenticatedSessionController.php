@@ -6,6 +6,7 @@ use App\Contracts\Repositories\StationRepositoryInterface;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Models\Station;
 use App\Services\AuthenticationService;
 use App\Services\FeedbackService;
 use App\Services\ServiceDeficiencyMemoService;
@@ -13,6 +14,7 @@ use App\Services\UserSessionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
@@ -29,7 +31,23 @@ class AuthenticatedSessionController extends Controller
      */
     public function create(): View
     {
-        return view('auth.login', ['stations' => $this->stations->active()]);
+        $lineOrder = array_flip([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 'AEL']);
+        $stationOptions = $this->stations->active()
+            ->sortBy(function (Station $station) use ($lineOrder): array {
+                $lineCode = $station->metroLine?->code;
+
+                return [$lineOrder[$lineCode] ?? count($lineOrder), $lineCode === null, $lineCode];
+            })
+            ->map(function (Station $station): array {
+                $lineCode = $station->metroLine?->code;
+
+                return [
+                    'id' => $station->id,
+                    'label' => $lineCode === null ? $station->name : Str::start($lineCode, 'L-').' '.$station->name,
+                ];
+            });
+
+        return view('auth.login', ['stationOptions' => $stationOptions]);
     }
 
     /**
