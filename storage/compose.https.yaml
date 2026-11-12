@@ -1,0 +1,39 @@
+# Opt-in deployment: docker compose -f compose.yaml -f compose.https.yaml ...
+# Requires Docker Compose 2.24.4+ for !override.
+services:
+    laravel.test:
+        # Publish only TLS. Nginx shares this service's network namespace and
+        # connects to PHP on loopback, so Laravel can trust a fixed local proxy.
+        ports: !override
+            - '5252:443'
+        environment:
+            TRUSTED_PROXIES: '127.0.0.1'
+        restart: unless-stopped
+
+    https:
+        image: nginx:stable-alpine
+        network_mode: 'service:laravel.test'
+        depends_on:
+            laravel.test:
+                condition: service_started
+                restart: true
+        volumes:
+            - type: bind
+              source: ./docker/nginx/sdm-https.conf
+              target: /etc/nginx/conf.d/default.conf
+              read_only: true
+              bind:
+                  create_host_path: false
+            - type: bind
+              source: '${SSL_CERTIFICATE_PATH:-/etc/nginx/ssl/mch/fullchain.pem}'
+              target: /etc/nginx/certs/fullchain.pem
+              read_only: true
+              bind:
+                  create_host_path: false
+            - type: bind
+              source: '${SSL_PRIVATE_KEY_PATH:-/etc/nginx/ssl/mch/dmrc.key}'
+              target: /etc/nginx/certs/dmrc.key
+              read_only: true
+              bind:
+                  create_host_path: false
+        restart: unless-stopped
