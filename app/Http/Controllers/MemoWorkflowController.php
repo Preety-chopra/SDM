@@ -22,13 +22,18 @@ class MemoWorkflowController extends Controller
         $data = $request->validated();
         $this->workflow->act($sdmMemo, $request->user(), $data);
 
-        if ($request->user()->hasRole(UserRole::AssistantManager->value)
-            && in_array($data['action'], ['cancel', 'cancel_after_counselling'], true)) {
-            $message = $data['action'] === 'cancel_after_counselling'
-                ? 'SDM cancelled after counselling.'
-                : 'SDM cancelled.';
+        if ($request->user()->hasRole(UserRole::AssistantManager->value)) {
+            $message = match ($data['action']) {
+                'cancel_after_counselling' => 'SDM cancelled after counselling.',
+                'cancel' => 'SDM cancelled.',
+                default => 'SDM workflow updated.',
+            };
 
-            return redirect()->route('sdm-memos.index')->with('status', $message);
+            return redirect()->route('sdm-memos.index', ['category' => 'pending'])->with('status', $message);
+        }
+
+        if ($request->user()->hasRole(UserRole::StationManager->value)) {
+            return redirect()->route('sdm-memos.index')->with('status', 'SDM workflow updated.');
         }
 
         return redirect()->route('sdm-memos.show', $sdmMemo)->with('status', 'SDM workflow updated.');

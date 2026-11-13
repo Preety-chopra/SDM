@@ -14,7 +14,7 @@ final class PenaltyClauseTemplates
             SdmType::Cfs => self::cfa(),
             SdmType::Ticketing => self::tvs(),
             SdmType::WandW => self::watchAndWard(),
-            SdmType::Marshall => self::marshal(),
+            SdmType::Marshal => self::marshal(),
             SdmType::BaggageHandling => [],
         };
     }

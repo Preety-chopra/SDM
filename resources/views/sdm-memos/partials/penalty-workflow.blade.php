@@ -9,6 +9,10 @@
     $dgmStage = $currentStep?->stage === \App\Enums\WorkflowStepType::DgmApproval;
     $latestAssessment = $memo->assessments->last();
     $approvedAssessment = $memo->assessments->last(fn ($assessment) => $assessment->status === 'approved');
+    $approvedTotal = $approvedAssessment?->proposed_total;
+    $deductionAmount = (float) ($memo->deduction?->amount ?? $approvedTotal);
+    $deductionPrecision = $deductionAmount === floor($deductionAmount) ? 0 : 2;
+    $wholeAmountInput = fn ($amount) => $amount === null ? null : number_format((float) $amount, 0, '.', '');
     $oldAssessmentItems = old('items');
     $prefillAssessmentItems = match (true) {
         is_array($oldAssessmentItems) => collect(),
@@ -74,8 +78,8 @@
                     };
                 @endphp
                 <article class="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-                    <div class="flex flex-wrap justify-between gap-2"><p class="font-semibold">{{ $reviewLabel }}</p><span class="text-sm font-semibold {{ $assessment->cap_warning ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300' }}">₹{{ number_format((float) $assessment->proposed_total, 2) }} · {{ str($assessment->status)->headline() }}</span></div>
-                    <div class="mt-3 overflow-x-auto"><table class="min-w-full text-sm"><thead class="text-left text-xs uppercase text-gray-500"><tr><th class="py-2 pr-4">Clause</th><th class="py-2 pr-4">Calculation</th><th class="py-2 text-right">Proposed</th></tr></thead><tbody>@foreach($assessment->items as $item)<tr class="border-t border-gray-100 dark:border-gray-700"><td class="py-2 pr-4">{{ $item->clause_serial_number }}. {{ $item->clause_description }}<p class="text-xs text-gray-500">{{ $item->justification }}</p></td><td class="py-2 pr-4">{{ $item->calculation_type->label() }}@if($item->suggested_amount !== null)<br><span class="text-xs text-gray-500">Calculated ₹{{ number_format((float) $item->suggested_amount, 2) }}</span>@endif</td><td class="py-2 text-right font-semibold">₹{{ number_format((float) $item->proposed_amount, 2) }}</td></tr>@endforeach</tbody></table></div>
+                    <div class="flex flex-wrap justify-between gap-2"><p class="font-semibold">{{ $reviewLabel }}</p><span class="text-sm font-semibold {{ $assessment->cap_warning ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300' }}">₹{{ number_format((float) $assessment->proposed_total) }} · {{ str($assessment->status)->headline() }}</span></div>
+                    <div class="mt-3 overflow-x-auto"><table class="min-w-full text-sm"><thead class="text-left text-xs uppercase text-gray-500"><tr><th class="py-2 pr-4">Clause</th><th class="py-2 pr-4">Calculation</th><th class="py-2 text-right">Proposed</th></tr></thead><tbody>@foreach($assessment->items as $item)<tr class="border-t border-gray-100 dark:border-gray-700"><td class="py-2 pr-4">{{ $item->clause_serial_number }}. {{ $item->clause_description }}<p class="text-xs text-gray-500">{{ $item->justification }}</p></td><td class="py-2 pr-4">{{ $item->calculation_type->label() }}@if($item->suggested_amount !== null)<br><span class="text-xs text-gray-500">Calculated ₹{{ number_format((float) $item->suggested_amount) }}</span>@endif</td><td class="py-2 text-right font-semibold">₹{{ number_format((float) $item->proposed_amount) }}</td></tr>@endforeach</tbody></table></div>
                     @if($assessment->negative_points !== null)<p class="mt-3 text-sm"><strong>{{ $assessment->negative_points }} negative points</strong> · {{ str($assessment->staff_action)->headline() }}</p>@endif
                     @if($assessment->cap_warning)<p class="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">Advisory cap warning: applicable clauses total {{ number_format((float) $assessment->cap_percentage, 3) }}% of the monthly bill. DGM acknowledgement is required.</p>@endif
                     @if($assessment->administrative_review_flag)<p class="mt-2 rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-900 dark:bg-rose-950/50 dark:text-rose-200">Administrative review flagged: the advisory threshold was reached in three consecutive bill months. No automatic termination has been applied.</p>@endif
@@ -242,7 +246,13 @@
                         <p class="text-sm text-emerald-800 dark:text-emerald-200">Penalties matching the recorded deficiencies are pre-selected. You may add or remove clauses before forwarding.</p>
                     @endif
                     @foreach($memo->serviceContract->penaltyClauses as $index => $clause)
-                        @php($prefillItem = $prefillAssessmentItems->get($clause->id))
+                        @php
+                            $prefillItem = $prefillAssessmentItems->get($clause->id);
+                            $maximum = $clause->wholeRupeeMaximum();
+                            $isMaximumClause = $clause->calculation_type === \App\Enums\PenaltyCalculationType::Maximum;
+                            $prefillAmount = data_get($prefillItem, 'proposed_amount');
+                            $prefillAmount = $prefillAmount === null ? null : $clause->wholeRupeeProposal((float) $prefillAmount);
+                        @endphp
                         <article
                             class="rounded-xl border border-emerald-200 bg-white p-4 dark:border-emerald-900 dark:bg-gray-900"
                             @if($assessmentStage)
@@ -250,17 +260,32 @@
                                 x-show="showAllClauses || selectedClauses.includes('{{ $clause->id }}')"
                             @endif
                         >
-                            <label class="flex items-start gap-3"><input type="checkbox" value="{{ $clause->id }}" x-model="selectedClauses" class="mt-1 rounded border-gray-300 text-emerald-700"><span><strong>{{ $clause->serial_number }}. {{ $clause->description }}</strong><span class="mt-1 block text-xs text-gray-500">{{ $clause->calculation_type->label() }}@if($clause->maximum_amount) · maximum ₹{{ number_format((float) $clause->maximum_amount, 2) }}@elseif($clause->base_amount) · base ₹{{ number_format((float) $clause->base_amount, 2) }}@endif</span></span></label>
+                            <label class="flex items-start gap-3">
+                                <input type="checkbox" value="{{ $clause->id }}" x-model="selectedClauses" class="mt-1 rounded border-gray-300 text-emerald-700">
+                                <span>
+                                    <strong>{{ $clause->serial_number }}. {{ $clause->description }}</strong>
+                                    <span class="mt-1 block text-xs text-gray-500">
+                                        @if($isMaximumClause && $maximum !== null)
+                                            Up to {{ number_format($maximum) }}
+                                        @else
+                                            {{ $clause->calculation_type->label() }}
+                                            @if($maximum !== null) · maximum ₹{{ number_format($maximum) }}
+                                            @elseif($clause->base_amount !== null) · base ₹{{ number_format((float) $clause->base_amount) }}
+                                            @endif
+                                        @endif
+                                    </span>
+                                </span>
+                            </label>
                             <div class="mt-3 grid gap-3 md:grid-cols-3" x-show="selectedClauses.includes('{{ $clause->id }}')">
                                 <input type="hidden" name="items[{{ $index }}][contract_penalty_clause_id]" value="{{ $clause->id }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')">
                                 @if($clause->calculation_type === \App\Enums\PenaltyCalculationType::PerDayPerWorker)
                                     <div><x-input-label value="Days"/><input name="items[{{ $index }}][calculation_inputs][days]" type="number" min="0" value="{{ old("items.$index.calculation_inputs.days", data_get($prefillItem, 'calculation_inputs.days')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
                                     <div><x-input-label value="Workmen"/><input name="items[{{ $index }}][calculation_inputs][workers]" type="number" min="0" value="{{ old("items.$index.calculation_inputs.workers", data_get($prefillItem, 'calculation_inputs.workers')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
                                 @elseif($clause->calculation_type === \App\Enums\PenaltyCalculationType::FixedPlusCost)
-                                    <div><x-input-label value="Loss/damage cost"/><input name="items[{{ $index }}][calculation_inputs][additional_cost]" type="number" min="0" step="0.01" value="{{ old("items.$index.calculation_inputs.additional_cost", data_get($prefillItem, 'calculation_inputs.additional_cost')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
+                                    <div><x-input-label value="Loss/damage cost"/><input name="items[{{ $index }}][calculation_inputs][additional_cost]" type="number" min="0" step="1" value="{{ old("items.$index.calculation_inputs.additional_cost", $wholeAmountInput(data_get($prefillItem, 'calculation_inputs.additional_cost'))) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')"></div>
                                 @endif
-                                <div><x-input-label value="Proposed amount" required/><input name="items[{{ $index }}][proposed_amount]" type="number" min="0" step="0.01" value="{{ old("items.$index.proposed_amount", data_get($prefillItem, 'proposed_amount')) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')" :required="selectedClauses.includes('{{ $clause->id }}')"></div>
-                                <div class="md:col-span-3"><x-input-label value="Justification (optional)"/><textarea name="items[{{ $index }}][justification]" rows="2" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')">{{ old("items.$index.justification", data_get($prefillItem, 'justification')) }}</textarea></div>
+                                <div><x-input-label value="Proposed amount" required/><input name="items[{{ $index }}][proposed_amount]" type="number" min="0" step="1" value="{{ old("items.$index.proposed_amount", $wholeAmountInput($prefillAmount)) }}" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')" :required="selectedClauses.includes('{{ $clause->id }}')"></div>
+                                <div class="md:col-span-3"><x-input-label value="Remarks (optional)"/><textarea name="items[{{ $index }}][justification]" rows="2" class="{{ $inputClass }}" :disabled="!selectedClauses.includes('{{ $clause->id }}')">{{ old("items.$index.justification", data_get($prefillItem, 'justification')) }}</textarea></div>
                             </div>
                         </article>
                     @endforeach
@@ -280,7 +305,7 @@
                 <div class="grid gap-4 md:grid-cols-3">
                     <div>
                         <x-input-label value="Total proposed amount" required/>
-                        <input name="proposed_total" type="number" min="0" step="0.01" value="{{ old('proposed_total', $latestAssessment?->proposed_total) }}" class="{{ $inputClass }}" required>
+                        <input name="proposed_total" type="number" min="0" step="1" value="{{ old('proposed_total', $wholeAmountInput($latestAssessment?->proposed_total)) }}" class="{{ $inputClass }}" required>
                         <x-input-error :messages="$errors->get('proposed_total')" class="mt-2"/>
                     </div>
                     <div><x-input-label value="Negative points" required/><input name="negative_points" type="number" min="0" value="{{ old('negative_points', $negativePointsPrefill) }}" class="{{ $inputClass }}" required></div>
@@ -429,13 +454,13 @@
                     <input name="deducted_at" type="date" class="{{ $inputClass }}" required></div>
                 <div>
                     <x-input-label value="Exact approved amount" required/>
-                    <input name="amount" type="number" step="0.01" value="{{ $approvedAssessment->proposed_total }}" class="{{ $inputClass }}" required>
+                    <input name="amount" type="number" step="{{ $deductionPrecision === 0 ? '1' : '0.01' }}" value="{{ number_format((float) $approvedTotal, $deductionPrecision, '.', '') }}" class="{{ $inputClass }}" required>
                 </div>
                 <button class="rounded-lg bg-emerald-700 px-5 py-2.5 font-semibold text-white md:col-span-2">Record deduction and close</button>
             </form>
         @endif
         @if($memo->deduction)
-            <p class="mt-5 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">Deducted ₹{{ number_format((float) $memo->deduction->amount, 2) }} against {{ $memo->deduction->bill_reference }} on {{ $memo->deduction->deducted_at->format('d-m-Y') }}. Case closed.</p>
+            <p class="mt-5 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">Deducted ₹{{ number_format((float) $memo->deduction->amount, $deductionPrecision) }} against {{ $memo->deduction->bill_reference }} on {{ $memo->deduction->deducted_at->format('d-m-Y') }}. Case closed.</p>
         @endif
     </section>
 @endif

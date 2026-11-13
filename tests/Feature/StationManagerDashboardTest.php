@@ -133,7 +133,7 @@ class StationManagerDashboardTest extends TestCase
         $this->assignedMemo($manager, $central, 'CFS-SEPTEMBER', MemoStatus::LineReview, 'forwarded', '2026-09-05 09:00:00', SdmType::Cfs);
         $this->assignedMemo($manager, $central, 'CFS-SEPTEMBER-PENDING', MemoStatus::AwaitingStationManager, 'pending', '2026-09-08 09:00:00', SdmType::Cfs);
         $this->assignedMemo($manager, $central, 'TVS-AUGUST', MemoStatus::LineReview, 'forwarded', '2026-08-05 09:00:00', SdmType::Ticketing);
-        $this->assignedMemo($manager, $central, 'OUTSIDE-SIX-MONTHS', MemoStatus::LineReview, 'forwarded', '2026-03-31 23:59:59', SdmType::Marshall);
+        $this->assignedMemo($manager, $central, 'OUTSIDE-SIX-MONTHS', MemoStatus::LineReview, 'forwarded', '2026-03-31 23:59:59', SdmType::Marshal);
 
         $this->actingAs($manager)
             ->get(route('dashboard', ['date_from' => '2026-09-01', 'date_to' => '2026-09-30']))

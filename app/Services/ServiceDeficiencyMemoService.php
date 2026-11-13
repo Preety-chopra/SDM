@@ -676,6 +676,7 @@ final class ServiceDeficiencyMemoService
                     'type' => $deficiency->type->value,
                     'remarks' => $deficiency->remarks,
                     'overcharge_amount' => $deficiency->overcharge_amount,
+                    'shortfall_count' => $deficiency->shortfall_count,
                     'late_reporting' => $deficiency->lateReporting ? [
                         'booked_shift_from' => $deficiency->lateReporting->booked_shift_from,
                         'booked_shift_to' => $deficiency->lateReporting->booked_shift_to,
@@ -776,6 +777,9 @@ final class ServiceDeficiencyMemoService
                 'remarks' => $data['deficiency_remarks'][$type] ?? $existingDeficiencies->get($type)?->remarks,
                 'overcharge_amount' => $type === DeficiencyType::Overcharging->value
                     ? (array_key_exists('overcharge_amount', $data) ? $data['overcharge_amount'] : $existingDeficiencies->get($type)?->overcharge_amount)
+                    : null,
+                'shortfall_count' => $type === DeficiencyType::ShortDeployment->value
+                    ? (array_key_exists('shortfall_count', $data) ? $data['shortfall_count'] : $existingDeficiencies->get($type)?->shortfall_count)
                     : null,
             ]);
             if ($type === DeficiencyType::LateReporting->value && filled($data['late_reporting'] ?? null)) {

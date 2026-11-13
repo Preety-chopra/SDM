@@ -8,38 +8,42 @@ use App\Enums\SdmType;
 final class DeficiencyCatalog
 {
     /** @return array<string, list<array{value: string, label: string, serial_number: int|null}>> */
-    public static function grouped(): array
+    public static function grouped(bool $includeLegacyTomDeficiency = false): array
     {
         return collect(SdmType::cases())
-            ->mapWithKeys(fn (SdmType $type): array => [$type->value => self::for($type)])
+            ->mapWithKeys(fn (SdmType $type): array => [$type->value => self::for($type, $includeLegacyTomDeficiency)])
             ->all();
     }
 
     /** @return list<array{value: string, label: string, serial_number: int|null}> */
-    public static function for(SdmType $type): array
+    public static function for(SdmType $type, bool $includeLegacyTomDeficiency = false): array
     {
         $types = self::typesFor($type);
 
         $options = collect(PenaltyClauseTemplates::for($type))
             ->values()
-            ->flatMap(function (array $clause, int $index) use ($types): array {
+            ->flatMap(function (array $clause, int $index) use ($types, $includeLegacyTomDeficiency): array {
                 $deficiency = $types[$index];
-                $option = [
-                    'value' => $deficiency->value,
-                    'label' => $deficiency === DeficiencyType::LateReporting ? 'Late reporting' : $clause['description'],
-                    'serial_number' => $clause['serial_number'],
-                ];
 
-                if ($deficiency !== DeficiencyType::LateReporting) {
-                    return [$option];
-                }
+                // Multiple deficiencies can share the same contractual clause.
+                $labels = match ($deficiency) {
+                    DeficiencyType::LateReporting => [
+                        $deficiency->value => 'Late reporting',
+                        DeficiencyType::LeavingDuty->value => DeficiencyType::LeavingDuty->label(),
+                    ],
+                    DeficiencyType::PersonalCashOrMalpractice => [
+                        DeficiencyType::PersonalCashAtTom->value => DeficiencyType::PersonalCashAtTom->label(),
+                        DeficiencyType::IndulgenceInMalpractices->value => DeficiencyType::IndulgenceInMalpractices->label(),
+                        ...($includeLegacyTomDeficiency ? [$deficiency->value => $clause['description']] : []),
+                    ],
+                    default => [$deficiency->value => $clause['description']],
+                };
 
-                // Both deficiencies retain the original contractual penalty and conditions.
-                return [$option, [
-                    'value' => DeficiencyType::LeavingDuty->value,
-                    'label' => DeficiencyType::LeavingDuty->label(),
+                return array_map(fn (string $value, string $label): array => [
+                    'value' => $value,
+                    'label' => $label,
                     'serial_number' => $clause['serial_number'],
-                ]];
+                ], array_keys($labels), array_values($labels));
             });
 
         return $options->push([
@@ -50,18 +54,18 @@ final class DeficiencyCatalog
     }
 
     /** @return list<string> */
-    public static function valuesFor(?SdmType $type): array
+    public static function valuesFor(?SdmType $type, bool $includeLegacyTomDeficiency = false): array
     {
         if ($type === null) {
             return [];
         }
 
-        return array_column(self::for($type), 'value');
+        return array_column(self::for($type, $includeLegacyTomDeficiency), 'value');
     }
 
     public static function serialNumberFor(SdmType $type, DeficiencyType $deficiency): ?int
     {
-        foreach (self::for($type) as $option) {
+        foreach (self::for($type, includeLegacyTomDeficiency: true) as $option) {
             if ($option['value'] === $deficiency->value) {
                 return $option['serial_number'];
             }
@@ -75,7 +79,7 @@ final class DeficiencyCatalog
     {
         return match ($type) {
             SdmType::BaggageHandling => [],
-            SdmType::Cfs, SdmType::WandW, SdmType::Marshall => [
+            SdmType::Cfs, SdmType::WandW, SdmType::Marshal => [
                 DeficiencyType::DressCode,
                 DeficiencyType::MobilePhoneOnDuty,
                 DeficiencyType::ImproperCleanliness,

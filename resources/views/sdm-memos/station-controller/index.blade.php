@@ -24,8 +24,8 @@
                                     $submittedTo = $memo->workflow_version >= 2
                                         ? $memo->stationManagerWorkflowStep
                                         : $memo->stationManagerApproval;
-                                    $typeLabel = $memo->service_type === \App\Enums\SdmType::Marshall
-                                        ? 'Marshal'
+                                    $typeLabel = $memo->service_type === \App\Enums\SdmType::Marshal
+                                        ? $memo->service_type->label()
                                         : $memo->service_type->code();
                                     $isPending = $memo->stationControllerStatusLabel() === 'Pending';
                                 @endphp
@@ -37,7 +37,7 @@
                                     </td>
                                     <td class="whitespace-nowrap px-4 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $typeLabel }}</td>
                                     <td class="min-w-64 px-4 py-4 text-sm text-gray-700 dark:text-gray-200">
-                                        {{ $memo->deficiencies->map(fn ($deficiency) => $deficiency->type->label())->join(', ') ?: '—' }}
+                                        {{ $memo->deficiencyLabels()->join(', ') ?: '—' }}
                                     </td>
                                     <td class="whitespace-nowrap px-4 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->submitted_at?->format('d-m-Y H:i') ?? '—' }}</td>
                                     <td class="px-4 py-4 text-sm text-gray-700 dark:text-gray-200">

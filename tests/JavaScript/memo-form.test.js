@@ -80,7 +80,7 @@ test('changing the incident date selects the contractor whose contract covers th
 
 test('missing matches clear the previous contractor selection', () => {
     const form = contractorForm();
-    form.serviceType = 'marshall';
+    form.serviceType = 'marshal';
     form.syncContractor();
     assert.equal(form.contractorId, '');
     assert.deepEqual(form.availableContractors, []);
@@ -101,6 +101,43 @@ test('multiple matching contractors require a choice and preserve a valid choice
     form.contractorId = '2';
     form.syncContractor();
     assert.equal(form.contractorId, '2');
+});
+
+test('the create form lists every contractor for the type and defaults to the station and date match', () => {
+    const form = contractorForm();
+    form.$el.dataset.contractorIdsByServiceType = JSON.stringify({
+        token_vending: [1, 2, 3],
+        customer_facilitation: [2, 3],
+        watch_and_ward: [3],
+    });
+    form.init();
+
+    assert.equal(form.contractorId, '1');
+    assert.deepEqual(form.availableContractors.map((contractor) => contractor.id), [1, 2, 3]);
+
+    form.incidentDate = '2026-10-31';
+    form.syncContractor();
+    assert.equal(form.contractorId, '3');
+    assert.deepEqual(form.availableContractors.map((contractor) => contractor.id), [1, 2, 3]);
+
+    form.contractorManuallySelected = true;
+    form.serviceType = 'customer_facilitation';
+    form.syncContractor({ serviceTypeChanged: true });
+
+    assert.equal(form.contractorId, '2');
+    assert.deepEqual(form.availableContractors.map((contractor) => contractor.id), [2, 3]);
+
+    form.contractorId = '3';
+    form.contractorManuallySelected = true;
+    form.incidentDate = '2026-11-03';
+    form.syncContractor();
+
+    assert.equal(form.contractorId, '3');
+
+    form.serviceType = 'watch_and_ward';
+    form.syncContractor({ serviceTypeChanged: true });
+    assert.equal(form.contractorId, '');
+    assert.deepEqual(form.availableContractors.map((contractor) => contractor.id), [3]);
 });
 
 test('duplicate contracts for the same contractor still auto-select that contractor', () => {

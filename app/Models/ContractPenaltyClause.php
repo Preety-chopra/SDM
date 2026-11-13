@@ -15,6 +15,20 @@ class ContractPenaltyClause extends Model
         return $this->belongsTo(ServiceContract::class, 'service_contract_id');
     }
 
+    public function wholeRupeeMaximum(): ?int
+    {
+        return $this->maximum_amount === null ? null : (int) floor((float) $this->maximum_amount);
+    }
+
+    public function wholeRupeeProposal(float $amount): float
+    {
+        $maximum = $this->wholeRupeeMaximum();
+
+        return $this->calculation_type === PenaltyCalculationType::Maximum && $maximum !== null
+            ? min(round($amount), $maximum)
+            : round($amount);
+    }
+
     public function suggestedAmount(array $inputs): ?float
     {
         return match ($this->calculation_type) {

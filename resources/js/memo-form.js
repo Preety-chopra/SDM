@@ -13,10 +13,12 @@ export function createMemoForm() {
         serviceType: '',
         contractorId: '',
         contractors: [],
+        contractorIdsByServiceType: null,
         contractorContracts: [],
         stationId: '',
         incidentDate: '',
         restoredContractorId: '',
+        contractorManuallySelected: false,
         deficiencyOpen: false,
         bookedShiftFrom: '',
         bookedShiftTo: '',
@@ -27,7 +29,9 @@ export function createMemoForm() {
             this.serviceType = this.$el.dataset.serviceType || '';
             this.contractorId = this.$el.dataset.contractorId || '';
             this.restoredContractorId = this.contractorId;
+            this.contractorManuallySelected = Boolean(this.contractorId);
             this.contractors = JSON.parse(this.$el.dataset.contractors || '[]');
+            this.contractorIdsByServiceType = JSON.parse(this.$el.dataset.contractorIdsByServiceType || 'null');
             this.contractorContracts = JSON.parse(this.$el.dataset.contractorContracts || '[]');
             this.stationId = this.$el.dataset.stationId || '';
             this.incidentDate = this.$el.dataset.incidentDate || '';
@@ -62,16 +66,32 @@ export function createMemoForm() {
                 .map((contract) => String(contract.contractor_id)))];
         },
         get availableContractors() {
-            return this.contractors.filter((contractor) => this.matchingContractorIds.includes(String(contractor.id))
+            const ids = this.contractorIdsByServiceType === null
+                ? this.matchingContractorIds
+                : (this.contractorIdsByServiceType[this.serviceType] || []).map(String);
+
+            return this.contractors.filter((contractor) => ids.includes(String(contractor.id))
                 || (this.restoredContractorId && String(contractor.id) === this.restoredContractorId));
         },
-        syncContractor() {
+        syncContractor({ serviceTypeChanged = false } = {}) {
             this.restoredContractorId = '';
+            if (this.contractorIdsByServiceType !== null) {
+                const available = this.availableContractors;
+                if (!serviceTypeChanged && this.contractorManuallySelected
+                    && available.some((contractor) => String(contractor.id) === this.contractorId)) {
+                    return;
+                }
+
+                this.contractorManuallySelected = false;
+                const matches = this.matchingContractorIds;
+                const defaultContractor = available.find((contractor) => matches.includes(String(contractor.id)));
+                this.contractorId = defaultContractor ? String(defaultContractor.id) : '';
+                return;
+            }
+
             const ids = this.availableContractors.map((contractor) => String(contractor.id));
-            if (ids.length === 1) {
-                this.contractorId = ids[0];
-            } else if (!ids.includes(this.contractorId)) {
-                this.contractorId = '';
+            if (!ids.includes(this.contractorId)) {
+                this.contractorId = ids.length === 1 ? ids[0] : '';
             }
         },
         syncSelectedDeficiencies() {

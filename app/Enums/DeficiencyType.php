@@ -22,6 +22,8 @@ enum DeficiencyType: string
     case CashCheck = 'cash_check';
     case UndervaluedTickets = 'undervalued_tickets';
     case Overcharging = 'overcharging';
+    case PersonalCashAtTom = 'personal_cash_at_tom';
+    case IndulgenceInMalpractices = 'indulgence_in_malpractices';
     case PersonalCashOrMalpractice = 'personal_cash_or_malpractice';
     case Other = 'other';
 
@@ -46,7 +48,9 @@ enum DeficiencyType: string
             self::CashCheck => 'TOM / CCC Inspection / Cash Checking',
             self::UndervaluedTickets => 'Issue of Undervalued Tickets',
             self::Overcharging => 'Overcharging',
-            self::PersonalCashOrMalpractice => 'Personal Cash or Malpractice at TOM',
+            self::PersonalCashAtTom => 'Working at TOM with personal cash',
+            self::IndulgenceInMalpractices => 'indulgence in malpractices',
+            self::PersonalCashOrMalpractice => 'Working at TOM with personal cash or indulgence in malpractices',
             self::Other => 'Other Discrepancy',
         };
     }

@@ -32,10 +32,10 @@ final class MemoAssessmentService
         return ($memo->serviceContract?->penaltyClauses ?? collect())
             ->whereIn('serial_number', $serialNumbers)
             ->mapWithKeys(function (ContractPenaltyClause $clause) use ($memo): array {
-                $amount = $this->lateReportingPenalty($memo, $clause)
+                $calculated = $this->lateReportingPenalty($memo, $clause)
                     ?? $this->cashMismatchPenalty($memo, $clause)
                     ?? match ($clause->calculation_type) {
-                        PenaltyCalculationType::Maximum => $clause->maximum_amount,
+                        PenaltyCalculationType::Maximum => $clause->wholeRupeeMaximum(),
                         PenaltyCalculationType::Fixed, PenaltyCalculationType::FixedPlusCost => $clause->suggestedAmount([]),
                         default => null,
                     };
@@ -43,7 +43,7 @@ final class MemoAssessmentService
                 return [$clause->id => [
                     'contract_penalty_clause_id' => $clause->id,
                     'calculation_inputs' => null,
-                    'proposed_amount' => $amount === null ? null : number_format((float) $amount, 2, '.', ''),
+                    'proposed_amount' => $calculated === null ? null : number_format($clause->wholeRupeeProposal($calculated), 0, '.', ''),
                     'justification' => null,
                 ]];
             });
@@ -93,20 +93,22 @@ final class MemoAssessmentService
                 ->findOrFail($item['contract_penalty_clause_id']);
             $inputs = $item['calculation_inputs'] ?? [];
             $lateReportingPenalty = $this->lateReportingPenalty($memo, $clause);
-            $suggested = $lateReportingPenalty
+            $calculated = $lateReportingPenalty
                 ?? $this->cashMismatchPenalty($memo, $clause)
                 ?? $clause->suggestedAmount($inputs);
-            $proposed = round((float) $item['proposed_amount'], 2);
+            $suggested = $calculated === null ? null : round($calculated);
+            $proposed = (float) $item['proposed_amount'];
+            $maximum = $clause->wholeRupeeMaximum();
 
             if ($proposed < 0) {
                 throw ValidationException::withMessages(['items' => 'Penalty amounts cannot be negative.']);
             }
 
             if ($clause->calculation_type === PenaltyCalculationType::Maximum
-                && $clause->maximum_amount !== null
-                && $proposed > (float) $clause->maximum_amount) {
+                && $maximum !== null
+                && $proposed > $maximum) {
                 throw ValidationException::withMessages([
-                    'items' => "Clause {$clause->serial_number} cannot exceed ₹{$clause->maximum_amount}.",
+                    'items' => "Clause {$clause->serial_number} cannot exceed ₹".number_format($maximum).'.',
                 ]);
             }
 
@@ -114,9 +116,9 @@ final class MemoAssessmentService
                 PenaltyCalculationType::Fixed,
                 PenaltyCalculationType::PerDayPerWorker,
                 PenaltyCalculationType::FixedPlusCost,
-            ], true) && $suggested !== null && abs($proposed - $suggested) > 0.009) {
+            ], true) && $suggested !== null && $proposed !== $suggested) {
                 throw ValidationException::withMessages([
-                    'items' => "Clause {$clause->serial_number} must use the contractual calculation of ₹".number_format($suggested, 2).'.',
+                    'items' => "Clause {$clause->serial_number} must use the contractual calculation of ₹".number_format($suggested).'.',
                 ]);
             }
 
@@ -135,11 +137,11 @@ final class MemoAssessmentService
             ];
         });
 
-        $calculatedTotal = round((float) $prepared->sum('proposed_amount'), 2);
+        $calculatedTotal = $prepared->sum('proposed_amount');
         $total = $stage === WorkflowStepType::CmcAssessment && array_key_exists('proposed_total', $data)
-            ? round((float) $data['proposed_total'], 2)
+            ? (float) $data['proposed_total']
             : $calculatedTotal;
-        $cappedTotal = round((float) $prepared->where('cap_applicable', true)->sum('proposed_amount'), 2);
+        $cappedTotal = $prepared->where('cap_applicable', true)->sum('proposed_amount');
         $capPercentage = $monthlyBill && $monthlyBill > 0 ? round(($cappedTotal / $monthlyBill) * 100, 3) : null;
 
         $assessment = $memo->assessments()->create([

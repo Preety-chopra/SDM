@@ -201,12 +201,18 @@ class SdmWorkflowTest extends TestCase
             [$operationsManager, 'forward', WorkflowStage::DeputyGeneralManager, MemoStatus::UnderReview, null],
             [$dgm, 'approve', WorkflowStage::DeputyGeneralManager, MemoStatus::Closed, null],
         ] as [$actor, $action, $stage, $status, $forwardTo]) {
+            $destination = match ($actor) {
+                $stationManager => route('sdm-memos.index'),
+                $lineManager => route('sdm-memos.index', ['category' => 'pending']),
+                default => route('sdm-memos.show', $memo),
+            };
+
             $this->actingAs($actor)
                 ->post(route('sdm-memos.workflow.store', $memo), array_filter([
                     'action' => $action,
                     'forward_to_employee_number' => $forwardTo,
                 ]))
-                ->assertRedirect(route('sdm-memos.show', $memo));
+                ->assertRedirect($destination);
 
             $memo->refresh();
             $this->assertSame($stage, $memo->current_stage);
@@ -362,10 +368,8 @@ class SdmWorkflowTest extends TestCase
                 'station_record_brief_remarks' => 'Verified and corrected by the assigned SM.',
                 'deficiency_remarks' => [DeficiencyType::Other->value => 'Corrected deficiency details.'],
             ])
-        // ->assertRedirect()
-            ->assertRedirect(route('sdm-memos.show', $memo))
+            ->assertRedirect(route('sdm-memos.index'))
             ->assertSessionHas('status', 'SDM updated.');
-        // ->assertSessionHas('status', 'SDM updated.');
 
         $memo->refresh();
         $this->assertSame('Corrected by Station Manager', $memo->staff_name);
@@ -623,7 +627,8 @@ class SdmWorkflowTest extends TestCase
         Carbon::setTestNow('2026-09-10 10:00:00');
         $this->actingAs($stationManager)->patch(route('sdm-memos.station-manager.update', $memo), [
             'station_manager_employee_number' => $replacementStationManager->employee_number,
-        ])->assertRedirect(route('sdm-memos.show', $memo));
+        ])->assertRedirect(route('sdm-memos.index'))
+            ->assertSessionHas('status', 'Pending SDM handed over successfully.');
 
         $assignment = $memo->approvals()->where('role', WorkflowStage::StationManager->value)->sole();
         $this->assertSame($replacementStationManager->id, $assignment->assigned_to);
@@ -785,7 +790,7 @@ class SdmWorkflowTest extends TestCase
 
         $this->actingAs($lineManager)->patch(route('sdm-memos.line-manager.update', $memo), [
             'line_manager_employee_number' => $replacementLineManager->employee_number,
-        ])->assertRedirect(route('sdm-memos.show', $memo));
+        ])->assertRedirectToRoute('sdm-memos.index', ['category' => 'pending']);
 
         $assignment = $memo->approvals()->where('role', WorkflowStage::LineManager->value)->sole();
         $this->assertSame($replacementLineManager->id, $assignment->assigned_to);
@@ -857,7 +862,7 @@ class SdmWorkflowTest extends TestCase
 
         $this->actingAs($lineManager)->patch(route('sdm-memos.line-manager.update', $memo), [
             'line_manager_employee_number' => $replacementLineManager->employee_number,
-        ])->assertRedirect(route('sdm-memos.show', $memo));
+        ])->assertRedirectToRoute('sdm-memos.index', ['category' => 'pending']);
 
         $lineReviewStep->refresh();
         $this->assertSame($replacementLineManager->id, $lineReviewStep->assigned_to);
@@ -980,7 +985,7 @@ class SdmWorkflowTest extends TestCase
         $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'cancel_after_counselling',
             'remarks' => 'Counselling completed with the staff member.',
-        ])->assertRedirect(route('sdm-memos.index'))
+        ])->assertRedirectToRoute('sdm-memos.index', ['category' => 'pending'])
             ->assertSessionHas('status', 'SDM cancelled after counselling.');
         $this->assertDatabaseHas('audit_logs', [
             'auditable_id' => $memo->id,

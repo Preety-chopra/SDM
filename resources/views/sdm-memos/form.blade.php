@@ -4,6 +4,7 @@
     $late = $memo?->deficiencies->first(fn ($item) => $item->type === \App\Enums\DeficiencyType::LateReporting)?->lateReporting;
     $lateTime = fn (string $field) => substr((string) old('late_reporting.'.$field, $late?->$field), 0, 5);
     $overchargeAmount = old('overcharge_amount', $memo?->deficiencies->first(fn ($item) => $item->type === \App\Enums\DeficiencyType::Overcharging)?->overcharge_amount);
+    $shortfallCount = old('shortfall_count', $memo?->deficiencies->first(fn ($item) => $item->type === \App\Enums\DeficiencyType::ShortDeployment)?->shortfall_count);
     $incidentTime = substr((string) old('incident_time', $memo?->incident_time ?? now('Asia/Kolkata')->format('H:i')), 0, 5);
     $cashAmountType = old('cash_check.amount_type', $memo?->cashCheck?->amount_type);
     $inputClass = 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100';
@@ -24,6 +25,7 @@
             : ['label' => 'Station', 'value' => collect([$station?->code, $station?->name])->filter()->join(' · ')],
         ['label' => 'SDM type', 'name' => 'service_type'],
         ['label' => 'Deficiencies', 'name' => 'deficiencies[]'],
+        ['label' => 'Number of staff shortfalls', 'name' => 'shortfall_count'],
         ['label' => 'Incident date', 'name' => 'incident_date'],
         ['label' => 'Incident time', 'name' => 'incident_time'],
         ...($showUrgentOption ? [['label' => 'Priority', 'name' => 'is_urgent', 'emptyValue' => 'Normal']] : []),
@@ -48,6 +50,7 @@
         <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
             <form method="POST" enctype="multipart/form-data" action="{{ $memo ? route('sdm-memos.update', $memo) : route('sdm-memos.store') }}" class="flex flex-col gap-6" x-data="memoForm" @submit="requestSdmConfirmation($event)" data-selected-deficiencies='@json($selected)' data-service-type="{{ $serviceType }}" data-deficiency-options='@json($deficiencyOptionsByType)' data-booked-shift-from="{{ $lateTime('booked_shift_from') }}" data-booked-shift-to="{{ $lateTime('booked_shift_to') }}" data-actual-reporting-time="{{ $lateTime('actual_reporting_time') }}" data-confirmation-show-action="false" data-confirmation-preview="{{ json_encode($confirmationPreview) }}" data-confirmation-fields="{{ json_encode($confirmationFields) }}"
                 data-contractor-id="{{ old('contractor_id', $memo?->contractor_id) }}"
+                data-contractor-ids-by-service-type="{{ $contractorIdsByServiceType?->toJson() }}"
                 data-staff-lookup-url="{{ $memo ? route('sdm-memos.staff-lookup-for-edit', $memo) : route('sdm-memos.staff-lookup') }}"
                 data-staff-identifier="{{ old('employee_number', $memo?->employee_number) }}"
                 data-staff-name="{{ old('staff_name', $memo?->staff_name) }}"
@@ -89,7 +92,7 @@
                         @endif
                         <div>
                             <x-input-label for="service_type" value="SDM type" required/>
-                            <select id="service_type" name="service_type" x-model="serviceType" @change="syncSelectedDeficiencies(); syncContractor()" class="{{ $inputClass }}" required>
+                            <select id="service_type" name="service_type" x-model="serviceType" @change="syncSelectedDeficiencies(); syncContractor({ serviceTypeChanged: true })" class="{{ $inputClass }}" required>
                                 <option value="">Select type</option>
                                 @foreach($sdmTypes as $type)
                                     <option value="{{ $type->value }}">{{ $type->code() }} · {{ $type->label() }}</option>
@@ -148,8 +151,8 @@
 
                         <div>
                             <x-input-label for="contractor_id" value="Contractor" required/>
-                            <select id="contractor_id" name="contractor_id" x-model="contractorId" class="{{ $inputClass }}">
-                                <option value="" x-text="!serviceType ? 'Select an SDM type first' : (availableContractors.length ? 'Select contractor' : 'No matching published contract')">Select an SDM type first</option>
+                            <select id="contractor_id" name="contractor_id" x-model="contractorId" @change="contractorManuallySelected = true" class="{{ $inputClass }}">
+                                <option value="" x-text="!serviceType ? 'Select an SDM type first' : (availableContractors.length ? 'Select contractor' : '{{ $memo ? 'No matching published contract' : 'No contractors for this SDM type' }}')">Select an SDM type first</option>
                                 <template x-for="contractor in availableContractors" :key="contractor.id">
                                     <option :value="String(contractor.id)" :selected="contractorId === String(contractor.id)" x-text="contractor.name"></option>
                                 </template>
@@ -235,9 +238,21 @@
                         <input id="overcharge_amount" type="text" name="overcharge_amount" inputmode="decimal" maxlength="13" value="{{ $overchargeAmount }}" :disabled="!has('overcharging')" aria-describedby="overcharge_amount_error" class="{{ $inputClass }}">
                         <x-input-error id="overcharge_amount_error" :messages="$errors->get('overcharge_amount')"/>
                     </div>
+                    <div x-cloak x-show="has('short_deployment')" class="mt-6 flex flex-col gap-2 rounded-xl bg-gray-50 p-4 dark:bg-gray-900">
+                        <x-input-label for="shortfall_count" value="Number of staff shortfalls" :required="$isDraft"/>
+                        <input id="shortfall_count" name="shortfall_count" type="number" min="1" max="4294967295" step="1"
+                            value="{{ is_scalar($shortfallCount) ? $shortfallCount : '' }}" :disabled="!has('short_deployment')"
+                            @if($isDraft) :required="has('short_deployment')" @endif
+                            @error('shortfall_count') aria-invalid="true" aria-describedby="shortfall_count_error" @enderror
+                            class="{{ $inputClass }}">
+                        <x-input-error id="shortfall_count_error" :messages="$errors->get('shortfall_count')"/>
+                    </div>
                     <div class="mt-5">
-                        <x-input-label for="station_record_brief_remarks" value="Remarks (optional)"/>
-                        <textarea id="station_record_brief_remarks" name="station_record_brief_remarks" rows="4" class="{{ $inputClass }}">{{ old('station_record_brief_remarks', $memo?->station_record_brief_remarks) }}</textarea>
+                        <x-input-label for="station_record_brief_remarks">
+                            Remarks <span @if($isDraft) x-text="has('{{ \App\Enums\DeficiencyType::Other->value }}') ? '(required for Other Discrepancy)' : '(optional)'" @endif>(optional)</span>
+                        </x-input-label>
+                        <textarea id="station_record_brief_remarks" name="station_record_brief_remarks" rows="4" @if($isDraft) :required="has('{{ \App\Enums\DeficiencyType::Other->value }}')" @endif @error('station_record_brief_remarks') aria-invalid="true" aria-describedby="station_record_brief_remarks_error" @enderror class="{{ $inputClass }}">{{ old('station_record_brief_remarks', $memo?->station_record_brief_remarks) }}</textarea>
+                        <x-input-error id="station_record_brief_remarks_error" :messages="$errors->get('station_record_brief_remarks')"/>
                     </div>
 
                     <div class="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
@@ -253,7 +268,7 @@
                                 class="mt-0.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-800"
                             >
                             <span class="text-sm font-medium text-gray-800 dark:text-gray-100">
-                                I have received acknowledgement from outsourced staff
+                                I have received acknowledgement from outsourced staff/supervisor.
                                 <span class="text-red-600" aria-hidden="true">*</span>
                             </span>
                         </label>

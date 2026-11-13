@@ -28,7 +28,7 @@ class WatchWardAndMarshalPenaltyClausesTest extends TestCase
 
     public function test_marshal_contract_uses_its_documented_penalty_clauses(): void
     {
-        $contract = $this->contract(SdmType::Marshall, 'MAR/2026/01');
+        $contract = $this->contract(SdmType::Marshal, 'MAR/2026/01');
 
         $this->assertDocumentedClauses($contract, [
             5 => 'Misbehavior and poor customer support by Marshal/Supervisor',

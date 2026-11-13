@@ -30,6 +30,13 @@ final class ServiceContractService
         return $this->contracts->paginate($status, $serviceType);
     }
 
+    public function memoContractorIdsByServiceType(): Collection
+    {
+        return $this->contracts->contractorServiceTypes()
+            ->groupBy('service_type')
+            ->map(fn (Collection $contracts): Collection => $contracts->pluck('contractor_id'));
+    }
+
     public function memoContractorOptions(?int $stationId): Collection
     {
         return $this->contracts->activeFor(null, stationId: $stationId)

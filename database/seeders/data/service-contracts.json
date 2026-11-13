@@ -1006,7 +1006,7 @@
             "contract_number": "AWPO",
             "title": "Deployment of Ex-Servicemen as Marshals",
             "status": "published",
-            "service_type": "marshall",
+            "service_type": "marshal",
             "effective_from": "2023-11-01",
             "effective_to": "2026-10-31",
             "published_at": "2026-10-31 12:27:18",

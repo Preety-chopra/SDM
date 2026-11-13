@@ -82,7 +82,7 @@ class StationControllerMemoPortalTest extends TestCase
             ->assertSee('Processed by SM')
             ->assertSee($stationManager->name)
             ->assertSee($stationManager->employee_number)
-            ->assertSee('Late Reporting')
+            ->assertSeeText('Late reporting')
             ->assertSee(route('sdm-memos.show', $recent->first()), false)
             ->assertDontSee($oldest->serial_number)
             ->assertDontSee($draft->serial_number)

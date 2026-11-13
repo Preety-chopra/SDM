@@ -13,6 +13,37 @@ use Tests\TestCase;
 
 class ServiceDeficiencyMemoServiceTypeMigrationTest extends TestCase
 {
+    public function test_rename_converts_memos_and_contracts_and_can_be_reversed(): void
+    {
+        $this->legacySchema()->up();
+        Schema::create('service_contracts', function (Blueprint $table): void {
+            $table->id();
+            $table->string('service_type', 50);
+        });
+
+        DB::table('service_deficiency_memos')->insert([
+            ['id' => 1, 'service_type' => 'marshall', 'serial_number' => 'MAR-OLD', 'deleted_at' => '2026-11-01 12:00:00'],
+            ['id' => 2, 'service_type' => 'watch_and_ward', 'serial_number' => 'W&W-OLD', 'deleted_at' => null],
+        ]);
+        DB::table('service_contracts')->insert([
+            ['id' => 1, 'service_type' => 'marshall'],
+            ['id' => 2, 'service_type' => 'watch_and_ward'],
+        ]);
+
+        $migration = require database_path('migrations/2026_11_13_100713_rename_marshall_service_type_to_marshal.php');
+        $migration->up();
+
+        $this->assertDatabaseHas('service_deficiency_memos', ['id' => 1, 'service_type' => 'marshal', 'serial_number' => 'MAR-OLD', 'deleted_at' => '2026-11-01 12:00:00']);
+        $this->assertDatabaseHas('service_deficiency_memos', ['id' => 2, 'service_type' => 'watch_and_ward']);
+        $this->assertDatabaseHas('service_contracts', ['id' => 1, 'service_type' => 'marshal']);
+        $this->assertDatabaseHas('service_contracts', ['id' => 2, 'service_type' => 'watch_and_ward']);
+
+        $migration->down();
+
+        $this->assertDatabaseHas('service_deficiency_memos', ['id' => 1, 'service_type' => 'marshall']);
+        $this->assertDatabaseHas('service_contracts', ['id' => 1, 'service_type' => 'marshall']);
+    }
+
     public function test_upgrade_accepts_new_service_types_and_preserves_existing_memos(): void
     {
         $migration = $this->legacySchema();

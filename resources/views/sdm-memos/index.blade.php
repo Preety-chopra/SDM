@@ -314,7 +314,7 @@
                                     @endif
                                 </td>
                                 <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $memo->service_type->code() }}</td>
-                                <td class="min-w-64 px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $memo->deficiencies->map(fn ($deficiency) => $deficiency->type->label())->join(', ') ?: '—' }}</td>
+                                <td class="min-w-64 px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $memo->deficiencyLabels()->join(', ') ?: '—' }}</td>
                                 <td class="min-w-48 px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
                                     <span class="block font-medium text-gray-900 dark:text-gray-100">{{ $headerFilterTable ? ($memo->line_code ?: '—') : ($memo->line_name ?: '—') }}</span>
                                     <span class="block text-xs text-gray-500 dark:text-gray-400">{{ $memo->station_name ?: '—' }}</span>

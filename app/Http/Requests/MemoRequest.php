@@ -90,7 +90,15 @@ abstract class MemoRequest extends FormRequest
     {
         $strict = $this->requiresCompleteMemo();
         $types = $this->input('deficiencies', []);
+        $shortDeploymentSelected = in_array(DeficiencyType::ShortDeployment->value, (array) $types, true);
+        $otherRemarks = $this->input('deficiency_remarks.'.DeficiencyType::Other->value);
+        $hasLegacyOtherRemarks = $this->missing('station_record_brief_remarks') && is_string($otherRemarks) && filled($otherRemarks);
+        $requiresRemarks = $this->isSubmission()
+            && in_array(DeficiencyType::Other->value, (array) $types, true)
+            && ! $hasLegacyOtherRemarks;
         $serviceType = SdmType::tryFrom($this->string('service_type')->toString());
+        $memo = $this->route('sdm_memo');
+        $deficiencyValues = DeficiencyCatalog::valuesFor($serviceType, $memo instanceof ServiceDeficiencyMemo && $memo->hasLegacyTomDeficiency());
         $isStationController = $this->isStationControllerUser();
         $isStationManager = $this->user()?->hasRole(UserRole::StationManager->value) ?? false;
         $rules = [
@@ -102,15 +110,24 @@ abstract class MemoRequest extends FormRequest
             'incident_time' => [$strict ? 'required' : 'nullable', 'date_format:H:i'],
             'staff_name' => [$strict ? 'required' : 'nullable', 'string', 'max:255'],
             'employee_number' => [$strict ? 'required' : 'nullable', 'string', 'max:100'],
-            'station_record_brief_remarks' => ['nullable', 'string', 'max:5000'],
+            'station_record_brief_remarks' => [Rule::requiredIf($requiresRemarks), 'nullable', 'string', 'max:5000'],
             'station_manager_employee_number' => [Rule::requiredIf($this->isSubmission() && $isStationController), 'nullable', 'string', 'max:100'],
             'line_manager_employee_number' => [Rule::requiredIf($this->isSubmission() && $isStationManager), 'nullable', 'string', 'max:100'],
             'deficiencies' => $strict ? ['required', 'array', 'min:1'] : ['nullable', 'array'],
-            'deficiencies.*' => [Rule::in(DeficiencyCatalog::valuesFor($serviceType)), 'distinct'],
+            'deficiencies.*' => [Rule::in($deficiencyValues), 'distinct'],
             'outsourced_staff_acknowledged' => [$strict ? 'accepted' : 'nullable', 'boolean'],
             'deficiency_remarks' => ['nullable', 'array'],
             'deficiency_remarks.*' => ['nullable', 'string', 'max:5000'],
             'overcharge_amount' => [Rule::excludeIf(! in_array(DeficiencyType::Overcharging->value, (array) $types, true)), 'nullable', 'numeric', 'decimal:0,2', 'between:0,9999999999.99'],
+            'shortfall_count' => [
+                Rule::excludeIf(! $shortDeploymentSelected),
+                'bail',
+                Rule::requiredIf($this->isSubmission() && $shortDeploymentSelected),
+                'nullable',
+                'integer',
+                'min:1',
+                'max:4294967295',
+            ],
             'late_reporting' => ['nullable', 'array'],
             'late_reporting.booked_shift_from' => [Rule::requiredIf($strict && in_array(DeficiencyType::LateReporting->value, $types, true)), 'nullable', 'date_format:H:i'],
             'late_reporting.booked_shift_to' => [Rule::requiredIf($strict && in_array(DeficiencyType::LateReporting->value, $types, true)), 'nullable', 'date_format:H:i'],
@@ -148,6 +165,10 @@ abstract class MemoRequest extends FormRequest
     {
         return [
             'outsourced_staff_acknowledged.accepted' => 'Confirm that you have received acknowledgement from outsourced staff.',
+            'station_record_brief_remarks.required' => 'Enter remarks for Other Discrepancy.',
+            'shortfall_count.required' => 'Enter the number of staff shortfalls.',
+            'shortfall_count.integer' => 'Enter a positive whole number for the staff shortfall.',
+            'shortfall_count.min' => 'Enter a positive whole number for the staff shortfall.',
         ];
     }
 

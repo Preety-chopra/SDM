@@ -20,6 +20,8 @@ final class NegativePointCatalog
             DeficiencyType::PublicComplaint,
             DeficiencyType::Misbehavior,
             DeficiencyType::ContractTermsViolation,
+            DeficiencyType::PersonalCashAtTom,
+            DeficiencyType::IndulgenceInMalpractices,
             DeficiencyType::PersonalCashOrMalpractice => 5,
             DeficiencyType::PossessionOfLiveTickets,
             DeficiencyType::UndervaluedTickets,

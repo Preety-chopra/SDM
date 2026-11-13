@@ -530,7 +530,7 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertSee('Current status')
             ->assertSee('Last updated on')
             ->assertSee('Pending (at SM level)')
-            ->assertSee('Poor Dress Code / Failure to Follow Instructions')
+            ->assertSeeText('Poor dress code')
             ->assertSee('01-08-2026 10:00');
 
         $this->assertDoesNotMatchRegularExpression('/>\s*Serial number\s*</', $stationManagerIndexResponse->getContent());
@@ -576,7 +576,7 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertSee('data-confirmation-show-action="false"', false)
             ->assertSee('data-confirmation-fields="[]"', false)
             ->assertSee('01-08-2026 15:30')
-            ->assertSee('Poor Dress Code / Failure to Follow Instructions')
+            ->assertSee('&quot;label&quot;:&quot;Selected Deficiency&quot;,&quot;value&quot;:&quot;Poor dress code&quot;', false)
             ->assertSee('name="forward_to_employee_number"', false)
             ->assertSee('x-data="employeeAutocomplete"', false)
             ->assertSee($lineManager->employee_number.' - '.$lineManager->name)
@@ -619,8 +619,9 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertSee('x-show="! showAllClauses"', false)
             ->assertSee('@click="showAllClauses = true"', false)
             ->assertSee('Add more deficiency')
-            ->assertSee('name="items[0][proposed_amount]"', false)
-            ->assertSee('value="200.00"', false)
+            ->assertSee('Up to 500')
+            ->assertDontSee('Up to maximum amount · maximum ₹500.00')
+            ->assertSee('name="items[0][proposed_amount]" type="number" min="0" step="1" value="200"', false)
             ->assertSee('data-timeline-state="forwarded"', false)
             ->assertSee('data-timeline-state="current"', false)
             ->assertDontSee('Manager CMC forwarding for scrutiny')
@@ -635,7 +636,10 @@ class ContractPenaltyWorkflowTest extends TestCase
                 'contract_penalty_clause_id' => $addedClause->id,
                 'proposed_amount' => '150.00',
             ]],
-        ])->assertRedirect()->assertSessionHasNoErrors();
+        ])->assertRedirectToRoute('sdm-memos.index', ['category' => 'pending'])->assertSessionHasNoErrors();
+        $this->get(route('sdm-memos.index', ['category' => 'pending']))
+            ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => ! $memos->contains('id', $memo->id));
         $this->actingAs($stationManager)->get(route('sdm-memos.index'))
             ->assertOk()
             ->assertSee('>Processed by AM</span>', false)
@@ -661,8 +665,9 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertSee("x-data='{ selectedClauses: [\"{$addedClause->id}\"], showAllClauses: false }'", false)
             ->assertSee('Add more deficiencies')
             ->assertSee('name="items[1][proposed_amount]"', false)
-            ->assertSee('value="150.00"', false)
-            ->assertSee('name="proposed_total" type="number" min="0" step="0.01" value="150.00"', false)
+            ->assertSee('name="items[1][proposed_amount]" type="number" min="0" step="1" value="150"', false)
+            ->assertSee('name="proposed_total" type="number" min="0" step="1" value="150"', false)
+            ->assertSee('₹150 · Proposed')
             ->assertSee('name="negative_points" type="number" min="0" value="0"', false)
             ->assertDontSee('<option value="none">', false)
             ->assertSee('<option value="warning">Warning</option>', false)
@@ -784,6 +789,17 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->post(route('sdm-memos.no-objection.store', $memo))
             ->assertRedirect();
 
+        $this->actingAs($cmcStaff)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('name="amount" type="number" step="1" value="165"', false);
+
+        $this->actingAs($cmcStaff)->post(route('sdm-memos.deduction.store', $memo), [
+            'bill_month' => '2026-08',
+            'bill_reference' => 'BILL-2026-08-19',
+            'deducted_at' => '2026-08-28',
+            'amount' => '165.001',
+        ])->assertSessionHasErrors(['amount' => 'The deduction must exactly match the approved amount.']);
+
         $this->actingAs($cmcStaff)->post(route('sdm-memos.deduction.store', $memo), [
             'bill_month' => '2026-08',
             'bill_reference' => 'BILL-2026-08-19',
@@ -795,6 +811,74 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->assertSame(MemoStatus::Closed, $memo->status);
         $this->assertSame('165.00', $memo->deduction->amount);
         $this->assertGreaterThanOrEqual(15, $memo->auditLogs()->count());
+        $this->actingAs($cmcStaff)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('Deducted ₹165 against BILL-2026-08-19');
+    }
+
+    public function test_line_review_rejects_a_fractional_penalty_and_prefills_within_a_fractional_contract_maximum(): void
+    {
+        [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
+        $cmcStaff = $this->user(UserRole::CmcStaff);
+        $contractor = Contractor::query()->create(['name' => 'Whole Rupee Partner', 'is_active' => true]);
+        $contract = $this->contract($contractor, $cmcStaff, SdmType::Cfs, 'CFA/WHOLE');
+        $contract->update(['status' => 'published', 'published_at' => now()]);
+        $clause = $contract->penaltyClauses()->where('serial_number', 1)->sole();
+        $clause->update(['maximum_amount' => '200.75']);
+        $memo = $this->submittedMemo($stationUser, $contractor, $contract);
+
+        $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'forward',
+            'forward_to_employee_number' => $lineManager->employee_number,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $showUrl = route('sdm-memos.show', $memo);
+        $this->actingAs($lineManager)->get($showUrl)
+            ->assertOk()
+            ->assertSee('Up to 200')
+            ->assertSee('name="items[0][proposed_amount]" type="number" min="0" step="1" value="200"', false);
+
+        $this->from($showUrl)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'forward',
+            'items' => [['contract_penalty_clause_id' => $clause->id, 'proposed_amount' => '199.50']],
+        ])->assertRedirect($showUrl)->assertSessionHasErrors([
+            'items.0.proposed_amount' => 'Enter the proposed amount in whole rupees.',
+        ]);
+
+        $this->assertSame(0, $memo->assessments()->count());
+    }
+
+    public function test_a_previously_approved_fractional_penalty_can_be_deducted_at_its_exact_amount(): void
+    {
+        [$stationUser] = $this->workflowUsers();
+        $cmcStaff = $this->user(UserRole::CmcStaff);
+        $contractor = Contractor::query()->create(['name' => 'Legacy Penalty Partner', 'is_active' => true]);
+        $contract = $this->contract($contractor, $cmcStaff, SdmType::Cfs, 'CFA/LEGACY-PENALTY');
+        $contract->update(['status' => 'published', 'published_at' => now()]);
+        $memo = $this->submittedMemo($stationUser, $contractor, $contract);
+        $memo->update(['status' => MemoStatus::PendingDeduction, 'cmc_staff_id' => $cmcStaff->id]);
+        $memo->assessments()->create([
+            'round' => 1,
+            'version' => 1,
+            'source_stage' => WorkflowStepType::CmcAssessment->value,
+            'proposed_by' => $cmcStaff->id,
+            'proposed_total' => '165.50',
+            'status' => 'approved',
+        ]);
+
+        $this->actingAs($cmcStaff)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('name="amount" type="number" step="0.01" value="165.50"', false);
+
+        $this->post(route('sdm-memos.deduction.store', $memo), [
+            'bill_month' => '2026-08',
+            'bill_reference' => 'BILL-LEGACY',
+            'deducted_at' => '2026-08-28',
+            'amount' => '165.50',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame('165.50', $memo->deduction()->sole()->amount);
+        $this->assertSame(MemoStatus::Closed, $memo->fresh()->status);
     }
 
     public function test_dgm_return_preserves_the_first_round_and_routes_back_to_cmc(): void
@@ -934,7 +1018,9 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'request_cancellation',
             'forward_to_employee_number' => $lineManager->employee_number,
-        ])->assertRedirect()->assertSessionHasNoErrors();
+        ])->assertSessionHasNoErrors()
+            ->assertRedirect(route('sdm-memos.index'))
+            ->assertSessionHas('status', 'SDM workflow updated.');
 
         $memo->refresh();
         $stationManagerStep = $memo->workflowSteps()->where('stage', WorkflowStepType::StationManager->value)->sole();
@@ -995,7 +1081,7 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'cancel_after_counselling',
             'remarks' => 'Counselling completed with the staff member.',
-        ])->assertRedirect(route('sdm-memos.index'));
+        ])->assertRedirectToRoute('sdm-memos.index', ['category' => 'pending']);
 
         $this->assertSame(MemoStatus::Cancelled, $memo->fresh()->status);
         $this->assertSame(MemoCancellationType::AfterCounselling, $memo->fresh()->cancellation_type);
@@ -1031,7 +1117,7 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'cancel',
             'remarks' => 'Cancelled without counselling.',
-        ])->assertRedirect(route('sdm-memos.index'))
+        ])->assertRedirectToRoute('sdm-memos.index', ['category' => 'pending'])
             ->assertSessionHas('status', 'SDM cancelled.');
 
         $memo->refresh();
@@ -1279,7 +1365,7 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertSee("x-show=\"showAllClauses || selectedClauses.includes('{$clause->id}')\"", false)
             ->assertSee("x-show=\"showAllClauses || selectedClauses.includes('{$additionalClause->id}')\"", false)
             ->assertSee('Add more deficiencies')
-            ->assertSee('name="proposed_total" type="number" min="0" step="0.01" value="100.00"', false)
+            ->assertSee('name="proposed_total" type="number" min="0" step="1" value="100"', false)
             ->assertSee('name="negative_points" type="number" min="0" value="3"', false)
             ->assertDontSee('<option value="none">', false)
             ->assertSee('<option value="warning">Warning</option>', false)
@@ -1291,6 +1377,21 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertSee('name="assessment_pdf"', false)
             ->assertSee('accept=".pdf,application/pdf"', false)
             ->assertSee('name="staff_action"', false);
+
+        $this->actingAs($cmcTeamLead)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'forward',
+            'items' => [[
+                'contract_penalty_clause_id' => $clause->id,
+                'proposed_amount' => '125',
+                'calculation_inputs' => ['additional_cost' => '0.50'],
+            ]],
+            'proposed_total' => '110.50',
+            'negative_points' => 1,
+            'staff_action' => 'warning',
+        ])->assertSessionHasErrors([
+            'items.0.calculation_inputs.additional_cost' => 'Enter the loss or damage cost in whole rupees.',
+            'proposed_total' => 'Enter the total proposed amount in whole rupees.',
+        ]);
 
         $this->actingAs($cmcTeamLead)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'forward',
@@ -1450,7 +1551,7 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->actingAs($lineManager)->get(route('sdm-memos.show', $memo))
             ->assertOk()
             ->assertSee('name="items[3][proposed_amount]"', false)
-            ->assertSee('value="200.00"', false);
+            ->assertSee('name="items[3][proposed_amount]" type="number" min="0" step="1" value="200"', false);
 
         $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'forward',
@@ -1483,7 +1584,7 @@ class ContractPenaltyWorkflowTest extends TestCase
         $prefill = $assessments->lineReviewPrefill($memo);
 
         $this->assertCount(1, $prefill);
-        $this->assertSame(number_format($maximum, 2, '.', ''), $prefill[$clause->id]['proposed_amount']);
+        $this->assertSame((string) $maximum, $prefill[$clause->id]['proposed_amount']);
         $this->assertSame(0, $assessments->negativePointsPrefill($memo));
 
         $assessment = $assessments->create($memo, $cmcStaff, WorkflowStepType::CmcAssessment, 1, [
@@ -1496,6 +1597,37 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->assertSame(number_format($maximum, 2, '.', ''), $item->maximum_amount);
         $this->assertSame($capped, $item->cap_applicable);
         $this->assertSame($clause->calculation_type, $item->calculation_type);
+    }
+
+    #[TestWith([['personal_cash_at_tom']])]
+    #[TestWith([['indulgence_in_malpractices']])]
+    #[TestWith([['personal_cash_at_tom', 'indulgence_in_malpractices']])]
+    public function test_tom_deficiencies_can_be_submitted_and_share_one_contract_penalty(array $deficiencies): void
+    {
+        [$stationUser, $stationManager] = $this->workflowUsers();
+        $cmcStaff = $this->user(UserRole::CmcStaff);
+        $contractor = Contractor::query()->create(['name' => 'TOM Ticketing Partner', 'is_active' => true]);
+        $contract = $this->contract($contractor, $cmcStaff, SdmType::Ticketing, 'TVS/TOM');
+        $contract->update(['status' => 'published', 'published_at' => now()]);
+        $clause = $contract->penaltyClauses()->where('serial_number', 14)->sole();
+
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), [
+            'service_type' => SdmType::Ticketing->value,
+            'contractor_id' => $contractor->id,
+            'incident_date' => '2026-08-18',
+            'incident_time' => '14:25',
+            'staff_name' => 'Ticketing Employee',
+            'employee_number' => 'EMP-TOM',
+            'station_manager_employee_number' => $stationManager->employee_number,
+            'outsourced_staff_acknowledged' => '1',
+            'deficiencies' => $deficiencies,
+        ])->assertSessionHasNoErrors()->assertRedirect(route('sdm-memos.index'));
+
+        $memo = ServiceDeficiencyMemo::query()->sole();
+        $this->assertSame($deficiencies, $memo->deficiencies()->orderBy('id')->get()->map(fn ($deficiency) => $deficiency->type->value)->all());
+        $assessments = app(MemoAssessmentService::class);
+        $this->assertSame([$clause->id], $assessments->lineReviewPrefill($memo)->keys()->all());
+        $this->assertSame(5, $assessments->negativePointsPrefill($memo));
     }
 
     public function test_tvs_template_and_contract_calculations_are_snapshotted(): void
@@ -1526,12 +1658,13 @@ class ContractPenaltyWorkflowTest extends TestCase
         ]);
         $fixed = $contract->penaltyClauses()->where('serial_number', 9)->sole();
         $formula = $contract->penaltyClauses()->where('serial_number', 16)->sole();
+        $formula->update(['base_amount' => '1000.25']);
         $cost = $contract->penaltyClauses()->where('serial_number', 17)->sole();
 
         $assessment = app(MemoAssessmentService::class)->create($memo, $cmcStaff, WorkflowStepType::CmcAssessment, 1, [
             'items' => [
                 ['contract_penalty_clause_id' => $fixed->id, 'proposed_amount' => 500, 'justification' => 'Fixed contractual penalty.'],
-                ['contract_penalty_clause_id' => $formula->id, 'proposed_amount' => 6000, 'justification' => 'Two days for three workmen.', 'calculation_inputs' => ['days' => 2, 'workers' => 3]],
+                ['contract_penalty_clause_id' => $formula->id, 'proposed_amount' => 6002, 'justification' => 'Two days for three workmen.', 'calculation_inputs' => ['days' => 2, 'workers' => 3]],
                 ['contract_penalty_clause_id' => $cost->id, 'proposed_amount' => 51500, 'justification' => 'Fixed penalty plus assessed cost.', 'calculation_inputs' => ['additional_cost' => 1500]],
             ],
             'negative_points' => 0,
@@ -1540,8 +1673,8 @@ class ContractPenaltyWorkflowTest extends TestCase
             'monthly_bill_value' => 100000,
         ]);
 
-        $this->assertSame('58000.00', $assessment->proposed_total);
-        $this->assertSame('6000.00', $assessment->items->firstWhere('clause_serial_number', 16)->suggested_amount);
+        $this->assertSame('58002.00', $assessment->proposed_total);
+        $this->assertSame('6002.00', $assessment->items->firstWhere('clause_serial_number', 16)->suggested_amount);
         $this->assertSame('51500.00', $assessment->items->firstWhere('clause_serial_number', 17)->suggested_amount);
         $this->assertSame('Loss of login ID or card', $assessment->items->firstWhere('clause_serial_number', 9)->clause_description);
     }
@@ -1595,7 +1728,7 @@ class ContractPenaltyWorkflowTest extends TestCase
 
         $prefill = app(MemoAssessmentService::class)->lineReviewPrefill($memo->fresh());
 
-        $this->assertSame('125.00', $prefill->get($cashMismatchClause->id)['proposed_amount']);
+        $this->assertSame('125', $prefill->get($cashMismatchClause->id)['proposed_amount']);
         $this->assertSame(CashMismatchPenalty::defaultAmounts(), PenaltyClauseTemplates::for(SdmType::Ticketing)[9]['parameters']['cash_mismatch_penalty_amounts']);
     }
 

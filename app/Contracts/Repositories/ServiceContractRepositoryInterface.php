@@ -23,5 +23,7 @@ interface ServiceContractRepositoryInterface
 
     public function hasPublishedOverlap(ServiceContract $contract): bool;
 
+    public function contractorServiceTypes(): Collection;
+
     public function activeFor(?SdmType $type, ?int $contractorId = null, ?int $stationId = null): Collection;
 }

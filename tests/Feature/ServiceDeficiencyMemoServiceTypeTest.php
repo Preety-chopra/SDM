@@ -25,7 +25,7 @@ class ServiceDeficiencyMemoServiceTypeTest extends TestCase
     #[TestWith([SdmType::Cfs, 'CFA'])]
     #[TestWith([SdmType::Ticketing, 'TVS'])]
     #[TestWith([SdmType::WandW, 'W&W'])]
-    #[TestWith([SdmType::Marshall, 'MAR'])]
+    #[TestWith([SdmType::Marshal, 'MAR'])]
     public function test_station_controller_submits_each_supported_service_type(SdmType $type, string $serialCode): void
     {
         $this->travelTo('2026-10-27 17:22:00');

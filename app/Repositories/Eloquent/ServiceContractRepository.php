@@ -85,6 +85,16 @@ final class ServiceContractRepository implements ServiceContractRepositoryInterf
             ->exists();
     }
 
+    public function contractorServiceTypes(): Collection
+    {
+        return ServiceContract::query()
+            ->whereHas('contractor', fn (Builder $query): Builder => $query->where('is_active', true))
+            ->toBase()
+            ->select(['service_type', 'contractor_id'])
+            ->distinct()
+            ->get();
+    }
+
     public function activeFor(?SdmType $type, ?int $contractorId = null, ?int $stationId = null): Collection
     {
         return ServiceContract::query()

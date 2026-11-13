@@ -1,4 +1,4 @@
-<x-guest-layout>
+<x-guest-layout title="SDM action could not be completed">
     <div class="flex flex-col gap-4 py-4 text-gray-900 dark:text-gray-100">
         <h1 class="text-xl font-bold">SDM action could not be completed</h1>
         <p class="text-sm leading-6">{{ $message }}</p>

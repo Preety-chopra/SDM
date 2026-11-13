@@ -146,7 +146,7 @@ final class MemoPenaltyLifecycleService
                 throw ValidationException::withMessages(['amount' => 'This SDM is not awaiting deduction.']);
             }
             $approved = $memo->assessments()->where('status', 'approved')->reorder('version', 'desc')->firstOrFail();
-            if (abs((float) $approved->proposed_total - (float) $data['amount']) > 0.009) {
+            if ((float) $approved->proposed_total !== (float) $data['amount']) {
                 throw ValidationException::withMessages(['amount' => 'The deduction must exactly match the approved amount.']);
             }
 

@@ -42,6 +42,8 @@ class ServiceDeficiencyMemoTest extends TestCase
         [$user, $line, $station] = $this->stationUserWithLine();
         $otherStation = Station::query()->create(['code' => 'OTHER', 'name' => 'Other station', 'line_id' => $line->id, 'is_active' => true]);
         $contractor = Contractor::query()->create(['name' => 'Ticketing Partner', 'is_active' => true]);
+        $otherStationContractor = Contractor::query()->create(['name' => 'Other Station Partner', 'is_active' => true]);
+        $draftContractor = Contractor::query()->create(['name' => 'Watch and Ward Partner', 'is_active' => true]);
         $inactive = Contractor::query()->create(['name' => 'Inactive Partner', 'is_active' => false]);
         $attributes = [
             'contract_group' => 'memo-contractor-lookup', 'version' => 1,
@@ -51,8 +53,8 @@ class ServiceDeficiencyMemoTest extends TestCase
         ];
         $mapped = ServiceContract::query()->create($attributes);
         $mapped->stations()->sync([$station->id]);
-        ServiceContract::query()->create([...$attributes, 'contract_group' => 'unmapped', 'contract_number' => 'OTHER-STATION']);
-        ServiceContract::query()->create([...$attributes, 'contract_group' => 'draft', 'contract_number' => 'DRAFT', 'station_id' => $station->id, 'status' => 'draft']);
+        ServiceContract::query()->create([...$attributes, 'contract_group' => 'unmapped', 'contract_number' => 'OTHER-STATION', 'contractor_id' => $otherStationContractor->id]);
+        ServiceContract::query()->create([...$attributes, 'contract_group' => 'draft', 'contract_number' => 'DRAFT', 'station_id' => $station->id, 'status' => 'draft', 'contractor_id' => $draftContractor->id, 'service_type' => SdmType::WandW]);
         ServiceContract::query()->create([...$attributes, 'contract_group' => 'retired', 'contract_number' => 'RETIRED', 'station_id' => $station->id, 'status' => 'retired']);
         ServiceContract::query()->create([...$attributes, 'contract_group' => 'inactive', 'contract_number' => 'INACTIVE', 'station_id' => $station->id, 'contractor_id' => $inactive->id]);
         $legacy = ServiceContract::query()->create([...$attributes, 'contract_group' => 'legacy', 'contract_number' => 'LEGACY', 'station_id' => $station->id, 'service_type' => SdmType::Cfs]);
@@ -71,7 +73,12 @@ class ServiceDeficiencyMemoTest extends TestCase
             'effective_from' => '2026-01-01',
             'effective_to' => '2026-12-31',
         ], $contracts->firstWhere('id', $mapped->id));
+        $contractorIds = $response->viewData('contractorIdsByServiceType');
+        $this->assertSame([$contractor->id, $otherStationContractor->id], $contractorIds->get(SdmType::Ticketing->value)->sort()->values()->all());
+        $this->assertSame([$contractor->id], $contractorIds->get(SdmType::Cfs->value)->all());
+        $this->assertSame([$draftContractor->id], $contractorIds->get(SdmType::WandW->value)->all());
         $response->assertSee('data-contractor-contracts=', false)
+            ->assertSee('data-contractor-ids-by-service-type=', false)
             ->assertSee('x-model="contractorId"', false);
     }
 
@@ -461,6 +468,9 @@ class ServiceDeficiencyMemoTest extends TestCase
                             'Leaving duty before scheduled time or leaving without informing the on-duty SM/SC',
                         ]);
                     }
+                    if ($type === SdmType::Ticketing) {
+                        $expectedDescriptions->splice(14, 1, ['Working at TOM with personal cash', 'indulgence in malpractices']);
+                    }
                     $expectedDescriptions = $expectedDescriptions->push(DeficiencyType::Other->label())->all();
                     $options = collect($optionsByType[$type->value] ?? []);
 
@@ -493,7 +503,7 @@ class ServiceDeficiencyMemoTest extends TestCase
     #[TestWith([SdmType::Cfs])]
     #[TestWith([SdmType::Ticketing])]
     #[TestWith([SdmType::WandW])]
-    #[TestWith([SdmType::Marshall])]
+    #[TestWith([SdmType::Marshal])]
     public function test_leaving_duty_is_separate_from_late_reporting_and_can_be_submitted_without_reporting_times(SdmType $type): void
     {
         [$user] = $this->stationUserWithLine();
@@ -530,6 +540,31 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['event' => 'memo.submitted', 'auditable_id' => $memo->id]);
         $this->get(route('sdm-memos.show', $memo))->assertOk()
             ->assertSee('Leaving duty before scheduled time or leaving without informing the on-duty SM/SC');
+    }
+
+    public function test_existing_ticketing_draft_can_keep_its_original_combined_deficiency(): void
+    {
+        [$user] = $this->stationUserWithLine();
+        $this->actingAs($user)->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Ticketing->value,
+        ])->assertSessionHasNoErrors();
+        $memo = ServiceDeficiencyMemo::query()->sole();
+        $legacyType = DeficiencyType::PersonalCashOrMalpractice->value;
+        $memo->deficiencies()->create(['type' => $legacyType, 'remarks' => 'Original incident wording.']);
+
+        $this->get(route('sdm-memos.edit', $memo))->assertOk()
+            ->assertSee('Working at TOM with personal cash or indulgence in malpractices');
+        $this->post(route('sdm-memos.update', $memo), [
+            'service_type' => SdmType::Ticketing->value,
+            'deficiencies' => [$legacyType],
+            'deficiency_remarks' => [$legacyType => 'Original incident wording.'],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('memo_deficiencies', [
+            'memo_id' => $memo->id,
+            'type' => $legacyType,
+            'remarks' => 'Original incident wording.',
+        ]);
     }
 
     public function test_station_user_can_save_a_draft_with_every_available_deficiency(): void
@@ -696,7 +731,7 @@ class ServiceDeficiencyMemoTest extends TestCase
             'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
             'outsourced_staff_acknowledged' => '1',
             'deficiencies' => [DeficiencyType::Other->value],
-            'deficiency_remarks' => [DeficiencyType::Other->value => 'Other service deficiency.'],
+            'station_record_brief_remarks' => 'Other service deficiency.',
         ]);
 
         $memo = ServiceDeficiencyMemo::query()->sole();
@@ -706,11 +741,161 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->assertSame($user->id, $memo->created_by);
         $this->assertSame('14:25', $memo->incident_time);
         $this->assertSame('RED/RED-01/CFA/2026/09/01', $memo->serial_number);
+        $this->assertSame('Other service deficiency.', $memo->station_record_brief_remarks);
 
         $this->actingAs($user)->get(route('sdm-memos.show', $memo))
             ->assertOk()
             ->assertSee('Incident time (IST)')
             ->assertSee('14:25');
+    }
+
+    public function test_submitted_memo_shows_the_selected_deficiency_wording_in_view_all_and_details(): void
+    {
+        [$user] = $this->stationUserWithLine();
+        $contractor = Contractor::query()->create(['name' => 'Metro Services', 'is_active' => true]);
+        $deficiencies = [
+            DeficiencyType::DressCode->value => 'Poor dress code',
+            DeficiencyType::MobilePhoneOnDuty->value => 'Carrying a mobile phone on duty or listening to music on mobile/other devices',
+            DeficiencyType::PublicComplaint->value => 'Public complaint on any account in a proved case of deficiency',
+            DeficiencyType::PossessionOfLiveTickets->value => 'Possession of live QR tickets or CSCs',
+        ];
+
+        $this->actingAs($user)->post(route('sdm-memos.store-and-submit'), [
+            'service_type' => SdmType::Cfs->value,
+            'contractor_id' => $contractor->id,
+            'incident_date' => '18-08-2026',
+            'incident_time' => '14:25',
+            'staff_name' => 'Test Staff',
+            'employee_number' => 'EMP-10',
+            'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
+            'deficiencies' => array_keys($deficiencies),
+        ])->assertRedirect(route('sdm-memos.index'));
+
+        $memo = ServiceDeficiencyMemo::query()->sole();
+        $this->assertSame(MemoStatus::Submitted, $memo->status);
+        $this->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSeeText(array_values($deficiencies));
+        $this->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSeeText(array_values($deficiencies));
+    }
+
+    #[TestWith([false, []])]
+    #[TestWith([false, ['station_record_brief_remarks' => '   ']])]
+    #[TestWith([false, ['deficiency_remarks' => [DeficiencyType::DressCode->value => 'Uniform was incomplete.']]])]
+    #[TestWith([true, []])]
+    public function test_other_discrepancy_cannot_be_submitted_without_remarks(bool $fromDraft, array $remarks): void
+    {
+        [$user] = $this->stationUserWithLine();
+        $contractor = Contractor::query()->create(['name' => 'Metro Services', 'is_active' => true]);
+        $data = [
+            'service_type' => SdmType::Cfs->value,
+            'contractor_id' => $contractor->id,
+            'incident_date' => '18-08-2026',
+            'incident_time' => '14:25',
+            'staff_name' => 'Test Staff',
+            'employee_number' => 'EMP-OTHER',
+            'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
+            'deficiencies' => [DeficiencyType::DressCode->value, DeficiencyType::Other->value],
+        ];
+        $this->actingAs($user);
+        $memo = null;
+
+        if ($fromDraft) {
+            $this->post(route('sdm-memos.store'), $data)->assertSessionHasNoErrors();
+            $memo = ServiceDeficiencyMemo::query()->sole();
+        }
+
+        $form = $memo ? route('sdm-memos.edit', $memo) : route('sdm-memos.create');
+        $submit = $memo ? route('sdm-memos.submit', $memo) : route('sdm-memos.store-and-submit');
+
+        $this->from($form)->post($submit, [...$data, ...$remarks])
+            ->assertRedirect($form)
+            ->assertSessionHasErrors(['station_record_brief_remarks' => 'Enter remarks for Other Discrepancy.']);
+
+        if ($memo) {
+            $this->assertSame(MemoStatus::Draft, $memo->refresh()->status);
+        } else {
+            $this->assertDatabaseCount('service_deficiency_memos', 0);
+        }
+
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'memo.submitted']);
+    }
+
+    #[TestWith([false, [], 'Enter the number of staff shortfalls.'])]
+    #[TestWith([true, [], 'Enter the number of staff shortfalls.'])]
+    #[TestWith([false, ['shortfall_count' => '0'], 'Enter a positive whole number for the staff shortfall.'])]
+    #[TestWith([false, ['shortfall_count' => '1.5'], 'Enter a positive whole number for the staff shortfall.'])]
+    public function test_short_deployment_requires_a_positive_shortfall_count_for_submission(bool $fromDraft, array $shortfall, string $message): void
+    {
+        $data = $this->shortDeploymentMemoData();
+        $memo = null;
+
+        if ($fromDraft) {
+            $this->post(route('sdm-memos.store'), $data)->assertSessionHasNoErrors();
+            $memo = ServiceDeficiencyMemo::query()->sole();
+        }
+
+        $form = $memo ? route('sdm-memos.edit', $memo) : route('sdm-memos.create');
+        $submit = $memo ? route('sdm-memos.submit', $memo) : route('sdm-memos.store-and-submit');
+
+        $this->from($form)->post($submit, [...$data, ...$shortfall])
+            ->assertRedirect($form)
+            ->assertSessionHasErrors(['shortfall_count' => $message]);
+
+        if ($memo) {
+            $this->assertSame(MemoStatus::Draft, $memo->refresh()->status);
+        } else {
+            $this->assertDatabaseCount('service_deficiency_memos', 0);
+        }
+
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'memo.submitted']);
+    }
+
+    public function test_shortfall_count_is_saved_and_shown_on_a_submitted_memo(): void
+    {
+        $data = $this->shortDeploymentMemoData();
+
+        $this->post(route('sdm-memos.store-and-submit'), [...$data, 'shortfall_count' => '3'])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('sdm-memos.index'));
+
+        $memo = ServiceDeficiencyMemo::query()->sole();
+        $this->assertSame(MemoStatus::Submitted, $memo->status);
+        $this->assertSame(3, $memo->deficiencies()->where('type', DeficiencyType::ShortDeployment->value)->sole()->shortfall_count);
+        $this->assertNull($memo->deficiencies()->where('type', DeficiencyType::DressCode->value)->sole()->shortfall_count);
+        $this->assertSame(3, AuditLog::query()->where('event', 'memo.submitted')->sole()->after_values['deficiencies'][1]['shortfall_count']);
+        $this->get(route('sdm-memos.show', $memo))->assertOk()->assertSeeText('Number of staff shortfalls: 3');
+    }
+
+    public function test_shortfall_count_is_restored_when_editing_a_draft(): void
+    {
+        $data = $this->shortDeploymentMemoData();
+        $this->post(route('sdm-memos.store'), [...$data, 'shortfall_count' => '3'])->assertSessionHasNoErrors();
+        $memo = ServiceDeficiencyMemo::query()->sole();
+
+        $this->get(route('sdm-memos.edit', $memo))
+            ->assertOk()
+            ->assertSee('name="shortfall_count" type="number"', false)
+            ->assertSee('value="3" :disabled="!has(\'short_deployment\')"', false);
+    }
+
+    public function test_submission_ignores_the_shortfall_count_without_short_deployment(): void
+    {
+        $data = $this->shortDeploymentMemoData();
+
+        $this->post(route('sdm-memos.store-and-submit'), [
+            ...$data,
+            'deficiencies' => [DeficiencyType::DressCode->value],
+            'shortfall_count' => 'invalid hidden value',
+        ])->assertSessionHasNoErrors()->assertRedirect(route('sdm-memos.index'));
+
+        $memo = ServiceDeficiencyMemo::query()->sole();
+        $this->assertSame(MemoStatus::Submitted, $memo->status);
+        $this->assertNull($memo->deficiencies()->sole()->shortfall_count);
     }
 
     public function test_submission_requires_outsourced_staff_acknowledgement(): void
@@ -962,14 +1147,15 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertDontSee('cash_check[checked_at]', false);
     }
 
-    public function test_create_form_always_shows_one_optional_general_remarks_field(): void
+    public function test_create_form_requires_general_remarks_when_other_discrepancy_is_selected(): void
     {
         [$user] = $this->stationUserWithLine();
 
         $this->actingAs($user)->get(route('sdm-memos.create'))
             ->assertOk()
-            ->assertSee('Remarks (optional)')
+            ->assertSee('(required for Other Discrepancy)')
             ->assertSee('name="station_record_brief_remarks"', false)
+            ->assertSee(':required="has(\'other\')"', false)
             ->assertDontSee('name="deficiency_remarks', false)
             ->assertDontSee('Poor Dress Code / Failure to Follow Instructions remarks')
             ->assertDontSee('Misbehavior with Customer / Staff remarks');
@@ -1358,6 +1544,25 @@ class ServiceDeficiencyMemoTest extends TestCase
         [$user] = $this->stationUserWithLine();
 
         return $user;
+    }
+
+    private function shortDeploymentMemoData(): array
+    {
+        $user = $this->stationUser();
+        $this->actingAs($user);
+        $contractor = Contractor::query()->create(['name' => 'Metro Services', 'is_active' => true]);
+
+        return [
+            'service_type' => SdmType::Cfs->value,
+            'contractor_id' => $contractor->id,
+            'incident_date' => '18-08-2026',
+            'incident_time' => '14:25',
+            'staff_name' => 'Test Staff',
+            'employee_number' => 'EMP-SHORT',
+            'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
+            'deficiencies' => [DeficiencyType::DressCode->value, DeficiencyType::ShortDeployment->value],
+        ];
     }
 
     private function stationUserWithLine(string $code = 'RED'): array

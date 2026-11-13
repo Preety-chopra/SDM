@@ -86,13 +86,13 @@ class StoreMemoWorkflowActionRequest extends FormRequest
             'remarks' => [Rule::requiredIf(in_array($action, ['return', 'cancel', 'cancel_after_counselling'], true)), 'nullable', 'string', 'max:5000'],
             'items' => [Rule::requiredIf($requiresAssessment), 'nullable', 'array', 'min:1'],
             'items.*.contract_penalty_clause_id' => ['required', 'integer', 'distinct', 'exists:contract_penalty_clauses,id'],
-            'items.*.proposed_amount' => ['required', 'numeric', 'min:0'],
+            'items.*.proposed_amount' => ['required', 'numeric', 'min:0', 'multiple_of:1'],
             'items.*.justification' => ['nullable', 'string', 'max:5000'],
             'items.*.calculation_inputs' => ['nullable', 'array'],
             'items.*.calculation_inputs.days' => ['nullable', 'integer', 'min:0'],
             'items.*.calculation_inputs.workers' => ['nullable', 'integer', 'min:0'],
-            'items.*.calculation_inputs.additional_cost' => ['nullable', 'numeric', 'min:0'],
-            'proposed_total' => [Rule::requiredIf($requiresCmcAssessment), 'nullable', 'numeric', 'min:0'],
+            'items.*.calculation_inputs.additional_cost' => ['nullable', 'numeric', 'min:0', 'multiple_of:1'],
+            'proposed_total' => [Rule::requiredIf($requiresCmcAssessment), 'nullable', 'numeric', 'min:0', 'multiple_of:1'],
             'negative_points' => [Rule::requiredIf($requiresCmcAssessment), 'nullable', 'integer', 'min:0'],
             'staff_action' => [Rule::requiredIf($requiresCmcAssessment), 'nullable', Rule::in(['warning', 'final_warning', 'recall'])],
             'bill_month' => ['nullable', 'date_format:Y-m'],
@@ -106,6 +106,15 @@ class StoreMemoWorkflowActionRequest extends FormRequest
                 'max:10240',
             ],
             'cap_acknowledged' => ['nullable', 'boolean'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'items.*.proposed_amount.multiple_of' => 'Enter the proposed amount in whole rupees.',
+            'items.*.calculation_inputs.additional_cost.multiple_of' => 'Enter the loss or damage cost in whole rupees.',
+            'proposed_total.multiple_of' => 'Enter the total proposed amount in whole rupees.',
         ];
     }
 

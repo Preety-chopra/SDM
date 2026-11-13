@@ -22,7 +22,7 @@
                             @forelse ($memos as $memo)
                                 <tr>
                                     <td class="px-5 py-4 text-sm font-semibold text-gray-900 dark:text-white">{{ $memos->firstItem() + $loop->index }}</td>
-                                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->service_type === \App\Enums\SdmType::Marshall ? 'Marshal' : $memo->service_type->code() }}</td>
+                                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->service_type === \App\Enums\SdmType::Marshal ? $memo->service_type->label() : $memo->service_type->code() }}</td>
                                     <td class="min-w-64 px-5 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->deficiencies->map(fn ($deficiency) => $deficiency->type->label())->join(', ') ?: '—' }}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->updated_at?->format('d-m-Y H:i') ?? '—' }}</td>
                                     <td class="px-5 py-4">

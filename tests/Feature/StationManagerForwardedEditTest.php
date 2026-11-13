@@ -172,7 +172,7 @@ class StationManagerForwardedEditTest extends TestCase
         ];
 
         $this->actingAs($sm)->post(route('sdm-memos.update', $memo), $data)
-            ->assertSessionHasNoErrors()->assertRedirect(route('sdm-memos.show', $memo));
+            ->assertSessionHasNoErrors()->assertRedirect(route('sdm-memos.index'));
 
         $this->assertSame($type, $memo->deficiencies()->sole()->type->value);
     }
@@ -184,7 +184,7 @@ class StationManagerForwardedEditTest extends TestCase
         [$memo, $sm, $am] = $this->memoAwaitingStationManager($version);
 
         $this->actingAs($sm)->post(route('sdm-memos.update', $memo), $this->editData())
-            ->assertSessionHasNoErrors()->assertRedirect(route('sdm-memos.show', $memo));
+            ->assertSessionHasNoErrors()->assertRedirect(route('sdm-memos.index'));
         $this->forward($memo, $sm, $am);
 
         $this->assertDatabaseHas('service_deficiency_memos', [
@@ -211,7 +211,7 @@ class StationManagerForwardedEditTest extends TestCase
             ->assertOk()->assertSee(route('sdm-memos.edit', $memo), false);
         $this->actingAs($sm)->get(route('sdm-memos.edit', $memo))->assertOk();
         $this->actingAs($sm)->post(route('sdm-memos.update', $memo), $this->editData())
-            ->assertSessionHasNoErrors()->assertRedirect(route('sdm-memos.show', $memo));
+            ->assertSessionHasNoErrors()->assertRedirect(route('sdm-memos.index'));
 
         $this->assertSame('Corrected after forwarding', $memo->refresh()->staff_name);
         $this->assertSame($status, $memo->status);

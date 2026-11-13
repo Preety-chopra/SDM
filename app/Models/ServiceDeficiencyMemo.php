@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Enums\DeficiencyType;
 use App\Enums\MemoCancellationType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\WorkflowStage;
 use App\Enums\WorkflowStepType;
+use App\Support\DeficiencyCatalog;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -18,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
 
 #[Fillable(['service_type', 'serial_number', 'is_urgent', 'station_id', 'station_name', 'line_name', 'line_code', 'contractor_id', 'service_contract_id', 'cmc_staff_id', 'contractor_name', 'staff_name', 'employee_number', 'incident_date', 'incident_time', 'station_record_brief_remarks', 'status', 'cancellation_type', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'created_by', 'updated_by', 'submitted_at'])]
 class ServiceDeficiencyMemo extends Model
@@ -112,6 +115,22 @@ class ServiceDeficiencyMemo extends Model
     public function deficiencies(): HasMany
     {
         return $this->hasMany(MemoDeficiency::class, 'memo_id');
+    }
+
+    public function hasLegacyTomDeficiency(): bool
+    {
+        return $this->service_type === SdmType::Ticketing
+            && $this->deficiencies->contains('type', DeficiencyType::PersonalCashOrMalpractice);
+    }
+
+    /** @return Collection<string, string> */
+    public function deficiencyLabels(): Collection
+    {
+        $labels = array_column(DeficiencyCatalog::for($this->service_type), 'label', 'value');
+
+        return $this->deficiencies->mapWithKeys(fn (MemoDeficiency $deficiency): array => [
+            $deficiency->type->value => $labels[$deficiency->type->value] ?? $deficiency->type->label(),
+        ]);
     }
 
     public function publicComplaint(): HasOne

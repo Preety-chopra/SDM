@@ -40,7 +40,9 @@ class LineManagerMemoRevertTest extends TestCase
         $this->actingAs($am)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'return',
             'remarks' => 'Please correct the incident details.',
-        ])->assertSessionHasNoErrors()->assertRedirect(route('sdm-memos.show', $memo));
+        ])->assertRedirectToRoute('sdm-memos.index', ['category' => 'pending'])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', 'SDM workflow updated.');
 
         $memo->refresh();
         $pending = $version === 2 ? $memo->currentWorkflowStep : $memo->stationManagerApproval;

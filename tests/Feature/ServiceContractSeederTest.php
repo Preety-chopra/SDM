@@ -44,6 +44,7 @@ class ServiceContractSeederTest extends TestCase
         ]);
         $this->assertDatabaseHas('service_contracts', ['contract_number' => 'DMRC/TVS-03/2024', 'status' => 'draft']);
         $this->assertDatabaseHas('service_contracts', ['contract_number' => 'DMRC/WWS-01/2024', 'status' => 'draft']);
+        $this->assertDatabaseHas('service_contracts', ['contract_number' => 'AWPO', 'service_type' => 'marshal']);
 
         $contract = ServiceContract::query()->where('contract_number', 'DMRC/TVS-01/2024')->sole();
         $this->assertSame('NCES (Nuvision Commercial & Escort Services)', $contract->contractor->name);

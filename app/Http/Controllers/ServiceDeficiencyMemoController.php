@@ -238,12 +238,13 @@ class ServiceDeficiencyMemoController extends Controller
         $timelineSteps = $this->timeline->visibleSteps($sdmMemo, $request->user());
 
         $timelineApprovals = $this->timeline->visibleApprovals($sdmMemo, $request->user());
+        $deficiencyLabels = $sdmMemo->deficiencyLabels();
 
         $stationManagerConfirmationPreview = [
             ['label' => 'Line', 'value' => $sdmMemo->line_name ?: '—'],
             ['label' => 'Station', 'value' => $sdmMemo->station_name ?: '—'],
             ['label' => 'SDM type', 'value' => $sdmMemo->service_type->label()],
-            ['label' => 'Selected Deficiency', 'value' => $sdmMemo->deficiencies->map(fn ($deficiency) => $deficiency->type->label())->join(', ') ?: '—'],
+            ['label' => 'Selected Deficiency', 'value' => $deficiencyLabels->join(', ') ?: '—'],
             ['label' => 'Incident date and time', 'value' => collect([
                 $sdmMemo->incident_date?->format('d-m-Y'),
                 filled($sdmMemo->incident_time) ? substr($sdmMemo->incident_time, 0, 5) : null,
@@ -253,6 +254,7 @@ class ServiceDeficiencyMemoController extends Controller
 
         return view('sdm-memos.show', [
             'memo' => $sdmMemo,
+            'deficiencyLabels' => $deficiencyLabels,
             'timelineSteps' => $timelineSteps,
             'timelineApprovals' => $timelineApprovals,
             'stationManagerConfirmationPreview' => $stationManagerConfirmationPreview,
@@ -321,7 +323,7 @@ class ServiceDeficiencyMemoController extends Controller
 
         if ($wasSubmitted && $request->user()->hasRole(UserRole::StationManager->value)) {
             return redirect()
-                ->route('sdm-memos.show', $sdmMemo)
+                ->route('sdm-memos.index')
                 ->with('status', 'SDM updated.');
         }
 
@@ -336,11 +338,11 @@ class ServiceDeficiencyMemoController extends Controller
             $request->string('station_manager_employee_number')->toString(),
         );
 
-        $message = $request->user()->hasRole(UserRole::StationManager->value)
-            ? 'Pending SDM handed over successfully.'
-            : 'Forwarded Station Manager changed.';
+        if ($request->user()->hasRole(UserRole::StationManager->value)) {
+            return redirect()->route('sdm-memos.index')->with('status', 'Pending SDM handed over successfully.');
+        }
 
-        return redirect()->route('sdm-memos.show', $sdmMemo)->with('status', $message);
+        return redirect()->route('sdm-memos.show', $sdmMemo)->with('status', 'Forwarded Station Manager changed.');
     }
 
     public function updateLineManager(UpdateMemoLineManagerRequest $request, ServiceDeficiencyMemo $sdmMemo): RedirectResponse
@@ -351,7 +353,7 @@ class ServiceDeficiencyMemoController extends Controller
             $request->string('line_manager_employee_number')->toString(),
         );
 
-        return redirect()->route('sdm-memos.show', $sdmMemo)->with('status', 'Pending SDM handed over successfully.');
+        return redirect()->route('sdm-memos.index', ['category' => 'pending'])->with('status', 'Pending SDM handed over successfully.');
     }
 
     public function submit(SubmitMemoRequest $request, ServiceDeficiencyMemo $sdmMemo): RedirectResponse
@@ -399,11 +401,12 @@ class ServiceDeficiencyMemoController extends Controller
             'memo' => $memo,
             'station' => $station,
             'contractors' => $this->masterData->contractors(true),
+            'contractorIdsByServiceType' => $memo === null ? $this->contracts->memoContractorIdsByServiceType() : null,
             'contractorContracts' => $this->contracts->memoContractorOptions($isAft ? null : $station->id),
             'stations' => $stations,
             'issuanceStations' => $isAft ? $stations : collect(),
             'sdmTypes' => SdmType::cases(),
-            'deficiencyOptionsByType' => DeficiencyCatalog::grouped(),
+            'deficiencyOptionsByType' => DeficiencyCatalog::grouped($memo?->hasLegacyTomDeficiency() ?? false),
             'forwardingRole' => $forwardingRole,
             'forwardingCandidates' => $forwardingRole
                 ? $this->users->enabledForRole($forwardingRole)->filter(fn (User $user): bool => filled($user->employee_number))->values()
