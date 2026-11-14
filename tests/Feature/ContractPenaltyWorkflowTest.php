@@ -603,11 +603,10 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertSee('Submitted on')
             ->assertSee('Current status')
             ->assertSee('Last updated on')
-            ->assertSee('Action')
             ->assertSee('01-08-2026')
             ->assertSee('01-08-2026 10:00')
-            ->assertSee('name="action" value="cancel"', false)
-            ->assertSee('Cancellation remarks');
+            ->assertDontSee('name="action" value="cancel"', false)
+            ->assertDontSee('Cancellation remarks');
         $this->actingAs($lineManager)->get(route('sdm-memos.show', $memo))
             ->assertOk()
             ->assertSee('Contract assessment')
@@ -1071,7 +1070,14 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertSee('Cancel SDM')
             ->assertSee('name="action" value="cancel_after_counselling"', false)
             ->assertSee('Cancel after counselling');
-        $this->actingAs($lineManager)->get(route('sdm-memos.index'))
+        $allMemos = $this->actingAs($lineManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('aria-label="Open SDM '.$memo->serial_number.'"', false)
+            ->assertSee('href="'.route('sdm-memos.show', $memo).'"', false)
+            ->assertDontSee('Cancel after counselling');
+        $this->assertDoesNotMatchRegularExpression('/>\s*Action\s*</', $allMemos->getContent());
+
+        $this->actingAs($lineManager)->get(route('sdm-memos.index', ['category' => 'pending']))
             ->assertOk()
             ->assertSee('Cancel after counselling');
         $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'cancel'])

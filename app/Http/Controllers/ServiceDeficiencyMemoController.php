@@ -132,6 +132,7 @@ class ServiceDeficiencyMemoController extends Controller
             })
             : collect();
         $showActionColumn = ! $isStationManager
+            && ! ($isLineManager && $category === null)
             && $memos->getCollection()->contains(
                 fn (ServiceDeficiencyMemo $memo): bool => $this->hasVisibleTableAction(
                     $request->user(),
