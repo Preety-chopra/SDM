@@ -364,6 +364,31 @@ class AuthenticationTest extends TestCase
             ], false);
     }
 
+    public function test_login_lists_stations_by_sequence_within_each_line(): void
+    {
+        $lineOne = Line::query()->create(['code' => '1', 'name' => 'Red Line', 'is_active' => true]);
+        $lineTwo = Line::query()->create(['code' => '2', 'name' => 'Yellow Line', 'is_active' => true]);
+        $lineOne->stations()->createMany([
+            ['code' => 'A1', 'name' => 'Alpha Station', 'sequence_no' => 10, 'is_active' => true],
+            ['code' => 'B1', 'name' => 'Beta Station', 'sequence_no' => null, 'is_active' => true],
+            ['code' => 'Z1', 'name' => 'Zulu Station', 'sequence_no' => 2, 'is_active' => true],
+        ]);
+        $lineTwo->stations()->createMany([
+            ['code' => 'A2', 'name' => 'Alpha Station', 'sequence_no' => 2, 'is_active' => true],
+            ['code' => 'Z2', 'name' => 'Zulu Station', 'sequence_no' => 1, 'is_active' => true],
+        ]);
+
+        $this->get(route('login'))
+            ->assertOk()
+            ->assertSeeInOrder([
+                'L-1 Zulu Station',
+                'L-1 Alpha Station',
+                'L-1 Beta Station',
+                'L-2 Zulu Station',
+                'L-2 Alpha Station',
+            ]);
+    }
+
     public function test_station_controller_and_station_manager_must_select_an_active_station(): void
     {
         $disabled = Station::query()->create([
