@@ -157,25 +157,26 @@ final class ServiceContractService
 
     public function publish(ServiceContract $contract, User $actor): ServiceContract
     {
-        if ($contract->status !== 'draft') {
-            throw ValidationException::withMessages(['contract' => 'Only draft contract versions can be published.']);
-        }
-        $this->ensureLocationPivots($contract);
-
-        if (! $contract->lines()->exists() || ! $contract->stations()->exists()) {
-            throw ValidationException::withMessages(['station_ids' => 'Assign at least one active line and station before publishing this contract.']);
-        }
-        if ($this->contracts->hasPublishedOverlap($contract)) {
-            throw ValidationException::withMessages(['effective_from' => 'This contract overlaps another published contract for the same station, contractor, and service.']);
-        }
-
         return DB::transaction(function () use ($contract, $actor): ServiceContract {
+            $contract = $this->contracts->lockServiceContracts($contract->service_type)->get($contract->id);
+            if ($contract?->status !== 'draft') {
+                throw ValidationException::withMessages(['contract' => 'Only draft contract versions can be published.']);
+            }
+
+            $this->ensureLocationPivots($contract);
+            if (! $contract->lines()->exists() || ! $contract->stations()->exists()) {
+                throw ValidationException::withMessages(['station_ids' => 'Assign at least one active line and station before publishing this contract.']);
+            }
+            if ($this->contracts->hasPublishedOverlap($contract)) {
+                throw ValidationException::withMessages(['effective_from' => 'This contract overlaps another published contract for the same station, contractor, and service.']);
+            }
+
             $before = $this->auditValues($contract);
             $contract = $this->contracts->update($contract, ['status' => 'published', 'published_at' => now(), 'updated_by' => $actor->id]);
             $this->audit->record($contract, $actor, 'contract.published', $before, $this->auditValues($contract));
 
             return $contract;
-        });
+        }, attempts: 3);
     }
 
     public function revise(ServiceContract $contract, User $actor): ServiceContract

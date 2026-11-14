@@ -14,6 +14,8 @@ class Line extends Model
 {
     use HasFactory;
 
+    public const DISPLAY_ORDER = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'AEL'];
+
     protected $attributes = ['color' => LineColorPalette::DEFAULT];
 
     protected static function booted(): void

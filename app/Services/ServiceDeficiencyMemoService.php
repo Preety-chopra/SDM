@@ -502,13 +502,7 @@ final class ServiceDeficiencyMemoService
             ->where('status', 'published')
             ->where('contractor_id', $data['contractor_id'])
             ->where('service_type', $data['service_type'])
-            ->where(fn ($query) => $query
-                ->whereHas('stations', fn ($stationQuery) => $stationQuery->whereKey($stationId))
-                ->orWhere(fn ($legacyQuery) => $legacyQuery
-                    ->doesntHave('stations')
-                    ->where(fn ($fallbackQuery) => $fallbackQuery
-                        ->where('station_id', $stationId)
-                        ->orWhereNull('station_id'))))
+            ->coversStations([$stationId])
             ->whereDate('effective_from', '<=', $incidentDate)
             ->whereDate('effective_to', '>=', $incidentDate)
             ->lockForUpdate()

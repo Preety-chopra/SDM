@@ -3,6 +3,7 @@
 use App\Http\Controllers\AftCashCheckReportController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ContractorController;
+use App\Http\Controllers\ContractStationMappingController;
 use App\Http\Controllers\DashboardChartMemosController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DesignationController;
@@ -101,6 +102,9 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::post('/contracts/{contract}/retire', [ServiceContractController::class, 'retire'])->name('contracts.retire');
     Route::get('/contracts/{contract}/source', [ServiceContractController::class, 'source'])->name('contracts.source');
     Route::resource('contracts', ServiceContractController::class);
+    Route::get('/contract-station-mapping', [ContractStationMappingController::class, 'index'])->name('contract-station-mapping.index');
+    Route::get('/contract-station-mapping/{station}/{contract}', [ContractStationMappingController::class, 'edit'])->name('contract-station-mapping.edit');
+    Route::patch('/contract-station-mapping/{station}/{contract}', [ContractStationMappingController::class, 'update'])->name('contract-station-mapping.update');
 });
 
 require __DIR__.'/auth.php';

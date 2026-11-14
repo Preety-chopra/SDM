@@ -6,6 +6,7 @@ use App\Contracts\Repositories\StationRepositoryInterface;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Models\Line;
 use App\Models\Station;
 use App\Services\AuthenticationService;
 use App\Services\FeedbackService;
@@ -31,7 +32,7 @@ class AuthenticatedSessionController extends Controller
      */
     public function create(): View
     {
-        $lineOrder = array_flip([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 'AEL']);
+        $lineOrder = array_flip(Line::DISPLAY_ORDER);
         $stationOptions = $this->stations->active()
             ->sortBy(function (Station $station) use ($lineOrder): array {
                 $lineCode = $station->metroLine?->code;

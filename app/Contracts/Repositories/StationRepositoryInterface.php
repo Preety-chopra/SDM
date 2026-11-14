@@ -3,11 +3,14 @@
 namespace App\Contracts\Repositories;
 
 use App\Models\Station;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Collection as BaseCollection;
 
 interface StationRepositoryInterface
 {
+    public function paginateForContractMapping(?string $stationSearch): LengthAwarePaginator;
+
     public function active(): Collection;
 
     public function activeWithLines(): Collection;

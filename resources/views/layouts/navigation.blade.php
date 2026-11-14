@@ -103,6 +103,7 @@
             [\App\Enums\UserPermission::ManageContractors->value, 'contractors.index', 'contractors.*', 'Contractors'],
             [\App\Enums\UserPermission::ManageContractors->value, 'outsourced-staff.index', 'outsourced-staff.*', 'Outsourced staff'],
             [\App\Enums\UserPermission::ManageContracts->value, 'contracts.index', 'contracts.*', 'Service contracts'],
+            [\App\Enums\UserPermission::ManageContracts->value, 'contract-station-mapping.index', 'contract-station-mapping.*', 'Contract station mapping'],
         ] as [$permission, $route, $pattern, $label])
             @can($permission)
                 <a href="{{ route($route) }}" title="{{ $label }}" class="{{ $baseClasses }} {{ request()->routeIs($pattern) ? $activeClasses : $idleClasses }}">

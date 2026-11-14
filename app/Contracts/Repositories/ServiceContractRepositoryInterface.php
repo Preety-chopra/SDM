@@ -21,7 +21,15 @@ interface ServiceContractRepositoryInterface
 
     public function syncLines(ServiceContract $contract, array $lineIds): void;
 
-    public function hasPublishedOverlap(ServiceContract $contract): bool;
+    public function hasPublishedOverlap(ServiceContract $contract, ?int $stationId = null): bool;
+
+    public function stationMappings(array $stationIds, string $status, ?SdmType $type): Collection;
+
+    public function stationReplacements(ServiceContract $contract): Collection;
+
+    public function lockServiceContracts(SdmType $type): Collection;
+
+    public function setStations(ServiceContract $contract, Collection $stations, int $actorId): void;
 
     public function contractorServiceTypes(): Collection;
 
