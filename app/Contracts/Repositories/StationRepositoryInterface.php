@@ -9,6 +9,8 @@ use Illuminate\Support\Collection as BaseCollection;
 
 interface StationRepositoryInterface
 {
+    public function nameById(int $id): ?string;
+
     public function paginateForContractMapping(?string $stationSearch): LengthAwarePaginator;
 
     public function active(): Collection;

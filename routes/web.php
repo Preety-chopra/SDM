@@ -45,7 +45,12 @@ Route::get('/dashboard/chart-sdms', DashboardChartMemosController::class)
 
 Route::middleware(['auth', 'enabled'])->group(function () {
     Route::post('/feedback', [FeedbackController::class, 'store'])->middleware('throttle:10,1')->name('feedback.store');
+    Route::get('/feedback/replies', [FeedbackController::class, 'inbox'])->name('feedback.inbox');
+    Route::get('/feedback/{feedback}/replies', [FeedbackController::class, 'thread'])->name('feedback.thread');
+    Route::post('/feedback/{feedback}/replies', [FeedbackController::class, 'followUp'])->name('feedback.follow-up');
     Route::get('/admin/feedback', [FeedbackController::class, 'index'])->name('feedback.index');
+    Route::get('/admin/feedback/{feedback}', [FeedbackController::class, 'show'])->name('feedback.show');
+    Route::post('/admin/feedback/{feedback}/replies', [FeedbackController::class, 'reply'])->name('feedback.reply');
     Route::get('/admin/user-activity', [UserActivityController::class, 'index'])->name('user-activity.index');
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
 

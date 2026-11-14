@@ -15,6 +15,11 @@ use RuntimeException;
 
 final class StationRepository implements StationRepositoryInterface
 {
+    public function nameById(int $id): ?string
+    {
+        return Station::query()->whereKey($id)->value('name');
+    }
+
     public function paginateForContractMapping(?string $stationSearch): LengthAwarePaginator
     {
         $lineOrder = implode(' ', array_map(fn (int $position): string => 'WHEN ? THEN '.$position, array_keys(Line::DISPLAY_ORDER)));

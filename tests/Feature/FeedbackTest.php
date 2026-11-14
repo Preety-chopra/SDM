@@ -5,10 +5,13 @@ namespace Tests\Feature;
 use App\Enums\UserRole;
 use App\Models\AuditLog;
 use App\Models\Feedback;
+use App\Models\Station;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\TestWith;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class FeedbackTest extends TestCase
@@ -44,6 +47,62 @@ class FeedbackTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors(['message', 'page_url']);
 
         $this->assertDatabaseCount('feedback', 0);
+    }
+
+    #[TestWith([UserRole::Station->value])]
+    #[TestWith([UserRole::StationManager->value])]
+    #[TestWith(['station_controller'])]
+    public function test_station_feedback_records_the_login_station_and_shows_it_to_the_administrator(string $role): void
+    {
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $loginStation = Station::query()->create(['code' => 'LOGIN', 'name' => 'Login <Central> Station', 'is_active' => true]);
+        $assignedStation = Station::query()->create(['code' => 'ASSIGNED', 'name' => 'Assigned Station', 'is_active' => true]);
+        $sender = User::factory()->for($assignedStation)->create();
+        $sender->assignRole(Role::findOrCreate($role));
+        $admin = User::factory()->create();
+        $admin->assignRole(UserRole::Administrator->value);
+
+        $this->post(route('login'), [
+            'username' => $sender->name,
+            'password' => 'password',
+            'station_id' => $loginStation->id,
+        ])->assertRedirect()->assertSessionHas('auth.station_id', $loginStation->id);
+
+        $this->postJson(route('feedback.store'), [
+            'message' => 'Please update the station instructions.',
+            'page_url' => route('profile.edit'),
+            'station_id' => $assignedStation->id,
+            'station_name' => 'Forged station name',
+        ])->assertCreated();
+
+        $feedback = Feedback::query()->sole();
+        $this->assertSame('Login <Central> Station', $feedback->station_name);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $sender->id,
+            'auditable_id' => $feedback->id,
+            'event' => 'feedback.submitted',
+            'after_values->station_name' => 'Login <Central> Station',
+        ]);
+
+        $loginStation->update(['name' => 'Renamed Station']);
+        $this->actingAs($admin)->get(route('feedback.index'))->assertOk()
+            ->assertSee('Login <Central> Station')->assertDontSee('Login <Central> Station', false);
+        $this->get(route('feedback.show', $feedback))->assertOk()->assertSee('Login <Central> Station');
+    }
+
+    public function test_feedback_from_other_roles_does_not_record_a_station(): void
+    {
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $station = Station::query()->create(['code' => 'OTHER', 'name' => 'Other Station', 'is_active' => true]);
+        $sender = User::factory()->create();
+        $sender->assignRole(UserRole::CmcStaff->value);
+
+        $this->actingAs($sender)->withSession(['auth.station_id' => $station->id])->postJson(route('feedback.store'), [
+            'message' => 'General feedback.',
+            'page_url' => route('profile.edit'),
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('feedback', ['user_id' => $sender->id, 'station_name' => null]);
     }
 
     #[DataProvider('invalidFeedback')]

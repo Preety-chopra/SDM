@@ -113,7 +113,7 @@
             @endcan
         @endforeach
         @can('viewAny', \App\Models\Feedback::class)
-            <a href="{{ route('feedback.index') }}" title="User feedback" class="{{ $baseClasses }} {{ request()->routeIs('feedback.index') ? $activeClasses : $idleClasses }}">
+            <a href="{{ route('feedback.index') }}" title="User feedback" class="{{ $baseClasses }} {{ request()->routeIs('feedback.index', 'feedback.show') ? $activeClasses : $idleClasses }}">
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 8h10M7 12h6M21 11a8 8 0 0 1-8 8H7l-4 3V7a4 4 0 0 1 4-4h6a8 8 0 0 1 8 8Z" /></svg>
                 <span x-show="! collapsed || mobileOpen" class="truncate">User feedback</span>
             </a>
@@ -165,6 +165,13 @@
     @endif
 
     <div class="ml-auto flex shrink-0 items-center gap-2">
+        @if ($unreadFeedbackReplyCount > 0)
+            <a href="{{ route('feedback.inbox') }}" aria-label="{{ trans_choice('{1} :count unread feedback reply|[2,*] :count unread feedback replies', $unreadFeedbackReplyCount) }}" class="inline-flex min-h-10 items-center gap-1 rounded-xl bg-emerald-100 px-2 py-2 text-xs font-semibold text-emerald-900 hover:bg-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:gap-1.5 sm:px-3 dark:bg-emerald-950 dark:text-emerald-200 dark:hover:bg-emerald-900">
+                <svg class="h-4 w-4 sm:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m9 8-5 5 5 5m-5-5h11a4 4 0 0 0 4-4V6" /></svg>
+                <span class="hidden sm:inline">Replies</span>
+                <span class="rounded-full bg-emerald-700 px-1.5 text-white" aria-hidden="true">{{ $unreadFeedbackReplyCount }}</span>
+            </a>
+        @endif
         <button data-feedback-trigger type="button" @click="$dispatch('open-feedback')" aria-haspopup="dialog" class="inline-flex min-h-10 items-center gap-2 rounded-xl border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:text-sm dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">
             <svg class="hidden h-4 w-4 sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 8h10M7 12h6M21 11a8 8 0 0 1-8 8H7l-4 3V7a4 4 0 0 1 4-4h6a8 8 0 0 1 8 8Z" /></svg>
             Feedback
@@ -180,6 +187,7 @@
             <x-slot name="content">
                 <div class="border-b border-gray-100 px-4 py-3 dark:border-gray-600"><p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ Auth::user()->name }}</p><p class="truncate text-xs text-gray-500 dark:text-gray-400">{{ Auth::user()->email }}</p></div>
                 <x-dropdown-link :href="route('profile.edit')">Change password</x-dropdown-link>
+                <x-dropdown-link :href="route('feedback.inbox')">My feedback</x-dropdown-link>
                 @can('viewAny', \App\Models\Feedback::class)
                     <x-dropdown-link :href="route('feedback.index')">User feedback</x-dropdown-link>
                 @endcan
