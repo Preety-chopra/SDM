@@ -34,10 +34,17 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
             'cancellationWorkflowStep' => fn ($query) => $query->select(['memo_workflow_steps.id', 'memo_workflow_steps.memo_id', 'memo_workflow_steps.stage', 'memo_workflow_steps.decision', 'memo_workflow_steps.acted_at']),
         ];
 
+        if ($isStationManager || $user->hasRole(UserRole::AssistantManager->value)) {
+            $relations['stationManagerApproval'] = fn ($query) => $query->select(['memo_approvals.id', 'memo_approvals.memo_id', 'memo_approvals.decision', 'memo_approvals.remarks']);
+        }
+
+        if ($user->hasRole(UserRole::AssistantManager->value)) {
+            $relations[] = 'latestStationManagerHandoff';
+        }
+
         if ($isStationManager) {
             $relations = [
                 ...$relations,
-                'stationManagerApproval' => fn ($query) => $query->select(['memo_approvals.id', 'memo_approvals.memo_id', 'memo_approvals.decision', 'memo_approvals.remarks']),
                 'stationManagerWorkflowStep' => fn ($query) => $query->select(['memo_workflow_steps.id', 'memo_workflow_steps.memo_id', 'memo_workflow_steps.decision', 'memo_workflow_steps.remarks']),
                 'lineManagerApproval' => fn ($query) => $query->select(['memo_approvals.id', 'memo_approvals.memo_id', 'memo_approvals.assigned_name', 'memo_approvals.assigned_employee_number']),
                 'lineReviewWorkflowStep' => fn ($query) => $query->select(['memo_workflow_steps.id', 'memo_workflow_steps.memo_id', 'memo_workflow_steps.assigned_name', 'memo_workflow_steps.assigned_employee_number']),

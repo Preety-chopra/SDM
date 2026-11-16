@@ -1041,6 +1041,14 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertOk()
             ->assertSee('Cancellation requested by Station Manager.');
 
+        $response = $this->actingAs($lineManager)->get(route('sdm-memos.index', ['category' => 'pending']))->assertOk();
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $badgeCells = (new \DOMXPath($document))->query('//td[.//span[normalize-space(.) = "Cancellation requested by SM"]]');
+        $this->assertSame(1, $badgeCells->length);
+        $this->assertStringContainsString($memo->serial_number, $badgeCells->item(0)->textContent);
+
         $this->actingAs($stationManager)->get(route('sdm-memos.index'))
             ->assertOk()
             ->assertSee('>Cancellation requested</span>', false);
@@ -1062,7 +1070,12 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'forward',
             'forward_to_employee_number' => $lineManager->employee_number,
+            'remarks' => 'Cancellation requested by Station Manager.',
         ])->assertRedirect();
+        $this->actingAs($lineManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee($memo->serial_number)
+            ->assertDontSee('Cancellation requested by SM');
         $this->actingAs($stationUser)->get(route('sdm-memos.edit', $memo))->assertForbidden();
         $this->actingAs($lineManager)->get(route('sdm-memos.show', $memo))
             ->assertOk()

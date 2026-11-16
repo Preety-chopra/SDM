@@ -27,6 +27,8 @@ class ServiceDeficiencyMemo extends Model
 {
     use HasFactory, SoftDeletes;
 
+    public const STATION_MANAGER_CANCELLATION_REQUEST_REMARK = 'Cancellation requested by Station Manager.';
+
     protected $attributes = ['status' => MemoStatus::Draft->value, 'workflow_version' => 1, 'is_urgent' => false];
 
     public function station(): BelongsTo
@@ -200,6 +202,38 @@ class ServiceDeficiencyMemo extends Model
             ->ofMany(['id' => 'max'], fn (Builder $query) => $query->where('event', 'memo.workflow.return'));
     }
 
+    public function latestStationManagerHandoff(): MorphOne
+    {
+        return $this->morphOne(AuditLog::class, 'auditable')
+            ->ofMany(['id' => 'max'], fn (Builder $query) => $query
+                ->whereIn('event', ['memo.workflow.forward', 'memo.workflow.request_cancellation'])
+                ->whereIn('after_values->stage', [WorkflowStage::StationManager->value, WorkflowStepType::StationManager->value]));
+    }
+
+    public function hasPendingStationManagerCancellationRequest(): bool
+    {
+        $isPendingLineReview = $this->workflow_version >= 2
+            ? $this->status === MemoStatus::LineReview && $this->currentWorkflowStep?->decision === 'pending'
+            : $this->current_stage === WorkflowStage::LineManager
+                && in_array($this->status, [MemoStatus::Submitted, MemoStatus::UnderReview], true);
+
+        if (! $isPendingLineReview) {
+            return false;
+        }
+
+        $handoffEvent = $this->latestStationManagerHandoff?->event;
+
+        if ($handoffEvent !== null || $this->workflow_version >= 2) {
+            return $handoffEvent === 'memo.workflow.request_cancellation';
+        }
+
+        // Older approvals recorded the request in the remarks only.
+        $remarks = $this->stationManagerApproval?->remarks ?? '';
+
+        return $remarks === self::STATION_MANAGER_CANCELLATION_REQUEST_REMARK
+            || str_starts_with($remarks, self::STATION_MANAGER_CANCELLATION_REQUEST_REMARK."\n\n");
+    }
+
     public function revertRemarks(): ?string
     {
         return $this->workflow_version >= 2
@@ -311,7 +345,7 @@ class ServiceDeficiencyMemo extends Model
             : $this->stationManagerApproval;
 
         if (in_array($stage, [WorkflowStage::LineManager, WorkflowStepType::LineReview], true)) {
-            return $stationManagerAction?->remarks === 'Cancellation requested by Station Manager.'
+            return $stationManagerAction?->remarks === self::STATION_MANAGER_CANCELLATION_REQUEST_REMARK
                 ? 'Cancellation requested'
                 : 'Forwarded to AM';
         }

@@ -972,6 +972,9 @@ class SdmWorkflowTest extends TestCase
             'forward_to_employee_number' => $lineManager->employee_number,
             'remarks' => 'Please cancel after reviewing the station record.',
         ])->assertRedirect();
+        $this->actingAs($lineManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSeeInOrder([$memo->serial_number, 'Cancellation requested by SM']);
         $this->actingAs($lineManager)->get(route('sdm-memos.show', $memo))
             ->assertOk()
             ->assertSee('name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM"', false)
@@ -990,6 +993,10 @@ class SdmWorkflowTest extends TestCase
             'event' => 'memo.workflow.cancel_after_counselling',
         ]);
         $this->assertSame(MemoCancellationType::AfterCounselling, $memo->fresh()->cancellation_type);
+        $this->actingAs($lineManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('Cancelled after counselling by AM/Line')
+            ->assertDontSee('Cancellation requested by SM');
         $this->actingAs($stationUser)->get(route('sdm-memos.show', $memo))
             ->assertOk()
             ->assertSee('Cancelled after counselling by AM/Line');

@@ -305,6 +305,9 @@
                                                     class="inline-flex items-center gap-2 text-emerald-700 transition hover:underline focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:text-emerald-400 dark:focus:ring-offset-gray-900"
                                                 ><span>{{ $memo->serial_number }}</span><x-urgent-flag :memo="$memo" /></a>
                                             </div>
+                                            @if($lineManagerStatusView && $memo->hasPendingStationManagerCancellationRequest())
+                                                <span class="inline-flex rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-900 dark:bg-orange-950 dark:text-orange-200">Cancellation requested by SM</span>
+                                            @endif
                                             @if($category === null)
                                                 <x-memo-revert-remarks :memo="$memo" />
                                             @endif

@@ -181,7 +181,7 @@ final class MemoWorkflowService
                     ]);
                 }
 
-                if ($isCancellation) {
+                if ($isCancellation || $stage === WorkflowStage::StationManager) {
                     $this->audit->record($memo, $actor, 'memo.workflow.'.$action, [], [
                         'approval_id' => $approval->id,
                         'stage' => $stage->value,
@@ -520,7 +520,7 @@ final class MemoWorkflowService
 
     private function cancellationRequestRemarks(?string $remarks): string
     {
-        $requestMessage = 'Cancellation requested by Station Manager.';
+        $requestMessage = ServiceDeficiencyMemo::STATION_MANAGER_CANCELLATION_REQUEST_REMARK;
 
         return filled($remarks)
             ? $requestMessage."\n\n".trim($remarks)
