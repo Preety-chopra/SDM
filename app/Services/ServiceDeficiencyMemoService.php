@@ -782,14 +782,20 @@ final class ServiceDeficiencyMemoService
             }
         }
 
-        $memo->publicComplaint()->delete();
-        if (filled($data['public_complaint']['number'] ?? null)) {
+        $complaintNumber = $data['public_complaint']['number'] ?? null;
+        if (filled($complaintNumber)) {
             $complaintStation = Station::query()->findOrFail($data['public_complaint']['station_id']);
-            $memo->publicComplaint()->create([
-                'complaint_serial_number' => $data['public_complaint']['number'],
+            $complaint = $memo->publicComplaint()->firstOrNew();
+            if ($complaint->complaint_serial_number !== $complaintNumber || $complaint->station_id !== $complaintStation->id) {
+                $complaint->remarks = null;
+            }
+            $complaint->fill([
+                'complaint_serial_number' => $complaintNumber,
                 'station_id' => $complaintStation->id,
                 'station_name' => $complaintStation->name,
-            ]);
+            ])->save();
+        } else {
+            $memo->publicComplaint()->delete();
         }
 
         $memo->cashCheck()->delete();

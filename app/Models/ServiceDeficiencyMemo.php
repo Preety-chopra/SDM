@@ -109,6 +109,11 @@ class ServiceDeficiencyMemo extends Model
         return $this->morphMany(AuditLog::class, 'auditable')->latest('id');
     }
 
+    public function legacyWorkflowReturns(): MorphMany
+    {
+        return $this->auditLogs()->where('event', 'memo.workflow.return')->reorder('id');
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');

@@ -238,6 +238,32 @@ class LineManagerMemoRevertTest extends TestCase
         }
     }
 
+    public function test_legacy_revert_and_forward_remarks_remain_visible_after_resending(): void
+    {
+        [$memo, $sm, $am] = $this->memoWithLineManager(1);
+        $memo->stationManagerApproval->update(['remarks' => 'Initial forwarding remark.']);
+        $url = route('sdm-memos.workflow.store', $memo);
+
+        foreach (['First revert remark.', 'Second revert remark.'] as $remarks) {
+            $this->actingAs($am)->post($url, ['action' => 'return', 'remarks' => $remarks])
+                ->assertSessionHasNoErrors()->assertRedirect();
+            $this->actingAs($sm)->post($url, [
+                'action' => 'forward',
+                'forward_to_employee_number' => $am->employee_number,
+                'remarks' => 'Resent after correction.',
+            ])->assertSessionHasNoErrors()->assertRedirect();
+        }
+
+        $this->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee(['Initial forwarding remark.', 'First revert remark.', 'Second revert remark.', 'Resent after correction.']);
+
+        $this->actingAs($memo->creator)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('Initial forwarding remark.')
+            ->assertDontSee('First revert remark.');
+    }
+
     private function memoWithLineManager(int $version): array
     {
         $originalSm = $this->user(UserRole::StationManager);

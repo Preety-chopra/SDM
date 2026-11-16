@@ -1,5 +1,6 @@
 @php
     $currentStep = $memo->currentWorkflowStep;
+    $hasWorkflowRemarks = $timelineSteps->contains(fn ($step) => filled($step->remarks));
     $assignmentStage = $currentStep?->stage === \App\Enums\WorkflowStepType::CmcAssignment;
     $lineReviewStage = $currentStep?->stage === \App\Enums\WorkflowStepType::LineReview;
     $assessmentStage = in_array($currentStep?->stage, [\App\Enums\WorkflowStepType::LineReview, \App\Enums\WorkflowStepType::CmcAssessment], true);
@@ -79,7 +80,7 @@
                 @endphp
                 <article class="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
                     <div class="flex flex-wrap justify-between gap-2"><p class="font-semibold">{{ $reviewLabel }}</p><span class="text-sm font-semibold {{ $assessment->cap_warning ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300' }}">₹{{ number_format((float) $assessment->proposed_total) }} · {{ str($assessment->status)->headline() }}</span></div>
-                    <div class="mt-3 overflow-x-auto"><table class="min-w-full text-sm"><thead class="text-left text-xs uppercase text-gray-500"><tr><th class="py-2 pr-4">Clause</th><th class="py-2 pr-4">Calculation</th><th class="py-2 text-right">Proposed</th></tr></thead><tbody>@foreach($assessment->items as $item)<tr class="border-t border-gray-100 dark:border-gray-700"><td class="py-2 pr-4">{{ $item->clause_serial_number }}. {{ $item->clause_description }}<p class="text-xs text-gray-500">{{ $item->justification }}</p></td><td class="py-2 pr-4">{{ $item->calculation_type->label() }}@if($item->suggested_amount !== null)<br><span class="text-xs text-gray-500">Calculated ₹{{ number_format((float) $item->suggested_amount) }}</span>@endif</td><td class="py-2 text-right font-semibold">₹{{ number_format((float) $item->proposed_amount) }}</td></tr>@endforeach</tbody></table></div>
+                    <div class="mt-3 overflow-x-auto"><table class="min-w-full text-sm"><thead class="text-left text-xs uppercase text-gray-500"><tr><th class="py-2 pr-4">Clause</th><th class="py-2 pr-4">Calculation</th><th class="py-2 text-right">Proposed</th></tr></thead><tbody>@foreach($assessment->items as $item)<tr class="border-t border-gray-100 dark:border-gray-700"><td class="py-2 pr-4">{{ $item->clause_serial_number }}. {{ $item->clause_description }}@if(filled($item->justification))<p class="whitespace-pre-wrap break-words text-xs text-gray-600 dark:text-gray-300">{{ $item->justification }}</p>@endif</td><td class="py-2 pr-4">{{ $item->calculation_type->label() }}@if($item->suggested_amount !== null)<br><span class="text-xs text-gray-500">Calculated ₹{{ number_format((float) $item->suggested_amount) }}</span>@endif</td><td class="py-2 text-right font-semibold">₹{{ number_format((float) $item->proposed_amount) }}</td></tr>@endforeach</tbody></table></div>
                     @if($assessment->negative_points !== null)<p class="mt-3 text-sm"><strong>{{ $assessment->negative_points }} negative points</strong> · {{ str($assessment->staff_action)->headline() }}</p>@endif
                     @if($assessment->cap_warning)<p class="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">Advisory cap warning: applicable clauses total {{ number_format((float) $assessment->cap_percentage, 3) }}% of the monthly bill. DGM acknowledgement is required.</p>@endif
                     @if($assessment->administrative_review_flag)<p class="mt-2 rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-900 dark:bg-rose-950/50 dark:text-rose-200">Administrative review flagged: the advisory threshold was reached in three consecutive bill months. No automatic termination has been applied.</p>@endif
@@ -114,14 +115,15 @@
 </section>
 @endif
 
-<details data-case-timeline data-default-collapsed="true" class="group rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-5">
+<details data-case-timeline data-default-collapsed="{{ $hasWorkflowRemarks ? 'false' : 'true' }}" @if($hasWorkflowRemarks)open @endif class="group rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-5">
     <summary class="flex cursor-pointer list-none items-center justify-between gap-4 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800">
         <span class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span class="font-semibold text-gray-900 dark:text-white">Case timeline</span>
             <span class="text-xs text-gray-500 dark:text-gray-400">Approval levels available to you</span>
         </span>
         <span class="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
-            View timeline
+            <span class="group-open:hidden">View timeline</span>
+            <span class="hidden group-open:inline">Hide timeline</span>
             <svg aria-hidden="true" class="h-4 w-4 transition-transform duration-200 group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M5.22 7.22a.75.75 0 0 1 1.06 0L10 10.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
             </svg>
@@ -198,7 +200,7 @@
                                         <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide {{ $statusClasses }}">{{ $statusLabel }}</span>
                                     </div>
                                     @if($step->acted_at)<p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ $statusLabel }} by {{ $step->actor_name }} on {{ $step->acted_at->format('d-m-Y H:i') }}</p>@endif
-                                    @if($step->remarks)<p class="mt-1.5 whitespace-pre-line rounded-md bg-white/60 px-2.5 py-1.5 text-xs leading-5 text-gray-700 dark:bg-black/10 dark:text-gray-200">{{ $step->remarks }}</p>@endif
+                                    @if(filled($step->remarks))<p class="mt-1.5 whitespace-pre-wrap break-words rounded-md bg-white/60 px-2.5 py-1.5 text-xs leading-5 text-gray-700 dark:bg-black/10 dark:text-gray-200">{{ $step->remarks }}</p>@endif
                                 </div>
                             </div>
                         </li>
@@ -394,12 +396,27 @@
 @endcan
 
 @if($approvedAssessment)
+    @php($objectionsByLetter = $memo->objections->keyBy('memo_penalty_letter_id'))
     <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <h3 class="font-semibold">Penalty letter, objection, and deduction</h3>
         @if($memo->penaltyLetters->isNotEmpty())
             <div class="mt-4 flex flex-col gap-2">
                 @foreach($memo->penaltyLetters as $letter)
-                    <a href="{{ route('sdm-memos.penalty-letter.download', [$memo, $letter]) }}" class="rounded-lg bg-gray-50 p-3 text-sm hover:bg-emerald-50 dark:bg-gray-900 dark:hover:bg-emerald-950">Letter revision {{ $letter->revision }} issued {{ $letter->issued_at->format('d-m-Y') }} · objection due {{ $letter->objection_due_at->format('d-m-Y') }} · {{ $letter->is_current ? 'Current' : 'Superseded' }}</a>
+                    <article class="flex flex-col gap-3 rounded-lg bg-gray-50 p-3 text-sm dark:bg-gray-900">
+                        <a href="{{ route('sdm-memos.penalty-letter.download', [$memo, $letter]) }}" class="font-semibold text-emerald-700 hover:underline dark:text-emerald-400">Letter revision {{ $letter->revision }} issued {{ $letter->issued_at->format('d-m-Y') }} · objection due {{ $letter->objection_due_at->format('d-m-Y') }} · {{ $letter->is_current ? 'Current' : 'Superseded' }}</a>
+                        @if(filled($letter->delivery_details))
+                            <div>
+                                <h4 class="font-semibold">Delivery details</h4>
+                                <p class="whitespace-pre-wrap break-words">{{ $letter->delivery_details }}</p>
+                            </div>
+                        @endif
+                        @if($objection = $objectionsByLetter->get($letter->id))
+                            <div>
+                                <h4 class="font-semibold">Objection remarks · {{ $objection->received_at->format('d-m-Y') }}</h4>
+                                <p class="whitespace-pre-wrap break-words">{{ $objection->remarks }}</p>
+                            </div>
+                        @endif
+                    </article>
                 @endforeach
             </div>
         @endif

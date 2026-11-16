@@ -16,11 +16,18 @@
             @if($memo->cancellationLabel())
                 <div class="rounded-lg border border-rose-200 bg-rose-50 p-4 font-semibold text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{ $memo->cancellationLabel() }}</div>
             @endif
-            @if(filled($legacyLineReturnRemarks ?? null))
-                <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-                    <p class="font-semibold">Revert remarks from AM/CMC</p>
-                    <p class="mt-1 whitespace-pre-wrap break-words">{{ $legacyLineReturnRemarks }}</p>
-                </div>
+            @if($legacyWorkflowRemarks !== [])
+                <section class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                    <h3 class="font-semibold">Previous workflow remarks</h3>
+                    <dl class="mt-2 flex flex-col gap-3">
+                        @foreach($legacyWorkflowRemarks as $remark)
+                            <div>
+                                <dt class="font-semibold">{{ $remark['label'] }}</dt>
+                                <dd class="whitespace-pre-wrap break-words">{{ $remark['remarks'] }}</dd>
+                            </div>
+                        @endforeach
+                    </dl>
+                </section>
             @endif
             @can('update', $memo)
                 @unless($isStationManagerViewer && auth()->user()->can('act', $memo))
@@ -100,7 +107,7 @@
                         ] as $label=>$value)
                         <div>
                             <dt class="text-xs font-semibold uppercase text-gray-500">{{ $label }}</dt>
-                            <dd class="mt-1 text-gray-900 dark:text-white">{{ $value ?: '—' }}</dd>
+                            <dd class="mt-1 whitespace-pre-wrap break-words text-gray-900 dark:text-white">{{ filled($value) ? $value : '—' }}</dd>
                         </div>@endforeach</dl>
             </section>
             @if($memo->staffAcknowledgement?->proof_path)
@@ -118,8 +125,8 @@
                             @if($deficiency->type === \App\Enums\DeficiencyType::ShortDeployment && $deficiency->shortfall_count !== null)
                                 <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">Number of staff shortfalls: {{ $deficiency->shortfall_count }}</p>
                             @endif
-                            @if($deficiency->remarks)
-                                <p class="mt-2 whitespace-pre-line text-sm text-gray-600 dark:text-gray-300">{{ $deficiency->remarks }}</p>
+                            @if(filled($deficiency->remarks))
+                                <p class="mt-2 whitespace-pre-wrap break-words text-sm text-gray-600 dark:text-gray-300">{{ $deficiency->remarks }}</p>
                             @endif
                             @if($deficiency->lateReporting)
                                 <p class="mt-2 text-sm text-gray-600">Booked {{ $deficiency->lateReporting->booked_shift_from }}–{{ $deficiency->lateReporting->booked_shift_to }}, actual {{ $deficiency->lateReporting->actual_reporting_time }}</p>
@@ -133,6 +140,9 @@
                 <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                     <h3 class="font-semibold">Public complaint</h3>
                     <p class="mt-2">{{ $memo->publicComplaint->complaint_serial_number }} · {{ $memo->publicComplaint->station_name }}</p>
+                    @if(filled($memo->publicComplaint->remarks))
+                        <p class="mt-2 whitespace-pre-wrap break-words text-sm text-gray-600 dark:text-gray-300">{{ $memo->publicComplaint->remarks }}</p>
+                    @endif
                 </section>
             @endif
             @if($memo->cashCheck)
@@ -153,7 +163,7 @@
                             'Cash-check remarks'=>$memo->cashCheck->remarks] as $label=>$value)
                             <div>
                                 <dt class="text-xs uppercase text-gray-500">{{ $label }}</dt>
-                                <dd>{{ $value ?: '—' }}</dd>
+                                <dd class="whitespace-pre-wrap break-words">{{ filled($value) ? $value : '—' }}</dd>
                             </div>
                         @endforeach
                     </dl>
@@ -191,8 +201,8 @@
                                 @if($approval->acted_at)
                                     <p class="mt-1 text-sm text-gray-500">Acted by {{ $approval->signer_name }} on {{ $approval->acted_at->format('d-m-Y H:i') }}</p>
                                 @endif
-                                @if($approval->remarks)
-                                    <p class="mt-2 whitespace-pre-line text-sm">{{ $approval->remarks }}</p>
+                                @if(filled($approval->remarks))
+                                    <p class="mt-2 whitespace-pre-wrap break-words text-sm">{{ $approval->remarks }}</p>
                                 @endif
                                 @if($approval->attachments->isNotEmpty())
                                     <div class="mt-2 flex flex-col gap-1">

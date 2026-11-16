@@ -765,6 +765,8 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->actingAs($cmcStaff)->get(route('sdm-memos.show', $memo))
             ->assertOk()
             ->assertSee('CMC Review 2')
+            ->assertSee('Revised after considering the objection.')
+            ->assertSee('Contractor disputed the first assessment.')
             ->assertDontSee('Proposal v3')
             ->assertDontSee('round 2');
         $this->actingAs($cmcTeamLead)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'forward'])->assertRedirect()->assertSessionHasNoErrors();
@@ -812,7 +814,9 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->assertGreaterThanOrEqual(15, $memo->auditLogs()->count());
         $this->actingAs($cmcStaff)->get(route('sdm-memos.show', $memo))
             ->assertOk()
-            ->assertSee('Deducted ₹165 against BILL-2026-08-19');
+            ->assertSee('Deducted ₹165 against BILL-2026-08-19')
+            ->assertSee('Contractor disputed the first assessment.')
+            ->assertSee(['Delivered by registered post.', 'Revised letter delivered by registered post.']);
     }
 
     public function test_line_review_rejects_a_fractional_penalty_and_prefills_within_a_fractional_contract_maximum(): void

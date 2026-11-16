@@ -993,13 +993,21 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertSee('Delay: 1 hour 25 minutes');
     }
 
-    public function test_complete_ticketing_memo_persists_conditional_sections_and_private_attachment(): void
+    #[TestWith(['PC-10', 'Existing complaint details.'])]
+    #[TestWith(['PC-9', null])]
+    public function test_complete_ticketing_memo_persists_conditional_sections_and_private_attachment(string $previousComplaintNumber, ?string $expectedComplaintRemarks): void
     {
         Storage::fake('local');
         [$user, , $station] = $this->stationUserWithLine();
         $contractor = Contractor::query()->create(['name' => 'Metro Services', 'is_active' => true]);
         $complaintStation = Station::query()->create(['code' => 'CMP', 'name' => 'Complaint Station', 'line_id' => $station->line_id, 'is_active' => true]);
         $memo = $this->draft($user, SdmType::Ticketing, 'TV-100');
+        $memo->publicComplaint()->create([
+            'complaint_serial_number' => $previousComplaintNumber,
+            'station_id' => $complaintStation->id,
+            'station_name' => $complaintStation->name,
+            'remarks' => 'Existing complaint details.',
+        ]);
 
         $response = $this->actingAs($user)->post(route('sdm-memos.submit', $memo), [
             'service_type' => SdmType::Ticketing->value,
@@ -1036,6 +1044,7 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->assertSame('Metro Services', $memo->contractor_name);
         $this->assertCount(3, $memo->deficiencies);
         $this->assertSame('PC-10', $memo->publicComplaint->complaint_serial_number);
+        $this->assertSame($expectedComplaintRemarks, $memo->publicComplaint->remarks);
         $this->assertSame('-50.00', $memo->cashCheck->difference_amount);
         $this->assertSame('17-08-2026 21:35', $memo->cashCheck->checked_at->format('d-m-Y H:i'));
         $this->assertSame('Checking Officer', $memo->cashCheck->checking_official_name);

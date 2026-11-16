@@ -244,17 +244,13 @@ class ServiceDeficiencyMemoController extends Controller
             'staffAcknowledgement', 'workflowSteps.assignee', 'currentWorkflowStep', 'cmcStaff', 'assessments.items',
             'penaltyLetters', 'currentPenaltyLetter', 'objections', 'deduction',
             'cancellationApproval', 'cancellationWorkflowStep',
+            ...($sdmMemo->workflow_version < 2 ? ['legacyWorkflowReturns'] : []),
         ]);
 
         $timelineSteps = $this->timeline->visibleSteps($sdmMemo, $request->user());
 
         $timelineApprovals = $this->timeline->visibleApprovals($sdmMemo, $request->user());
         $deficiencyLabels = $sdmMemo->deficiencyLabels();
-        $legacyLineReturn = $sdmMemo->workflow_version < 2
-            && $sdmMemo->current_stage === WorkflowStage::LineManager
-            && $request->user()->can('act', $sdmMemo)
-                ? $sdmMemo->latestLineReturnAudit?->after_values
-                : null;
 
         $stationManagerConfirmationPreview = [
             ['label' => 'Line', 'value' => $sdmMemo->line_name ?: '—'],
@@ -273,9 +269,9 @@ class ServiceDeficiencyMemoController extends Controller
             'deficiencyLabels' => $deficiencyLabels,
             'timelineSteps' => $timelineSteps,
             'timelineApprovals' => $timelineApprovals,
-            'legacyLineReturnRemarks' => ($legacyLineReturn['stage'] ?? null) === WorkflowStage::OperationsManager->value
-                ? ($legacyLineReturn['remarks'] ?? null)
-                : null,
+            'legacyWorkflowRemarks' => $sdmMemo->workflow_version < 2
+                ? $this->timeline->visibleLegacyRemarks($sdmMemo, $request->user(), $timelineApprovals)
+                : [],
             'stationManagerConfirmationPreview' => $stationManagerConfirmationPreview,
             'showContractAssessment' => ! $request->user()->isStationController()
                 && ! $request->user()->hasRole(UserRole::StationManager->value),

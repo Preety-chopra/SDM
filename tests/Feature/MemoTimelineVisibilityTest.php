@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\DeficiencyType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\UserRole;
@@ -58,6 +59,42 @@ class MemoTimelineVisibilityTest extends TestCase
             ->assertOk()
             ->assertViewHas($version === 2 ? 'timelineSteps' : 'timelineApprovals', fn ($steps): bool => $steps->pluck('sequence')->all() === [1, 2])
             ->assertDontSee(WorkflowStepType::AmCmcToScrutiny->label());
+    }
+
+    public function test_opening_the_sdm_expands_the_timeline_for_visible_workflow_remarks(): void
+    {
+        [$memo, $sm, $am] = $this->pendingMemo(2);
+        $remarks = "Review <station record>\nCheck the second page.";
+        $this->actingAs($sm)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'forward',
+            'forward_to_employee_number' => $am->employee_number,
+            'remarks' => $remarks,
+        ])->assertSessionHasNoErrors()->assertRedirect();
+
+        $this->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee('<details data-case-timeline data-default-collapsed="false" open', false)
+            ->assertSee($remarks)
+            ->assertDontSee($remarks, false);
+    }
+
+    public function test_sdm_details_display_all_saved_incident_remarks(): void
+    {
+        [$memo, $sm] = $this->pendingMemo(2);
+        $memo->update(['station_record_brief_remarks' => 'Station record remark.']);
+        $memo->deficiencies()->create(['type' => DeficiencyType::Other->value, 'remarks' => 'Deficiency remark.']);
+        $memo->cashCheck()->create(['remarks' => 'Cash-check remark.']);
+        $memo->publicComplaint()->create([
+            'complaint_serial_number' => 'PC-1',
+            'station_id' => $memo->station_id,
+            'station_name' => $memo->station_name,
+            'remarks' => 'Complaint remark <follow-up>.',
+        ]);
+
+        $this->actingAs($sm)->get(route('sdm-memos.show', $memo))
+            ->assertOk()
+            ->assertSee(['Station record remark.', 'Deficiency remark.', 'Cash-check remark.', 'Complaint remark <follow-up>.'])
+            ->assertDontSee('Complaint remark <follow-up>.', false);
     }
 
     /** @return array{ServiceDeficiencyMemo, User, User} */

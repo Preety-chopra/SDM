@@ -77,6 +77,42 @@ final class MemoTimelineService
     }
 
     /**
+     * @param  Collection<int, MemoApproval>  $visibleApprovals
+     * @return list<array{label: string, remarks: string}>
+     */
+    public function visibleLegacyRemarks(ServiceDeficiencyMemo $memo, User $viewer, Collection $visibleApprovals): array
+    {
+        $visibleStages = $visibleApprovals->pluck('role');
+        $remarks = [];
+
+        // Legacy returns reset the approval rows. The audit holds the previous action and the return itself.
+        foreach ($memo->legacyWorkflowReturns as $return) {
+            $stage = WorkflowStage::tryFrom($return->after_values['stage'] ?? '');
+            [$previousStage, $snapshot, $returnLabel] = match ($stage) {
+                WorkflowStage::LineManager => [WorkflowStage::StationManager, 'station_manager_action', 'Revert remarks from AM/Manager (Line)'],
+                WorkflowStage::OperationsManager => [WorkflowStage::LineManager, 'line_manager_action', 'Revert remarks from AM/CMC'],
+                default => [null, null, null],
+            };
+
+            if ($previousStage === null) {
+                continue;
+            }
+
+            $previousRemarks = $return->before_values[$snapshot]['remarks'] ?? null;
+            if (filled($previousRemarks) && $visibleStages->containsStrict($previousStage)) {
+                $remarks[] = ['label' => $previousStage->label(), 'remarks' => $previousRemarks];
+            }
+
+            $returnRemarks = $return->after_values['remarks'] ?? null;
+            if (filled($returnRemarks) && ($visibleStages->containsStrict($stage) || ($return->after_values['returned_to'] ?? null) === $viewer->id)) {
+                $remarks[] = ['label' => $returnLabel, 'remarks' => $returnRemarks];
+            }
+        }
+
+        return $remarks;
+    }
+
+    /**
      * @param  Collection<int, MemoWorkflowStep|MemoApproval>  $steps
      * @return Collection<int, MemoWorkflowStep|MemoApproval>
      */
