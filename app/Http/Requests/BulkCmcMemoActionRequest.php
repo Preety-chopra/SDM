@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use App\Enums\AmCmcMemoCategory;
+use App\Enums\CmcTeamLeadMemoCategory;
+use App\Enums\SdmType;
 use App\Enums\UserRole;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
@@ -21,10 +23,20 @@ class BulkCmcMemoActionRequest extends FormRequest
     public function rules(): array
     {
         $action = $this->string('action')->toString();
+        $category = $this->input('category');
 
         return [
-            'category' => ['nullable', Rule::in([AmCmcMemoCategory::ProcessedByCmc->value])],
-            'action' => ['required', Rule::in($this->isAmCmcReview() ? ['forward', 'return'] : ['assign', 'forward', 'return'])],
+            'category' => ['nullable', Rule::in([
+                AmCmcMemoCategory::ProcessedByCmc->value,
+                CmcTeamLeadMemoCategory::PendingStaffAssignment->value,
+                CmcTeamLeadMemoCategory::ProcessedByStaff->value,
+            ])],
+            'service_type' => ['nullable', 'prohibited_unless:category,'.CmcTeamLeadMemoCategory::PendingStaffAssignment->value, Rule::enum(SdmType::class)],
+            'action' => ['required', Rule::in(match ($category) {
+                CmcTeamLeadMemoCategory::PendingStaffAssignment->value => ['assign'],
+                CmcTeamLeadMemoCategory::ProcessedByStaff->value, AmCmcMemoCategory::ProcessedByCmc->value => ['forward', 'return'],
+                default => ['assign', 'forward', 'return'],
+            })],
             'memo_ids' => ['required', 'array', 'min:1'],
             'memo_ids.*' => ['required', 'integer', 'distinct', Rule::exists(ServiceDeficiencyMemo::class, 'id')],
             'cmc_staff_id' => [

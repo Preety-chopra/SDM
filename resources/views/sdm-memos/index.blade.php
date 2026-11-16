@@ -33,6 +33,23 @@
                 @endforeach
             </div>
         </nav>
+        @if($cmcStaffAssignmentTab)
+            <nav aria-label="Assignment by SDM type" class="mb-5 flex flex-wrap gap-2">
+                @foreach ([null, ...$sdmTypes] as $type)
+                    @php
+                        $typeIsActive = ($filters['service_type'] ?? null) === $type?->value;
+                        $typeParameters = array_filter([...$filters, 'pending_stage' => $pendingStage?->value, 'category' => $category, 'service_type' => $type?->value]);
+                    @endphp
+                    <a href="{{ route('sdm-memos.index', $typeParameters) }}"
+                        @if($typeIsActive) aria-current="page" @endif
+                        @class([
+                            'rounded-lg border px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500',
+                            'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200' => $typeIsActive,
+                            'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700' => ! $typeIsActive,
+                        ])>{{ $type === \App\Enums\SdmType::Marshal ? $type->label() : ($type?->code() ?? 'All types') }}</a>
+                @endforeach
+            </nav>
+        @endif
         @if($receivedTab)
             <nav aria-label="SDMs received from Lines" class="mb-5 flex flex-wrap gap-2">
                 @foreach ($receivedTabs as $tab)
@@ -133,6 +150,7 @@
             <form id="sdm-filter-form" method="GET" action="{{ route('sdm-memos.index') }}">
                 @if($category)<input type="hidden" name="category" value="{{ $category }}">@endif
                 @if($receivedTab)<input type="hidden" name="received_tab" value="{{ $receivedTab->value }}">@endif
+                @if($cmcStaffAssignmentTab && isset($filters['service_type']))<input type="hidden" name="service_type" value="{{ $filters['service_type'] }}">@endif
                 @if($pendingStage)<input type="hidden" name="pending_stage" value="{{ $pendingStage->value }}">@endif
             </form>
         @endunless
@@ -146,7 +164,7 @@
                 data-destinations='@json($lineReceiptDestinations)'
             @else
                 data-actions='@json($bulkCmcActions)'
-                data-initial-action="{{ old('action', $bulkAmCmcReview ? 'forward' : 'assign') }}"
+                data-initial-action="{{ $cmcStaffAssignmentTab ? 'assign' : old('action', ($bulkAmCmcReview || $cmcStaffProcessedTab) ? 'forward' : 'assign') }}"
                 data-selected='@json(old('memo_ids', []))'
             @endif
             class="flex flex-col gap-4"
@@ -164,19 +182,29 @@
                 <x-input-error :messages="$errors->get('memo_ids')" />
             </form>
             @else
-            <form id="bulk-cmc-form" method="POST" action="{{ route('sdm-memos.bulk-cmc-action') }}" x-show="selected.length > 0" x-cloak class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/40">
+            <form id="bulk-cmc-form" method="POST" action="{{ route('sdm-memos.bulk-cmc-action') }}" @unless($cmcStaffAssignmentTab) x-show="selected.length > 0" x-cloak @endunless class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/40">
                 @csrf
-                @if($bulkAmCmcReview)
+                @if($category)
                     <input type="hidden" name="category" value="{{ $category }}">
+                @endif
+                @if($cmcStaffAssignmentTab)
+                    <input type="hidden" name="action" value="assign">
+                    @isset($filters['service_type'])
+                        <input type="hidden" name="service_type" value="{{ $filters['service_type'] }}">
+                    @endisset
                 @endif
                 <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                     <div>
-                        <h3 class="font-semibold text-emerald-950 dark:text-emerald-100"><span x-text="selected.length"></span> SDM(s) selected</h3>
-                        @unless($bulkAmCmcReview)
+                        <p aria-live="polite" class="font-semibold text-emerald-950 dark:text-emerald-100"><span x-text="selected.length">0</span> selected</p>
+                        @if(! $category)
                             <p class="mt-1 text-sm text-emerald-800 dark:text-emerald-200">Choose the CMC SM action to apply to the selected eligible SDMs.</p>
-                        @endunless
+                        @endif
                     </div>
-                    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(13rem,1fr)_minmax(15rem,1fr)_auto] xl:items-end">
+                    <div @class([
+                        'grid gap-3 sm:grid-cols-2 sm:items-end',
+                        'xl:grid-cols-[minmax(13rem,1fr)_minmax(15rem,1fr)_auto]' => ! $cmcStaffAssignmentTab,
+                    ])>
+                        @unless($cmcStaffAssignmentTab)
                         <div>
                             <x-input-label for="bulk_cmc_action" value="Action" />
                             <select id="bulk_cmc_action" name="action" x-model="action" class="mt-1 block w-full rounded-lg border-emerald-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-emerald-800 dark:bg-gray-900 dark:text-gray-100">
@@ -184,26 +212,29 @@
                                     <option value="forward">Send to DGM/CMC for approval</option>
                                     <option value="return">Revert to SM/CMC for rechecking</option>
                                 @else
-                                    <option value="assign">Assign to CMC staff</option>
+                                    @unless($cmcStaffProcessedTab)<option value="assign">Assign to CMC staff</option>@endunless
                                     <option value="forward">Forward to Manager CMC</option>
                                     <option value="return">Revert for rechecking</option>
                                 @endif
                             </select>
                         </div>
-                        @unless($bulkAmCmcReview)
+                        @endunless
+                        @if(! $bulkAmCmcReview && ! $cmcStaffProcessedTab)
                         <div x-show="action === 'assign'">
                             <x-input-label for="bulk_cmc_staff_id" value="CMC staff" />
-                            <select id="bulk_cmc_staff_id" name="cmc_staff_id" :required="action === 'assign'" class="mt-1 block w-full rounded-lg border-emerald-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-emerald-800 dark:bg-gray-900 dark:text-gray-100">
+                            <select id="bulk_cmc_staff_id" name="cmc_staff_id" :required="action === 'assign'" :disabled="action !== 'assign'" class="mt-1 block w-full rounded-lg border-emerald-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-emerald-800 dark:bg-gray-900 dark:text-gray-100">
                                 <option value="">Select CMC staff</option>
-                                @foreach($cmcStaffUsers as $cmcUser)<option value="{{ $cmcUser->id }}">{{ $cmcUser->name }} · {{ $cmcUser->employee_number }}</option>@endforeach
+                                @foreach($cmcStaffUsers as $cmcUser)<option value="{{ $cmcUser->id }}" @selected(old('cmc_staff_id') == $cmcUser->id)>{{ $cmcUser->name }} · {{ $cmcUser->employee_number }}</option>@endforeach
                             </select>
                         </div>
-                        @endunless
+                        @endif
+                        @unless($cmcStaffAssignmentTab)
                         <div x-show="action === 'return'">
                             <x-input-label for="bulk_cmc_remarks" value="Reason for rechecking (required)" />
                             <input id="bulk_cmc_remarks" name="remarks" value="{{ old('remarks') }}" maxlength="5000" :required="action === 'return'" :disabled="action !== 'return'" class="mt-1 block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
                         </div>
-                        <button type="submit" :disabled="selected.length === 0" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">Apply action</button>
+                        @endunless
+                        <button type="submit" disabled :disabled="selected.length === 0" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">{{ $cmcStaffAssignmentTab ? 'Assign selected' : 'Apply action' }}</button>
                     </div>
                 </div>
                 @error('action')<p class="mt-3 text-sm font-semibold text-rose-700 dark:text-rose-300">{{ $message }}</p>@enderror
@@ -231,6 +262,10 @@
                                     @if($headerFilterTable)
                                         @switch($heading)
                                             @case('SDM type')
+                                                @if($cmcStaffAssignmentTab)
+                                                    {{ $heading }}
+                                                    @break
+                                                @endif
                                                 <x-column-filter-dropdown label="SDM type" :active="filled($filters['service_type'] ?? null)">
                                                     <select x-ref="picker" data-filter-picker form="sdm-filter-form" name="service_type" aria-label="Filter by SDM type" @change="$el.form.requestSubmit()" class="block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
                                                         <option value="">All types</option>
@@ -324,7 +359,7 @@
                                             @if($lineManagerStatusView && $memo->hasPendingStationManagerCancellationRequest())
                                                 <span class="inline-flex rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-900 dark:bg-orange-950 dark:text-orange-200">Cancellation requested by SM</span>
                                             @endif
-                                            @if($category === null)
+                                            @if($category === null || $cmcStaffProcessedTab)
                                                 <x-memo-revert-remarks :memo="$memo" />
                                             @endif
                                         </div>

@@ -89,7 +89,7 @@ class MemoWorkflowController extends Controller
             'return' => $amCmcReview ? 'reverted to SM/CMC for rechecking' : 'reverted for rechecking',
         };
 
-        return redirect()->route('sdm-memos.index', $request->safe()->only(['category']))
+        return redirect()->route('sdm-memos.index', $request->safe()->only(['category', 'service_type']))
             ->with('status', "{$count} ".($count === 1 ? 'SDM' : 'SDMs')." {$label}.");
     }
 

@@ -5,6 +5,7 @@ namespace App\Repositories\Eloquent;
 use App\Contracts\Repositories\ServiceDeficiencyMemoRepositoryInterface;
 use App\Enums\AmCmcMemoCategory;
 use App\Enums\AmCmcReceivedSdmTab;
+use App\Enums\CmcTeamLeadMemoCategory;
 use App\Enums\MemoStatus;
 use App\Enums\StationManagerMemoStatus;
 use App\Enums\UserRole;
@@ -251,6 +252,21 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
 
     private function scopeToInboxCategory(Builder $query, User $user, string $category, ?AmCmcReceivedSdmTab $receivedTab): Builder
     {
+        if ($category === CmcTeamLeadMemoCategory::PendingStaffAssignment->value) {
+            return $query->where('workflow_version', '>=', 2)
+                ->whereHas('currentWorkflowStep', fn (Builder $step) => $step
+                    ->where('stage', WorkflowStepType::CmcAssignment->value)
+                    ->where('assigned_to', $user->id)
+                    ->where('decision', 'pending'));
+        }
+
+        if ($category === CmcTeamLeadMemoCategory::ProcessedByStaff->value) {
+            return $query->where('workflow_version', '>=', 2)
+                ->whereHas('currentWorkflowStep', fn (Builder $step) => $step
+                    ->whereIn('stage', [WorkflowStepType::CmcVerification->value, WorkflowStepType::AmCmcToDgm->value, WorkflowStepType::DgmApproval->value])
+                    ->where('decision', 'pending'));
+        }
+
         if ($category === AmCmcMemoCategory::ReceivedFromLines->value) {
             return $this->scopeToLineReceipts($query, $receivedTab ?? AmCmcReceivedSdmTab::Pending);
         }

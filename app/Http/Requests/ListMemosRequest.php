@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\AmCmcMemoCategory;
 use App\Enums\AmCmcReceivedSdmTab;
+use App\Enums\CmcTeamLeadMemoCategory;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\StationManagerMemoStatus;
@@ -94,6 +95,10 @@ class ListMemosRequest extends FormRequest
 
         if ($this->user()?->hasRole(UserRole::ManagerOperations->value)) {
             $categories = [...$categories, ...array_column(AmCmcMemoCategory::cases(), 'value')];
+        }
+
+        if ($this->user()?->hasRole(UserRole::CmcTeamLead->value)) {
+            $categories = [...$categories, ...array_column(CmcTeamLeadMemoCategory::cases(), 'value'), AmCmcMemoCategory::ApprovedByDgmCmc->value];
         }
 
         return $categories;

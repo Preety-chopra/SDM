@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\AmCmcMemoCategory;
 use App\Enums\AmCmcReceivedSdmTab;
+use App\Enums\CmcTeamLeadMemoCategory;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\StationManagerMemoStatus;
@@ -93,7 +94,7 @@ class ServiceDeficiencyMemoController extends Controller
         };
         $memoCategoryTabs = [['category' => null, 'label' => 'All Memos']];
 
-        if (! $isAmCmc) {
+        if (! $isAmCmc && ! $isCmcTeamLead) {
             $memoCategoryTabs[] = [
                 'category' => in_array($category, ['pending_action', 'urgent_pending_action'], true) ? 'pending_action' : 'pending',
                 'label' => 'Pending Memos',
@@ -104,12 +105,23 @@ class ServiceDeficiencyMemoController extends Controller
             $memoCategoryTabs[] = ['category' => 'transferred', 'label' => 'Transferred Memos'];
         }
 
+        if ($isCmcTeamLead) {
+            foreach (CmcTeamLeadMemoCategory::cases() as $teamLeadCategory) {
+                $memoCategoryTabs[] = ['category' => $teamLeadCategory->value, 'label' => $teamLeadCategory->label()];
+            }
+        }
+
         if ($isAmCmc) {
             foreach (AmCmcMemoCategory::cases() as $amCmcCategory) {
                 $memoCategoryTabs[] = ['category' => $amCmcCategory->value, 'label' => $amCmcCategory->label()];
             }
+        } elseif ($isCmcTeamLead) {
+            $approvalCategory = AmCmcMemoCategory::ApprovedByDgmCmc;
+            $memoCategoryTabs[] = ['category' => $approvalCategory->value, 'label' => $approvalCategory->label()];
         }
 
+        $cmcStaffAssignmentTab = $category === CmcTeamLeadMemoCategory::PendingStaffAssignment->value;
+        $cmcStaffProcessedTab = $category === CmcTeamLeadMemoCategory::ProcessedByStaff->value;
         $receivedTab = $request->receivedTab();
         $memos = $this->memos->paginateFor($request->user(), $filters, $pendingStage, $category, $receivedTab);
         $canBulkAmCmcAction = $isAmCmc && $request->user()->can('bulkAmCmcAction', ServiceDeficiencyMemo::class);
@@ -121,7 +133,7 @@ class ServiceDeficiencyMemoController extends Controller
                     && $memo->currentWorkflowStep?->assigned_to === $request->user()->id)
                 ->mapWithKeys(fn (ServiceDeficiencyMemo $memo): array => [(string) $memo->id => WorkflowStepType::AmCmcToScrutiny->value])
             : collect();
-        $bulkCmcSmActions = $category === null
+        $bulkCmcSmActions = ($category === null || $cmcStaffAssignmentTab || $cmcStaffProcessedTab)
             && $request->user()->can('bulkCmcAction', ServiceDeficiencyMemo::class);
         $bulkCmcActionsEnabled = $bulkCmcSmActions || $bulkAmCmcReview;
         $bulkCmcActions = $bulkCmcActionsEnabled
@@ -164,10 +176,12 @@ class ServiceDeficiencyMemoController extends Controller
             'bulkCmcActionsEnabled' => $bulkCmcActionsEnabled,
             'bulkCmcActions' => $bulkCmcActions,
             'showActionColumn' => $showActionColumn,
-            'cmcStaffUsers' => $bulkCmcSmActions
+            'cmcStaffUsers' => $bulkCmcSmActions && ! $cmcStaffProcessedTab
                 ? $this->users->enabledForRole(UserRole::CmcStaff)
                 : collect(),
             'memoCategoryTabs' => $memoCategoryTabs,
+            'cmcStaffAssignmentTab' => $cmcStaffAssignmentTab,
+            'cmcStaffProcessedTab' => $cmcStaffProcessedTab,
             'receivedTab' => $receivedTab,
             'receivedTabs' => AmCmcReceivedSdmTab::cases(),
             'bulkForwardLineReceipts' => $bulkForwardLineReceipts,

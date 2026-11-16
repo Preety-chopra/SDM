@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\UserRole;
+use App\Enums\WorkflowStage;
 use App\Enums\WorkflowStepType;
 use App\Models\Line;
 use App\Models\MemoWorkflowStep;
@@ -102,18 +103,98 @@ class CmcTeamLeadMemoTableTest extends TestCase
         }
     }
 
+    public function test_cmc_sm_can_filter_the_staff_assignment_queue_by_service_type(): void
+    {
+        $cmcSm = $this->user(UserRole::CmcTeamLead, 'TABS-SM');
+        $otherCmcSm = $this->user(UserRole::CmcTeamLead, 'TABS-OTHER-SM');
+        $firstStaff = $this->user(UserRole::CmcStaff, 'TABS-FIRST-STAFF');
+        $secondStaff = $this->user(UserRole::CmcStaff, 'TABS-SECOND-STAFF');
+        $disabledStaff = $this->user(UserRole::CmcStaff, 'TABS-DISABLED-STAFF');
+        $disabledStaff->update(['is_enabled' => false]);
+
+        $memosByType = collect(SdmType::cases())->mapWithKeys(function (SdmType $type) use ($cmcSm): array {
+            $memo = $this->memoAtStage('TABS-ASSIGN-'.$type->value, $cmcSm, WorkflowStepType::CmcAssignment);
+            $memo->update(['service_type' => $type]);
+
+            return [$type->value => $memo->id];
+        });
+        $this->memoAtStage('TABS-ASSIGN-OTHER', $otherCmcSm, WorkflowStepType::CmcAssignment);
+        $this->memoAtStage('TABS-ASSESS-STAFF', $cmcSm, WorkflowStepType::CmcAssessment, $firstStaff);
+
+        $this->actingAs($cmcSm)->get(route('sdm-memos.index', ['acknowledge_notifications' => 1]))
+            ->assertOk()
+            ->assertSeeInOrder(['All Memos', 'SDMs Pending for CMC Staff Assignment', 'SDMs Processed by CMC Staff', 'SDMs Approved by DGM/CMC'])
+            ->assertDontSee('Pending Memos');
+
+        $this->get(route('sdm-memos.index', ['category' => 'pending_cmc_staff_assignment']))
+            ->assertOk()
+            ->assertSeeInOrder(['All types', 'CFA', 'TVS', 'W&amp;W', 'Marshal', 'BHS'], false)
+            ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->sort()->values()->all() === $memosByType->values()->all());
+
+        foreach ($memosByType as $type => $memoId) {
+            $this->get(route('sdm-memos.index', ['category' => 'pending_cmc_staff_assignment', 'service_type' => $type]))
+                ->assertOk()
+                ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->all() === [$memoId])
+                ->assertSee('name="service_type" value="'.$type.'"', false)
+                ->assertSee('name="memo_ids[]"', false)
+                ->assertSee('Select CMC staff')
+                ->assertSee($firstStaff->employee_number)
+                ->assertSee($secondStaff->employee_number)
+                ->assertDontSee($disabledStaff->employee_number);
+        }
+
+        $this->actingAs($firstStaff)->from(route('sdm-memos.index'))
+            ->get(route('sdm-memos.index', ['category' => 'pending_cmc_staff_assignment']))
+            ->assertRedirect(route('sdm-memos.index'))
+            ->assertSessionHasErrors('category');
+    }
+
+    public function test_cmc_sm_tabs_show_processed_and_approved_sdms_at_their_workflow_stages(): void
+    {
+        $cmcSm = $this->user(UserRole::CmcTeamLead, 'PROCESSED-SM');
+        $staff = $this->user(UserRole::CmcStaff, 'PROCESSED-STAFF');
+        $this->memoAtStage('TABS-PENDING-ASSIGNMENT', $cmcSm, WorkflowStepType::CmcAssignment);
+        $this->memoAtStage('TABS-PENDING-ASSESSMENT', $cmcSm, WorkflowStepType::CmcAssessment, $staff);
+        $verification = $this->memoAtStage('TABS-VERIFY', $cmcSm, WorkflowStepType::CmcVerification, $staff);
+        $managerReview = $this->memoAtStage('TABS-REVIEW-MANAGER', $cmcSm, WorkflowStepType::AmCmcToDgm, $staff);
+        $dgmReview = $this->memoAtStage('TABS-REVIEW-DGM', $cmcSm, WorkflowStepType::DgmApproval, $staff);
+        $approved = $this->memoAtStage('TABS-APPROVED', $cmcSm, WorkflowStepType::DgmApproval, $staff);
+        $approved->currentWorkflowStep->update(['decision' => 'approved']);
+        $approved->update(['status' => MemoStatus::PendingPenaltyLetter, 'current_workflow_step_id' => null]);
+        $legacyApproved = $this->memoAtStage('TABS-LEGACY', $cmcSm, WorkflowStepType::DgmApproval, $staff);
+        $legacyApproved->update(['workflow_version' => 1, 'status' => MemoStatus::Closed, 'current_workflow_step_id' => null]);
+        $legacyApproved->approvals()->create([
+            'role' => WorkflowStage::DeputyGeneralManager->value,
+            'sequence' => WorkflowStage::DeputyGeneralManager->sequence(),
+            'decision' => 'approved',
+        ]);
+
+        $this->actingAs($cmcSm)->get(route('sdm-memos.index', ['category' => 'processed_by_cmc_staff']))
+            ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->sort()->values()->all() === [$verification->id, $managerReview->id, $dgmReview->id])
+            ->assertSee('Forward to Manager CMC')
+            ->assertSee('Revert for rechecking')
+            ->assertSee('href="'.route('sdm-memos.show', $verification).'"', false);
+
+        $this->get(route('sdm-memos.index', ['category' => 'approved_by_dgm_cmc']))
+            ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->sort()->values()->all() === [$approved->id, $legacyApproved->id]);
+    }
+
     public function test_cmc_sm_can_bulk_assign_selected_sdms_to_cmc_staff(): void
     {
         $cmcSm = $this->user(UserRole::CmcTeamLead, 'CMC-SM-02');
         $cmcStaff = $this->user(UserRole::CmcStaff, 'CMC-STAFF-02');
         $first = $this->memoAtStage('CMC-BULK-ASSIGN-1', $cmcSm, WorkflowStepType::CmcAssignment);
         $second = $this->memoAtStage('CMC-BULK-ASSIGN-2', $cmcSm, WorkflowStepType::CmcAssignment);
+        $queue = ['category' => 'pending_cmc_staff_assignment', 'service_type' => SdmType::Cfs->value];
 
         $this->actingAs($cmcSm)->post(route('sdm-memos.bulk-cmc-action'), [
+            ...$queue,
             'action' => 'assign',
             'memo_ids' => [$first->id, $second->id],
             'cmc_staff_id' => $cmcStaff->id,
-        ])->assertRedirect(route('sdm-memos.index'))
+        ])->assertRedirect(route('sdm-memos.index', $queue))
             ->assertSessionHasNoErrors();
 
         foreach ([$first, $second] as $memo) {
@@ -121,7 +202,12 @@ class CmcTeamLeadMemoTableTest extends TestCase
             $this->assertSame($cmcStaff->id, $memo->cmc_staff_id);
             $this->assertSame(WorkflowStepType::CmcAssessment, $memo->currentWorkflowStep->stage);
             $this->assertSame($cmcStaff->id, $memo->currentWorkflowStep->assigned_to);
+            $this->assertTrue($memo->auditLogs()->where('event', 'memo.workflow.assign')->where('actor_id', $cmcSm->id)->exists());
         }
+
+        $this->get(route('sdm-memos.index', $queue))
+            ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => $memos->isEmpty());
     }
 
     public function test_cmc_sm_can_bulk_forward_or_revert_sdms_at_the_verification_stage(): void
@@ -130,24 +216,30 @@ class CmcTeamLeadMemoTableTest extends TestCase
         $cmcStaff = $this->user(UserRole::CmcStaff, 'CMC-STAFF-03');
         $forward = $this->memoAtStage('CMC-BULK-FORWARD', $cmcSm, WorkflowStepType::CmcVerification, $cmcStaff);
         $revert = $this->memoAtStage('CMC-BULK-REVERT', $cmcSm, WorkflowStepType::CmcVerification, $cmcStaff);
+        $queue = ['category' => 'processed_by_cmc_staff'];
 
         $this->actingAs($cmcSm)->post(route('sdm-memos.bulk-cmc-action'), [
+            ...$queue,
             'action' => 'forward',
             'memo_ids' => [$forward->id],
-        ])->assertSessionHasNoErrors();
+        ])->assertRedirect(route('sdm-memos.index', $queue))->assertSessionHasNoErrors();
 
         $this->assertSame(WorkflowStepType::AmCmcToDgm, $forward->fresh()->currentWorkflowStep->stage);
 
         $this->actingAs($cmcSm)->post(route('sdm-memos.bulk-cmc-action'), [
+            ...$queue,
             'action' => 'return',
             'memo_ids' => [$revert->id],
             'remarks' => 'Penalty calculation needs another check.',
-        ])->assertSessionHasNoErrors();
+        ])->assertRedirect(route('sdm-memos.index', $queue))->assertSessionHasNoErrors();
 
         $revert->refresh();
         $this->assertSame(WorkflowStepType::CmcAssessment, $revert->currentWorkflowStep->stage);
         $this->assertSame($cmcStaff->id, $revert->currentWorkflowStep->assigned_to);
         $this->assertSame(2, $revert->currentWorkflowStep->round);
+        $this->get(route('sdm-memos.index', $queue))
+            ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->all() === [$forward->id]);
     }
 
     public function test_all_memos_table_marks_a_reverted_sdm_and_displays_its_latest_revert_remarks(): void
