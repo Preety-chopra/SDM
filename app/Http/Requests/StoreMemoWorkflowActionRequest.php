@@ -27,8 +27,9 @@ class StoreMemoWorkflowActionRequest extends FormRequest
         }
 
         $action = $this->string('action')->toString();
-        $isCancellation = in_array($action, ['cancel', 'cancel_after_counselling'], true);
         $stage = $memo->current_stage;
+        $requiresRemarks = in_array($action, ['return', 'cancel', 'cancel_after_counselling'], true)
+            || ($stage === WorkflowStage::StationManager && $action === 'request_cancellation');
         $allowedActions = match ($stage) {
             WorkflowStage::StationManager => ['forward', 'request_cancellation'],
             WorkflowStage::LineManager => ['forward', 'return', 'cancel', 'cancel_after_counselling'],
@@ -43,7 +44,7 @@ class StoreMemoWorkflowActionRequest extends FormRequest
                 'string',
                 'max:100',
             ],
-            'remarks' => [Rule::requiredIf($isCancellation || $action === 'return'), 'nullable', 'string', 'max:5000'],
+            'remarks' => [Rule::requiredIf($requiresRemarks), 'nullable', 'string', 'max:5000'],
             'evidence' => ['nullable', 'array', 'max:10'],
             'evidence.*' => ['file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
         ];
@@ -68,6 +69,8 @@ class StoreMemoWorkflowActionRequest extends FormRequest
         $requiresAssessment = in_array($stage, [WorkflowStepType::LineReview, WorkflowStepType::CmcAssessment], true)
             && $action === 'forward';
         $requiresCmcAssessment = $stage === WorkflowStepType::CmcAssessment && $action === 'forward';
+        $requiresRemarks = in_array($action, ['return', 'cancel', 'cancel_after_counselling'], true)
+            || ($stage === WorkflowStepType::StationManager && $action === 'request_cancellation');
         $allowedActions = match ($stage) {
             WorkflowStepType::DgmAftReview, WorkflowStepType::DgmCmcToReview => ['forward'],
             WorkflowStepType::StationManager => ['forward', 'request_cancellation'],
@@ -83,7 +86,7 @@ class StoreMemoWorkflowActionRequest extends FormRequest
                 'string',
                 'max:100',
             ],
-            'remarks' => [Rule::requiredIf(in_array($action, ['return', 'cancel', 'cancel_after_counselling'], true)), 'nullable', 'string', 'max:5000'],
+            'remarks' => [Rule::requiredIf($requiresRemarks), 'nullable', 'string', 'max:5000'],
             'items' => [Rule::requiredIf($requiresAssessment), 'nullable', 'array', 'min:1'],
             'items.*.contract_penalty_clause_id' => ['required', 'integer', 'distinct', 'exists:contract_penalty_clauses,id'],
             'items.*.proposed_amount' => ['required', 'numeric', 'min:0', 'multiple_of:1'],

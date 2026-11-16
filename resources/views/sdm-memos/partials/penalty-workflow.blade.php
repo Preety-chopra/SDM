@@ -31,7 +31,7 @@
     $inputClass = 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100';
     $remarksLabel = match ($currentStep?->stage) {
         \App\Enums\WorkflowStepType::DgmApproval => 'Remarks (mandatory when returning or cancelling)',
-        \App\Enums\WorkflowStepType::StationManager => 'Remarks / cancellation request to AM (optional)',
+        \App\Enums\WorkflowStepType::StationManager => 'Remarks (optional)',
         \App\Enums\WorkflowStepType::LineReview => 'Counselling remarks (mandatory for cancellation)',
         \App\Enums\WorkflowStepType::CmcVerification => 'Remarks (mandatory when reverting for rechecking)',
         \App\Enums\WorkflowStepType::AmCmcToDgm => 'Remarks (mandatory when reverting for rechecking)',
@@ -318,7 +318,13 @@
                     <x-input-error :messages="$errors->get('assessment_pdf')" class="mt-2"/>
                 </div>
             @endif
-            @unless($assignmentStage)<div><x-input-label :value="$remarksLabel" :required="$dgmStage || $cmcVerificationStage || $amCmcToDgmStage"/><textarea name="remarks" rows="3" class="{{ $inputClass }}"></textarea><x-input-error :messages="$errors->get('remarks')" class="mt-2"/></div>@endunless
+            @unless($assignmentStage)
+                <div>
+                    <x-input-label for="workflow-remarks" :value="$remarksLabel" :required="$dgmStage || $cmcVerificationStage || $amCmcToDgmStage"/>
+                    <textarea id="workflow-remarks" name="remarks" rows="3" class="{{ $inputClass }}"></textarea>
+                    <x-input-error :messages="$errors->get('remarks')" class="mt-2"/>
+                </div>
+            @endunless
             @if($currentStep->stage === \App\Enums\WorkflowStepType::StationManager)
                 <div>
                     <x-employee-autocomplete
@@ -362,7 +368,7 @@
                     @endif
                 @endif
             </div>
-            <x-sdm-confirmation-preview />
+            <x-sdm-confirmation-preview :ask-for-cancellation-remarks="$isStationManagerConfirmation" />
         </form>
         @if($lineReviewStage)
             <x-memo-line-revert-form :memo="$memo" />

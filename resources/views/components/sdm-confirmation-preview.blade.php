@@ -1,11 +1,11 @@
-@props(['name' => 'sdm-action-confirmation'])
+@props(['name' => 'sdm-action-confirmation', 'askForCancellationRemarks' => false])
 
 <x-modal :name="$name" max-width="lg" focusable>
     <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="sdm-confirmation-title"
-        aria-describedby="sdm-confirmation-question"
+        aria-describedby="sdm-confirmation-description"
         class="p-6 sm:p-7"
     >
         <div class="flex items-start gap-4">
@@ -15,9 +15,8 @@
                 </svg>
             </span>
             <div>
-                {{-- <h2 id="sdm-confirmation-title" class="text-xl font-semibold text-gray-950 dark:text-white">Review SDM action</h2> --}}
-                <p id="sdm-confirmation-question" class="mt-1 text-sm font-semibold text-gray-700 dark:text-gray-200">Are you sure you want to proceed?</p>
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Check the details below before continuing.</p>
+                <h2 id="sdm-confirmation-title" x-text="isCancellationRequest ? 'Request for cancellation' : 'Are you sure you want to proceed?'" class="mt-1 text-sm font-semibold text-gray-700 dark:text-gray-200">Are you sure you want to proceed?</h2>
+                <p id="sdm-confirmation-description" class="mt-1 text-sm text-gray-500 dark:text-gray-400">Check the details below before continuing.</p>
             </div>
         </div>
 
@@ -30,11 +29,27 @@
             </template>
         </dl>
 
+        @if($askForCancellationRemarks)
+            @php($oldCancellationRemarks = old('action') === 'request_cancellation' ? old('remarks') : null)
+            <template x-if="show && isCancellationRequest">
+                <div class="mt-6">
+                    <x-input-label for="sdm-cancellation-remarks" value="Cancellation remarks" required />
+                    <textarea
+                        id="sdm-cancellation-remarks"
+                        rows="4"
+                        required
+                        maxlength="5000"
+                        class="mt-1 block w-full rounded-md border-gray-300 focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                    >{{ is_string($oldCancellationRemarks) ? $oldCancellationRemarks : '' }}</textarea>
+                </div>
+            </template>
+        @endif
+
         <div class="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button type="button" @click="cancelSdmConfirmation" :disabled="isSubmitting" class="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700 dark:focus:ring-offset-gray-800">Cancel</button>
             <button type="button" @click="confirmSdmAction" :disabled="isSubmitting" class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:focus:ring-offset-gray-800">
                 <svg x-cloak x-show="isSubmitting" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4Z"/></svg>
-                <span x-text="isSubmitting ? 'Processing…' : 'Proceed'"></span>
+                <span x-text="isSubmitting ? 'Processing…' : (isCancellationRequest ? 'Request cancellation' : 'Proceed')"></span>
             </button>
         </div>
     </section>

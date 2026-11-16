@@ -340,12 +340,8 @@ class ServiceDeficiencyMemo extends Model
             return 'Pending (at SM level)';
         }
 
-        $stationManagerAction = $this->workflow_version >= 2
-            ? $this->stationManagerWorkflowStep
-            : $this->stationManagerApproval;
-
         if (in_array($stage, [WorkflowStage::LineManager, WorkflowStepType::LineReview], true)) {
-            return $stationManagerAction?->remarks === self::STATION_MANAGER_CANCELLATION_REQUEST_REMARK
+            return $this->hasPendingStationManagerCancellationRequest()
                 ? 'Cancellation requested'
                 : 'Forwarded to AM';
         }

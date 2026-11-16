@@ -47,6 +47,10 @@ export const createSdmConfirmation = (modalName = 'sdm-action-confirmation') => 
     confirmationApproved: false,
     isSubmitting: false,
 
+    get isCancellationRequest() {
+        return this.pendingSubmitter?.value === 'request_cancellation';
+    },
+
     requestSdmConfirmation(event) {
         const submitter = event.submitter;
 
@@ -80,6 +84,17 @@ export const createSdmConfirmation = (modalName = 'sdm-action-confirmation') => 
     confirmSdmAction() {
         if (this.isSubmitting || !this.pendingForm || !this.pendingSubmitter) {
             return;
+        }
+
+        if (this.isCancellationRequest) {
+            const remarks = this.pendingForm.querySelector('#sdm-cancellation-remarks');
+            remarks.value = remarks.value.trim();
+
+            if (!remarks.reportValidity()) {
+                return;
+            }
+
+            this.pendingForm.elements.namedItem('remarks').value = remarks.value;
         }
 
         this.isSubmitting = true;

@@ -178,9 +178,10 @@ class SdmWorkflowTest extends TestCase
             ->assertSee($lineManager->employee_number)
             ->assertDontSee($operationsManager->employee_number)
             ->assertDontSee($dgm->employee_number)
-            ->assertSee('Remarks / cancellation request to AM (optional)')
+            ->assertSee('Remarks (optional)')
             ->assertSee('name="action" value="request_cancellation"', false)
             ->assertSee('Request for cancellation')
+            ->assertSee('Cancellation remarks')
             ->assertSee('&quot;label&quot;:&quot;Line&quot;', false)
             ->assertSee('&quot;label&quot;:&quot;Station&quot;', false)
             ->assertSee('&quot;label&quot;:&quot;SDM type&quot;', false)
@@ -954,6 +955,24 @@ class SdmWorkflowTest extends TestCase
         $this->assertNotSame($lineManager->id, $selectedLineManager->id);
     }
 
+    public function test_legacy_station_manager_cancellation_request_requires_remarks(): void
+    {
+        [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
+        $this->actingAs($stationUser)->post(route('sdm-memos.store-and-submit'), $this->validMemoData());
+        $memo = ServiceDeficiencyMemo::query()->sole();
+
+        $this->actingAs($stationManager)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'request_cancellation',
+            'forward_to_employee_number' => $lineManager->employee_number,
+        ])->assertSessionHasErrors(['remarks' => 'The remarks field is required.']);
+
+        $this->assertSame(WorkflowStage::StationManager, $memo->fresh()->current_stage);
+        $this->assertDatabaseMissing('audit_logs', [
+            'auditable_id' => $memo->id,
+            'event' => 'memo.workflow.request_cancellation',
+        ]);
+    }
+
     public function test_station_manager_can_only_request_cancellation_and_am_line_can_cancel_after_counselling_with_mandatory_remarks(): void
     {
         [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
@@ -972,6 +991,9 @@ class SdmWorkflowTest extends TestCase
             'forward_to_employee_number' => $lineManager->employee_number,
             'remarks' => 'Please cancel after reviewing the station record.',
         ])->assertRedirect();
+        $this->actingAs($stationManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('>Cancellation requested</span>', false);
         $this->actingAs($lineManager)->get(route('sdm-memos.index'))
             ->assertOk()
             ->assertSeeInOrder([$memo->serial_number, 'Cancellation requested by SM']);

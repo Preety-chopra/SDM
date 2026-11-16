@@ -239,13 +239,13 @@
                             <x-input-label
                                 for="remarks"
                                 :value="match ($memo->current_stage) {
-                                    \App\Enums\WorkflowStage::StationManager => 'Remarks / cancellation request to AM (optional)',
+                                    \App\Enums\WorkflowStage::StationManager => 'Remarks (optional)',
                                     \App\Enums\WorkflowStage::LineManager => 'Counselling remarks (mandatory for cancellation)',
                                     default => 'Remarks (mandatory for cancellation)',
                                 }"
                                 :required="$memo->current_stage !== \App\Enums\WorkflowStage::StationManager"
                             />
-                            <textarea id="remarks" name="remarks" rows="4" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white">{{ old('remarks') }}</textarea>
+                            <textarea id="remarks" name="remarks" rows="4" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white">{{ $isLegacyStationManagerConfirmation && old('action') === 'request_cancellation' ? '' : old('remarks') }}</textarea>
                             <x-input-error :messages="$errors->get('remarks')" class="mt-2"/>
                         </div>
                         @if($memo->current_stage === \App\Enums\WorkflowStage::StationManager)
@@ -281,7 +281,7 @@
                                 <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel SDM</button>
                             @endif
                         </div>
-                        <x-sdm-confirmation-preview />
+                        <x-sdm-confirmation-preview :ask-for-cancellation-remarks="$isLegacyStationManagerConfirmation" />
                     </form>
                     @if($memo->current_stage === \App\Enums\WorkflowStage::LineManager)
                         <x-memo-line-revert-form :memo="$memo" />
