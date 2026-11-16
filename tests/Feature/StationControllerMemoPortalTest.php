@@ -10,12 +10,15 @@ use App\Enums\WorkflowStage;
 use App\Enums\WorkflowStepType;
 use App\Models\AuditLog;
 use App\Models\Contractor;
+use App\Models\Feedback;
 use App\Models\Line;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\RouteCollection;
+use Illuminate\Support\Facades\Route;
 use PHPUnit\Framework\Attributes\TestWith;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -46,7 +49,33 @@ class StationControllerMemoPortalTest extends TestCase
             ->assertSee('Drafts')
             ->assertDontSee('data-app-sidebar', false)
             ->assertDontSee(route('dashboard'), false)
+            ->assertSee(route('feedback.inbox'), false)
             ->assertSee(route('profile.edit'), false);
+    }
+
+    public function test_station_controller_can_open_the_create_form_when_the_feedback_inbox_route_is_missing(): void
+    {
+        [$controller] = $this->stationControllerWithHierarchy();
+        $feedback = Feedback::factory()->for($controller)->create();
+        $feedback->replies()->create([
+            'author_id' => User::factory()->create()->id,
+            'message' => 'Please check your submission.',
+        ]);
+
+        $routes = new RouteCollection;
+        foreach (Route::getRoutes() as $route) {
+            if ($route->getName() !== 'feedback.inbox') {
+                $routes->add($route);
+            }
+        }
+        Route::setRoutes($routes);
+        $this->app['url']->setRoutes($routes);
+
+        $this->actingAs($controller)->get('/sdm-memos/create')
+            ->assertOk()
+            ->assertSee('Create New SDM')
+            ->assertDontSee('My feedback')
+            ->assertDontSee('unread feedback reply');
     }
 
     public function test_view_all_lists_only_the_latest_ten_submitted_sdms_created_by_the_station_controller(): void

@@ -114,6 +114,12 @@ class StationManagerForwardedEditTest extends TestCase
             'incident date' => [['incident_date' => ''], ['incident_date']],
             'incident time' => [['incident_time' => ''], ['incident_time']],
             'deficiencies' => [['deficiencies' => []], ['deficiencies']],
+            'blank Other Discrepancy remarks' => [['station_record_brief_remarks' => '   '], [
+                'station_record_brief_remarks' => 'Enter remarks for Other Discrepancy.',
+            ]],
+            'omitted Other Discrepancy remarks' => [['deficiency_remarks' => null], [
+                'station_record_brief_remarks' => 'Enter remarks for Other Discrepancy.',
+            ]],
             'acknowledgement' => [['outsourced_staff_acknowledged' => '0'], [
                 'outsourced_staff_acknowledged' => 'Confirm that you have received acknowledgement from outsourced staff.',
             ]],
@@ -154,6 +160,16 @@ class StationManagerForwardedEditTest extends TestCase
                 }
             }
         }
+    }
+
+    public function test_submitted_sdm_edit_form_marks_remarks_required_for_other_discrepancy(): void
+    {
+        [$memo, $sm] = $this->memoAwaitingStationManager(2);
+
+        $this->actingAs($sm)->get(route('sdm-memos.edit', $memo))
+            ->assertOk()
+            ->assertSee('(required for Other Discrepancy)')
+            ->assertSee('name="station_record_brief_remarks" rows="4" :required="has(\'other\')"', false);
     }
 
     #[TestWith([1, 'late_reporting'])]

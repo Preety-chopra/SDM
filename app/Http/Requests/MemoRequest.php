@@ -93,7 +93,7 @@ abstract class MemoRequest extends FormRequest
         $shortDeploymentSelected = in_array(DeficiencyType::ShortDeployment->value, (array) $types, true);
         $otherRemarks = $this->input('deficiency_remarks.'.DeficiencyType::Other->value);
         $hasLegacyOtherRemarks = $this->missing('station_record_brief_remarks') && is_string($otherRemarks) && filled($otherRemarks);
-        $requiresRemarks = $this->isSubmission()
+        $requiresRemarks = $strict
             && in_array(DeficiencyType::Other->value, (array) $types, true)
             && ! $hasLegacyOtherRemarks;
         $serviceType = SdmType::tryFrom($this->string('service_type')->toString());

@@ -153,17 +153,21 @@ class FeedbackTest extends TestCase
         $user->assignRole($role->value);
 
         $response = $this->actingAs($user)->get(route('sdm-memos.index'))
-            ->assertOk()->assertSee('data-feedback-trigger', false)->assertSee('data-feedback-dialog', false);
+            ->assertOk();
 
         $this->postJson('/feedback', ['message' => 'Feedback from my role.', 'page_url' => route('sdm-memos.index')])
             ->assertCreated();
 
         $this->assertSame($role === UserRole::Administrator, $user->can('viewAny', Feedback::class));
         if ($role === UserRole::Administrator) {
-            $response->assertSee('href="'.url('/admin/feedback').'"', false);
+            $response->assertSee('<a data-feedback-link href="'.url('/admin/feedback').'"', false)
+                ->assertDontSee('data-feedback-trigger', false)
+                ->assertDontSee('data-feedback-dialog', false);
             $this->get('/admin/feedback')->assertOk()->assertSee('Feedback from my role.');
         } else {
-            $response->assertDontSee('href="'.url('/admin/feedback').'"', false);
+            $response->assertSee('<button data-feedback-trigger', false)
+                ->assertSee('data-feedback-dialog', false)
+                ->assertDontSee('href="'.url('/admin/feedback').'"', false);
             $this->get('/admin/feedback')->assertForbidden();
         }
     }

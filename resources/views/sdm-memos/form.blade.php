@@ -249,9 +249,9 @@
                     </div>
                     <div class="mt-5">
                         <x-input-label for="station_record_brief_remarks">
-                            Remarks <span @if($isDraft) x-text="has('{{ \App\Enums\DeficiencyType::Other->value }}') ? '(required for Other Discrepancy)' : '(optional)'" @endif>(optional)</span>
+                            Remarks <span x-text="has('{{ \App\Enums\DeficiencyType::Other->value }}') ? '(required for Other Discrepancy)' : '(optional)'">(optional)</span>
                         </x-input-label>
-                        <textarea id="station_record_brief_remarks" name="station_record_brief_remarks" rows="4" @if($isDraft) :required="has('{{ \App\Enums\DeficiencyType::Other->value }}')" @endif @error('station_record_brief_remarks') aria-invalid="true" aria-describedby="station_record_brief_remarks_error" @enderror class="{{ $inputClass }}">{{ old('station_record_brief_remarks', $memo?->station_record_brief_remarks) }}</textarea>
+                        <textarea id="station_record_brief_remarks" name="station_record_brief_remarks" rows="4" :required="has('{{ \App\Enums\DeficiencyType::Other->value }}')" @error('station_record_brief_remarks') aria-invalid="true" aria-describedby="station_record_brief_remarks_error" @enderror class="{{ $inputClass }}">{{ old('station_record_brief_remarks', $memo?->station_record_brief_remarks) }}</textarea>
                         <x-input-error id="station_record_brief_remarks_error" :messages="$errors->get('station_record_brief_remarks')"/>
                     </div>
 
