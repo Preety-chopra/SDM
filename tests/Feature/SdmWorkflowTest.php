@@ -710,7 +710,7 @@ class SdmWorkflowTest extends TestCase
             ->assertDontSee('CFS-AM-PENDING-INBOX');
     }
 
-    public function test_line_manager_sees_the_centered_cancellation_dialog_in_pending_memos(): void
+    public function test_line_manager_memo_lists_have_no_action_column_even_when_the_user_can_cancel(): void
     {
         [$stationUser, $stationManager, $lineManager] = $this->workflowUsers();
         $this->actingAs($stationUser)
@@ -733,25 +733,17 @@ class SdmWorkflowTest extends TestCase
             'forward_to_employee_number' => $lineManager->employee_number,
         ])->assertRedirect();
 
-        $this->actingAs($lineManager)->get(route('sdm-memos.index', ['category' => 'pending']))
-            ->assertOk()
-            ->assertSee('@click="openCancellation"', false)
-            ->assertSee('x-teleport="body"', false)
-            ->assertSee('id="cancel-memo-'.$memo->id.'"', false)
-            ->assertSee('id="cancel-after-counselling-memo-'.$memo->id.'"', false)
-            ->assertSee('fixed inset-0 z-50 grid place-items-center', false)
-            ->assertSee(route('sdm-memos.workflow.store', $memo), false)
-            ->assertSee('Cancellation remarks')
-            ->assertSee('Confirm SDM cancellation?')
-            ->assertSee('name="action" value="cancel"', false)
-            ->assertSee('Cancel after counselling')
-            ->assertSee('Counselling remarks')
-            ->assertSee('Review cancellation')
-            ->assertSee('Confirm cancellation after counselling?')
-            ->assertSee('name="action" value="cancel_after_counselling"', false)
-            ->assertSee('@click="reviewCancellation($refs.cancellationForm)"', false)
-            ->assertSee('x-show="confirmationOpen"', false)
-            ->assertDontSee('<details class="relative">', false);
+        $memo->update(['is_urgent' => true]);
+
+        foreach (['pending', 'pending_action', 'urgent_pending_action'] as $category) {
+            $response = $this->actingAs($lineManager)->get(route('sdm-memos.index', ['category' => $category]))
+                ->assertOk()
+                ->assertSee('href="'.route('sdm-memos.show', $memo).'"', false)
+                ->assertDontSee('name="action" value="cancel"', false)
+                ->assertDontSee('name="action" value="cancel_after_counselling"', false);
+
+            $this->assertDoesNotMatchRegularExpression('/>\s*Action\s*<\/th>/', $response->getContent());
+        }
     }
 
     public function test_line_manager_can_handover_their_pending_sdm_to_another_active_line_manager(): void

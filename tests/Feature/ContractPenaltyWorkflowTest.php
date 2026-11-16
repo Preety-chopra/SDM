@@ -1106,7 +1106,8 @@ class ContractPenaltyWorkflowTest extends TestCase
 
         $this->actingAs($lineManager)->get(route('sdm-memos.index', ['category' => 'pending']))
             ->assertOk()
-            ->assertSee('Cancel after counselling');
+            ->assertSee('href="'.route('sdm-memos.show', $memo).'"', false)
+            ->assertDontSee('Cancel after counselling');
         $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'cancel'])
             ->assertSessionHasErrors('remarks');
         $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'cancel_after_counselling'])

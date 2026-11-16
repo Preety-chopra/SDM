@@ -154,7 +154,7 @@
                     <h2 id="line-sdm-modal-title" class="mt-1 text-xl font-black text-gray-950 dark:text-white">
                         <span x-text="selectedLineCode"></span> SDMs
                     </h2>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Select an SDM below to open its full details.</p>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Select a station name below to open the SDM details.</p>
                 </div>
                 <button x-ref="lineModalClose" type="button" class="inline-flex size-10 shrink-0 items-center justify-center rounded-xl border border-gray-300 text-xl font-bold text-gray-600 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700" aria-label="Close SDM list" @click="closeLineModal()">&times;</button>
             </div>
@@ -169,8 +169,7 @@
                 <table x-show="!lineModalLoading && !lineModalError && lineMemos.length > 0" class="min-w-full divide-y divide-gray-200 text-left dark:divide-gray-700">
                     <thead class="sticky top-0 bg-gray-50 dark:bg-gray-900">
                         <tr class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                            <th scope="col" class="px-5 py-3 sm:px-6">Action</th>
-                            <th scope="col" class="px-5 py-3">Service</th>
+                            <th scope="col" class="px-5 py-3 sm:px-6">Service</th>
                             <th scope="col" class="px-5 py-3">Station</th>
                             <th scope="col" class="px-5 py-3">Status</th>
                             <th scope="col" class="px-5 py-3 text-right sm:px-6">Received</th>
@@ -179,9 +178,10 @@
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         <template x-for="memo in lineMemos" :key="memo.id">
                             <tr class="transition hover:bg-emerald-50/60 dark:hover:bg-emerald-950/20">
-                                <td class="whitespace-nowrap px-5 py-4 text-sm font-black sm:px-6"><a :href="memo.url" class="text-emerald-700 hover:underline focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-emerald-400">Open SDM</a></td>
-                                <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300" x-text="memo.service"></td>
-                                <td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300" x-text="memo.station"></td>
+                                <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300 sm:px-6" x-text="memo.service"></td>
+                                <td class="px-5 py-4 text-sm">
+                                    <a :href="memo.url" x-text="memo.station" class="font-semibold text-emerald-700 underline focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-emerald-400"></a>
+                                </td>
                                 <td class="whitespace-nowrap px-5 py-4 text-sm font-semibold text-gray-700 dark:text-gray-200" x-text="memo.status"></td>
                                 <td class="whitespace-nowrap px-5 py-4 text-right text-sm text-gray-600 dark:text-gray-300 sm:px-6" x-text="memo.submitted_at || 'Not recorded'"></td>
                             </tr>
