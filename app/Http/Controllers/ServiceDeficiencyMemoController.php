@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AmCmcMemoCategory;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\StationManagerMemoStatus;
@@ -61,6 +62,7 @@ class ServiceDeficiencyMemoController extends Controller
         $filters = $request->filters();
         $isStationManager = $request->user()->hasRole(UserRole::StationManager->value);
         $isLineManager = $request->user()->hasRole(UserRole::AssistantManager->value);
+        $isAmCmc = $request->user()->hasRole(UserRole::ManagerOperations->value);
         $isCmcTeamLead = $request->user()->hasRole(UserRole::CmcTeamLead->value);
         $usesHeaderFilterTable = $request->user()->hasAnyRole([
             UserRole::Aft->value,
@@ -88,17 +90,23 @@ class ServiceDeficiencyMemoController extends Controller
                 ->all(),
             default => MemoStatus::cases(),
         };
-        $memoCategoryTabs = [
-            ['category' => null, 'label' => 'All Memos'],
-            ['category' => 'pending', 'label' => 'Pending Memos'],
-        ];
+        $memoCategoryTabs = [['category' => null, 'label' => 'All Memos']];
 
-        if (in_array($category, ['pending_action', 'urgent_pending_action'], true)) {
-            $memoCategoryTabs[1]['category'] = 'pending_action';
+        if (! $isAmCmc) {
+            $memoCategoryTabs[] = [
+                'category' => in_array($category, ['pending_action', 'urgent_pending_action'], true) ? 'pending_action' : 'pending',
+                'label' => 'Pending Memos',
+            ];
         }
 
         if (! $isDownstreamWorkflowUser) {
             $memoCategoryTabs[] = ['category' => 'transferred', 'label' => 'Transferred Memos'];
+        }
+
+        if ($isAmCmc) {
+            foreach (AmCmcMemoCategory::cases() as $amCmcCategory) {
+                $memoCategoryTabs[] = ['category' => $amCmcCategory->value, 'label' => $amCmcCategory->label()];
+            }
         }
 
         $memos = $this->memos->paginateFor($request->user(), $filters, $pendingStage, $category);

@@ -7,7 +7,10 @@
     <div class="py-10"><div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         @can(\App\Enums\UserPermission::ActOnRoutedMemos->value)
         <nav aria-label="SDM categories" class="mb-5 overflow-x-auto">
-            <div class="inline-flex min-w-full gap-1 rounded-xl border border-gray-200 bg-gray-100 p-1 sm:min-w-0 dark:border-gray-700 dark:bg-gray-900">
+            <div @class([
+                'inline-flex min-w-full gap-1 rounded-xl border border-gray-200 bg-gray-100 p-1 sm:min-w-0 dark:border-gray-700 dark:bg-gray-900',
+                'flex-wrap' => count($memoCategoryTabs) > 3,
+            ])>
                 @foreach ($memoCategoryTabs as $tab)
                     @php
                         $tabIsActive = $category === $tab['category']

@@ -82,7 +82,6 @@ class SdmMemoStatusFilterTest extends TestCase
                 ->get(route('sdm-memos.index'))
                 ->assertOk()
                 ->assertSee('All Memos')
-                ->assertSee('Pending Memos')
                 ->assertDontSee('Transferred Memos');
         }
 

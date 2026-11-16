@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\AmCmcMemoCategory;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\StationManagerMemoStatus;
@@ -22,7 +23,7 @@ class ListMemosRequest extends FormRequest
     {
         return [
             'pending_stage' => ['nullable', Rule::enum(WorkflowStage::class)],
-            'category' => ['nullable', Rule::in(['pending', 'transferred', 'pending_action', 'urgent_pending_action'])],
+            'category' => ['nullable', Rule::in($this->allowedCategories())],
             'service_type' => ['nullable', Rule::enum(SdmType::class)],
             'station_id' => ['nullable', 'integer', Rule::exists('stations', 'id')],
             'line_code' => ['nullable', 'string', Rule::exists('lines', 'code')],
@@ -50,9 +51,7 @@ class ListMemosRequest extends FormRequest
 
     public function category(): ?string
     {
-        $category = $this->string('category')->toString();
-
-        return in_array($category, ['pending', 'transferred', 'pending_action', 'urgent_pending_action'], true) ? $category : null;
+        return $this->validated('category');
     }
 
     /** @return array<string, int|string> */
@@ -75,5 +74,17 @@ class ListMemosRequest extends FormRequest
     private function isStationManager(): bool
     {
         return $this->user()?->hasRole(UserRole::StationManager->value) ?? false;
+    }
+
+    /** @return list<string> */
+    private function allowedCategories(): array
+    {
+        $categories = ['pending', 'transferred', 'pending_action', 'urgent_pending_action'];
+
+        if ($this->user()?->hasRole(UserRole::ManagerOperations->value)) {
+            $categories = [...$categories, ...array_column(AmCmcMemoCategory::cases(), 'value')];
+        }
+
+        return $categories;
     }
 }
