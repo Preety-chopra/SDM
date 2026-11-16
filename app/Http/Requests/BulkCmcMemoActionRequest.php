@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\AmCmcMemoCategory;
 use App\Enums\UserRole;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
@@ -13,7 +14,7 @@ class BulkCmcMemoActionRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->can('bulkCmcAction', ServiceDeficiencyMemo::class);
+        return $this->user()->can($this->isAmCmcReview() ? 'bulkAmCmcAction' : 'bulkCmcAction', ServiceDeficiencyMemo::class);
     }
 
     /** @return array<string, list<mixed>> */
@@ -22,10 +23,12 @@ class BulkCmcMemoActionRequest extends FormRequest
         $action = $this->string('action')->toString();
 
         return [
-            'action' => ['required', Rule::in(['assign', 'forward', 'return'])],
+            'category' => ['nullable', Rule::in([AmCmcMemoCategory::ProcessedByCmc->value])],
+            'action' => ['required', Rule::in($this->isAmCmcReview() ? ['forward', 'return'] : ['assign', 'forward', 'return'])],
             'memo_ids' => ['required', 'array', 'min:1'],
             'memo_ids.*' => ['required', 'integer', 'distinct', Rule::exists(ServiceDeficiencyMemo::class, 'id')],
             'cmc_staff_id' => [
+                Rule::prohibitedIf($this->isAmCmcReview()),
                 Rule::requiredIf($action === 'assign'),
                 'nullable',
                 'integer',
@@ -33,6 +36,11 @@ class BulkCmcMemoActionRequest extends FormRequest
             ],
             'remarks' => [Rule::requiredIf($action === 'return'), 'nullable', 'string', 'max:5000'],
         ];
+    }
+
+    public function isAmCmcReview(): bool
+    {
+        return $this->input('category') === AmCmcMemoCategory::ProcessedByCmc->value;
     }
 
     public function after(): array

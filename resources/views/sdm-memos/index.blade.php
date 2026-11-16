@@ -33,11 +33,26 @@
                 @endforeach
             </div>
         </nav>
+        @if($receivedTab)
+            <nav aria-label="SDMs received from Lines" class="mb-5 flex flex-wrap gap-2">
+                @foreach ($receivedTabs as $tab)
+                    <a
+                        href="{{ route('sdm-memos.index', array_filter([...$filters, 'pending_stage' => $pendingStage?->value, 'category' => $category, 'received_tab' => $tab->value])) }}"
+                        @if($receivedTab === $tab) aria-current="page" @endif
+                        @class([
+                            'rounded-lg border px-4 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500',
+                            'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200' => $receivedTab === $tab,
+                            'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700' => $receivedTab !== $tab,
+                        ])
+                    >{{ $tab->label() }}</a>
+                @endforeach
+            </nav>
+        @endif
         @endcan
         @if ($pendingStage)
             <div class="mb-5 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
                 <p><strong>Pending at {{ $pendingStage->levelLabel() }}:</strong> showing memos awaiting {{ $pendingStage->label() }} action.</p>
-                <a href="{{ route('sdm-memos.index', array_filter([...$filters, 'category' => $category])) }}" class="shrink-0 font-bold text-amber-900 hover:underline dark:text-amber-200">Clear pending-stage filter</a>
+                <a href="{{ route('sdm-memos.index', array_filter([...$filters, 'category' => $category, 'received_tab' => $receivedTab?->value])) }}" class="shrink-0 font-bold text-amber-900 hover:underline dark:text-amber-200">Clear pending-stage filter</a>
             </div>
         @endif
         @unless($headerFilterTable)
@@ -117,65 +132,65 @@
         @else
             <form id="sdm-filter-form" method="GET" action="{{ route('sdm-memos.index') }}">
                 @if($category)<input type="hidden" name="category" value="{{ $category }}">@endif
+                @if($receivedTab)<input type="hidden" name="received_tab" value="{{ $receivedTab->value }}">@endif
                 @if($pendingStage)<input type="hidden" name="pending_stage" value="{{ $pendingStage->value }}">@endif
             </form>
         @endunless
-        @if($bulkForwardingEnabled || $bulkCmcActionsEnabled)
+        @php
+            $bulkFormId = $bulkForwardLineReceipts ? 'bulk-line-receipts-form' : ($bulkCmcActionsEnabled ? 'bulk-cmc-form' : null);
+        @endphp
+        @if($bulkFormId)
         <div
-            x-data="{{ $bulkCmcActionsEnabled ? 'cmcMemoSelection' : 'bulkMemoSelection' }}"
-            @if($bulkForwardingEnabled) data-destinations='@json($bulkForwardDestinations)' @endif
-            @if($bulkCmcActionsEnabled) data-actions='@json($bulkCmcActions)' @endif
-            @if($bulkCmcActionsEnabled) data-initial-action="{{ old('action', 'assign') }}" data-selected='@json(old('memo_ids', []))' @endif
+            x-data="{{ $bulkForwardLineReceipts ? 'bulkMemoSelection' : 'cmcMemoSelection' }}"
+            @if($bulkForwardLineReceipts)
+                data-destinations='@json($lineReceiptDestinations)'
+            @else
+                data-actions='@json($bulkCmcActions)'
+                data-initial-action="{{ old('action', $bulkAmCmcReview ? 'forward' : 'assign') }}"
+                data-selected='@json(old('memo_ids', []))'
+            @endif
             class="flex flex-col gap-4"
         >
-            @if($bulkForwardingEnabled)
-            <form id="bulk-forward-form" method="POST" action="{{ route('sdm-memos.bulk-forward') }}" class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/40">
+            @if($bulkForwardLineReceipts)
+            <form id="bulk-line-receipts-form" method="POST" action="{{ route('sdm-memos.bulk-forward') }}" class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
                 @csrf
+                <input type="hidden" name="category" value="{{ $category }}">
+                <input type="hidden" name="destination" value="{{ \App\Enums\WorkflowStepType::AmCmcToScrutiny->value }}">
                 @foreach($filters as $filterName => $filterValue)
                     <input type="hidden" name="{{ $filterName }}" value="{{ $filterValue }}">
                 @endforeach
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                        <h3 class="font-semibold text-emerald-950 dark:text-emerald-100">Bulk forward Manager CMC memos</h3>
-                        {{-- <p class="mt-1 text-sm text-emerald-800 dark:text-emerald-200">Choose the workflow destination, then select individual SDMs or every eligible SDM matching the current filters.</p> --}}
-                    </div>
-                    <div class="grid gap-3 sm:grid-cols-[minmax(16rem,1fr)_auto] sm:items-end">
-                        <div>
-                            <x-input-label for="bulk_destination" value="Forward to" />
-                            <select id="bulk_destination" name="destination" x-model="destination" class="mt-1 block w-full rounded-lg border-emerald-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-emerald-800 dark:bg-gray-900 dark:text-gray-100">
-                                <option value="{{ \App\Enums\WorkflowStepType::AmCmcToScrutiny->value }}">CMC Team SM for scrutiny</option>
-                                <option value="{{ \App\Enums\WorkflowStepType::AmCmcToDgm->value }}">DGM/CMC</option>
-                            </select>
-                        </div>
-                        <button type="submit" :disabled="!selectAllFiltered && selected.length === 0" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">Forward selected</button>
-                    </div>
-                </div>
-                <label class="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-white p-3 text-sm text-gray-700 dark:border-emerald-900 dark:bg-gray-900 dark:text-gray-200">
-                    <input form="bulk-forward-form" type="checkbox" name="select_all" value="1" x-model="selectAllFiltered" class="mt-0.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500">
-                    <span><strong>Select every matching memo across all pages</strong><span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">This applies the current filters and the selected destination.</span></span>
-                </label>
-                <p x-show="!selectAllFiltered && selected.length > 0" class="mt-3 text-sm font-medium text-emerald-900 dark:text-emerald-200"><span x-text="selected.length"></span> selected on this page</p>
-                @error('memo_ids')<p class="mt-3 text-sm font-semibold text-rose-700 dark:text-rose-300">{{ $message }}</p>@enderror
-                @error('destination')<p class="mt-3 text-sm font-semibold text-rose-700 dark:text-rose-300">{{ $message }}</p>@enderror
+                <button type="submit" disabled :disabled="selected.length === 0" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50">Forward selected to SM/CMC</button>
+                <p class="text-sm text-gray-600 dark:text-gray-300" x-show="selected.length > 0" x-cloak aria-live="polite"><span x-text="selected.length"></span> selected</p>
+                <x-input-error :messages="$errors->get('memo_ids')" />
             </form>
-            @endif
-            @if($bulkCmcActionsEnabled)
+            @else
             <form id="bulk-cmc-form" method="POST" action="{{ route('sdm-memos.bulk-cmc-action') }}" x-show="selected.length > 0" x-cloak class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/40">
                 @csrf
+                @if($bulkAmCmcReview)
+                    <input type="hidden" name="category" value="{{ $category }}">
+                @endif
                 <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                     <div>
                         <h3 class="font-semibold text-emerald-950 dark:text-emerald-100"><span x-text="selected.length"></span> SDM(s) selected</h3>
-                        <p class="mt-1 text-sm text-emerald-800 dark:text-emerald-200">Choose the CMC SM action to apply to the selected eligible SDMs.</p>
+                        @unless($bulkAmCmcReview)
+                            <p class="mt-1 text-sm text-emerald-800 dark:text-emerald-200">Choose the CMC SM action to apply to the selected eligible SDMs.</p>
+                        @endunless
                     </div>
                     <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(13rem,1fr)_minmax(15rem,1fr)_auto] xl:items-end">
                         <div>
                             <x-input-label for="bulk_cmc_action" value="Action" />
                             <select id="bulk_cmc_action" name="action" x-model="action" class="mt-1 block w-full rounded-lg border-emerald-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-emerald-800 dark:bg-gray-900 dark:text-gray-100">
-                                <option value="assign">Assign to CMC staff</option>
-                                <option value="forward">Forward to Manager CMC</option>
-                                <option value="return">Revert for rechecking</option>
+                                @if($bulkAmCmcReview)
+                                    <option value="forward">Send to DGM/CMC for approval</option>
+                                    <option value="return">Revert to SM/CMC for rechecking</option>
+                                @else
+                                    <option value="assign">Assign to CMC staff</option>
+                                    <option value="forward">Forward to Manager CMC</option>
+                                    <option value="return">Revert for rechecking</option>
+                                @endif
                             </select>
                         </div>
+                        @unless($bulkAmCmcReview)
                         <div x-show="action === 'assign'">
                             <x-input-label for="bulk_cmc_staff_id" value="CMC staff" />
                             <select id="bulk_cmc_staff_id" name="cmc_staff_id" :required="action === 'assign'" class="mt-1 block w-full rounded-lg border-emerald-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-emerald-800 dark:bg-gray-900 dark:text-gray-100">
@@ -183,13 +198,15 @@
                                 @foreach($cmcStaffUsers as $cmcUser)<option value="{{ $cmcUser->id }}">{{ $cmcUser->name }} · {{ $cmcUser->employee_number }}</option>@endforeach
                             </select>
                         </div>
+                        @endunless
                         <div x-show="action === 'return'">
-                            <x-input-label for="bulk_cmc_remarks" value="Reason for rechecking" />
-                            <input id="bulk_cmc_remarks" name="remarks" :required="action === 'return'" class="mt-1 block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
+                            <x-input-label for="bulk_cmc_remarks" value="Reason for rechecking (required)" />
+                            <input id="bulk_cmc_remarks" name="remarks" value="{{ old('remarks') }}" maxlength="5000" :required="action === 'return'" :disabled="action !== 'return'" class="mt-1 block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
                         </div>
                         <button type="submit" :disabled="selected.length === 0" class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">Apply action</button>
                     </div>
                 </div>
+                @error('action')<p class="mt-3 text-sm font-semibold text-rose-700 dark:text-rose-300">{{ $message }}</p>@enderror
                 @error('memo_ids')<p class="mt-3 text-sm font-semibold text-rose-700 dark:text-rose-300">{{ $message }}</p>@enderror
                 @error('cmc_staff_id')<p class="mt-3 text-sm font-semibold text-rose-700 dark:text-rose-300">{{ $message }}</p>@enderror
                 @error('remarks')<p class="mt-3 text-sm font-semibold text-rose-700 dark:text-rose-300">{{ $message }}</p>@enderror
@@ -201,10 +218,10 @@
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                     <thead class="bg-gray-50 dark:bg-gray-900">
                         <tr>
-                            @if($bulkForwardingEnabled || $bulkCmcActionsEnabled)
+                            @if($bulkFormId)
                                 <th class="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                                     <label class="inline-flex items-center gap-2 normal-case tracking-normal">
-                                        <input type="checkbox" :checked="allPageSelected" :disabled="{{ $bulkForwardingEnabled ? 'selectAllFiltered || ' : '' }}availableIds().length === 0" @change="togglePage($event.target.checked)" class="rounded border-gray-300 text-emerald-700 focus:ring-emerald-500">
+                                        <input type="checkbox" :checked="allPageSelected" :disabled="availableIds().length === 0" @change="togglePage($event.target.checked)" class="rounded border-gray-300 text-emerald-700 focus:ring-emerald-500">
                                         <span>Select page</span>
                                     </label>
                                 </th>
@@ -278,24 +295,20 @@
                                 ]) || $memo->created_by === auth()->id();
                             @endphp
                             <tr class="align-top">
-                                @if($bulkForwardingEnabled || $bulkCmcActionsEnabled)
+                                @if($bulkFormId)
                                     <td class="whitespace-nowrap px-5 py-4">
-                                        @if(($bulkForwardingEnabled && $bulkForwardDestinations->has((string) $memo->id)) || $bulkCmcActionsEnabled)
-                                            <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                                                <input
-                                                    form="{{ $bulkCmcActionsEnabled ? 'bulk-cmc-form' : 'bulk-forward-form' }}"
-                                                    type="checkbox"
-                                                    name="memo_ids[]"
-                                                    value="{{ $memo->id }}"
-                                                    x-model="selected"
-                                                    :disabled="{{ $bulkForwardingEnabled ? 'selectAllFiltered || ' : '' }}!isAvailable('{{ $memo->id }}')"
-                                                    class="rounded border-gray-300 text-emerald-700 focus:ring-emerald-500"
-                                                >
-                                                <span class="sr-only">Select {{ $memo->serial_number }}</span>
-                                            </label>
-                                        @else
-                                            <span aria-hidden="true" class="text-gray-300 dark:text-gray-600">—</span>
-                                        @endif
+                                        <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                                            <input
+                                                form="{{ $bulkFormId }}"
+                                                type="checkbox"
+                                                name="memo_ids[]"
+                                                value="{{ $memo->id }}"
+                                                x-model="selected"
+                                                :disabled="!isAvailable('{{ $memo->id }}')"
+                                                class="rounded border-gray-300 text-emerald-700 focus:ring-emerald-500"
+                                            >
+                                            <span class="sr-only">Select {{ $memo->serial_number }}</span>
+                                        </label>
                                     </td>
                                 @endif
                                 <td class="min-w-64 px-5 py-4 text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -367,13 +380,13 @@
                                 @endif
                             </tr>
                         @empty
-                            <tr><td colspan="{{ 8 + ($showActionColumn ? 1 : 0) + (($bulkForwardingEnabled || $bulkCmcActionsEnabled) ? 1 : 0) }}" class="px-5 py-12 text-center text-gray-500 dark:text-gray-400">{{ match ($category) { 'pending', 'pending_action' => 'No memos are currently pending with you.', 'urgent_pending_action' => 'No urgent memos are currently pending with you.', 'transferred' => 'No transferred memos are currently pending with you.', default => 'No memos match the selected filters.' } }}</td></tr>
+                            <tr><td colspan="{{ 8 + ($showActionColumn ? 1 : 0) + ($bulkFormId ? 1 : 0) }}" class="px-5 py-12 text-center text-gray-500 dark:text-gray-400">{{ match ($category) { 'pending', 'pending_action' => 'No memos are currently pending with you.', 'urgent_pending_action' => 'No urgent memos are currently pending with you.', 'transferred' => 'No transferred memos are currently pending with you.', default => 'No memos match the selected filters.' } }}</td></tr>
                         @endforelse
                     </tbody>
                 </table>
             </div>
         </div><div class="mt-5">{{ $memos->links() }}</div>
-        @if($bulkForwardingEnabled || $bulkCmcActionsEnabled)
+        @if($bulkFormId)
         </div>
         @endif
     </div></div>

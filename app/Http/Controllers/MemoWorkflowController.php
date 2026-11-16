@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AmCmcMemoCategory;
 use App\Enums\UserRole;
 use App\Enums\WorkflowStepType;
 use App\Http\Requests\BulkCmcMemoActionRequest;
@@ -52,6 +53,7 @@ class MemoWorkflowController extends Controller
             $request->filters(),
             $request->memoIds(),
             $request->selectsAll(),
+            $request->isReceivedFromLines(),
         );
         $label = $destination === WorkflowStepType::AmCmcToScrutiny
             ? 'CMC Team SM for scrutiny'
@@ -59,27 +61,35 @@ class MemoWorkflowController extends Controller
 
         $memoLabel = $count === 1 ? 'SDM' : 'SDMs';
 
-        return redirect()->route('sdm-memos.index', $request->filters())
+        $parameters = $request->filters();
+        if ($request->isReceivedFromLines()) {
+            $parameters['category'] = AmCmcMemoCategory::ReceivedFromLines->value;
+            $label = 'SM/CMC for verification';
+        }
+
+        return redirect()->route('sdm-memos.index', $parameters)
             ->with('status', "{$count} {$memoLabel} forwarded to {$label}.");
     }
 
     public function bulkCmcAction(BulkCmcMemoActionRequest $request): RedirectResponse
     {
         $action = $request->string('action')->toString();
+        $amCmcReview = $request->isAmCmcReview();
         $count = $this->workflow->bulkCmcAction(
             $request->user(),
             $action,
             $request->memoIds(),
             $request->filled('cmc_staff_id') ? $request->integer('cmc_staff_id') : null,
-            $request->string('remarks')->toString() ?: null,
+            $request->validated('remarks'),
+            amCmcReview: $amCmcReview,
         );
         $label = match ($action) {
             'assign' => 'assigned to CMC Staff',
-            'forward' => 'forwarded to Manager CMC',
-            'return' => 'reverted for rechecking',
+            'forward' => $amCmcReview ? 'sent to DGM/CMC for approval' : 'forwarded to Manager CMC',
+            'return' => $amCmcReview ? 'reverted to SM/CMC for rechecking' : 'reverted for rechecking',
         };
 
-        return redirect()->route('sdm-memos.index')
+        return redirect()->route('sdm-memos.index', $request->safe()->only(['category']))
             ->with('status', "{$count} ".($count === 1 ? 'SDM' : 'SDMs')." {$label}.");
     }
 

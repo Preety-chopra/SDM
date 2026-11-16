@@ -30,17 +30,43 @@ class AmCmcMemoTabsTest extends TestCase
         $aft = $this->memo($station, 'TAB-AFT', MemoStatus::AmCmcReview, WorkflowStepType::AmCmcToScrutiny);
         $this->step($aft, WorkflowStepType::DgmAftReview, 'forwarded');
         $processed = $this->memo($station, 'TAB-PROCESSED', MemoStatus::AmCmcReview, WorkflowStepType::AmCmcToDgm);
+        $this->step($processed, WorkflowStepType::CmcVerification, 'forwarded');
         $awaitingApproval = $this->memo($station, 'TAB-AWAITING-APPROVAL', MemoStatus::DgmApproval, WorkflowStepType::DgmApproval);
         $inScrutiny = $this->memo($station, 'TAB-IN-SCRUTINY', MemoStatus::CmcScrutiny, WorkflowStepType::CmcAssessment);
         $this->step($inScrutiny, WorkflowStepType::DgmApproval, 'returned');
+        $this->step($inScrutiny, WorkflowStepType::AmCmcToScrutiny, 'forwarded');
         $approved = $this->memo($station, 'TAB-APPROVED', MemoStatus::PendingPenaltyLetter);
         $this->step($approved, WorkflowStepType::DgmApproval, 'approved');
         $closed = $this->memo($station, 'TAB-APPROVED-AND-CLOSED', MemoStatus::Closed);
         $this->step($closed, WorkflowStepType::DgmApproval, 'approved');
         $cancelled = $this->memo($station, 'TAB-CANCELLED', MemoStatus::Cancelled);
         $this->step($cancelled, WorkflowStepType::DgmApproval, 'cancelled');
+        $forwardedFromLines = $this->memo($station, 'TAB-FORWARDED-FROM-LINES', MemoStatus::CmcAssignment, WorkflowStepType::CmcAssignment);
+        $this->step($forwardedFromLines, WorkflowStepType::AmCmcToScrutiny, 'forwarded');
+        $awaitingVerification = $this->memo($station, 'TAB-AWAITING-VERIFICATION', MemoStatus::CmcScrutiny, WorkflowStepType::CmcVerification);
+        $this->step($awaitingVerification, WorkflowStepType::AmCmcToScrutiny, 'forwarded');
+        $aftAtSm = $this->memo($station, 'TAB-AFT-AT-SM', MemoStatus::CmcAssignment, WorkflowStepType::CmcAssignment);
+        $this->step($aftAtSm, WorkflowStepType::AmCmcToScrutiny, 'forwarded');
+        $this->step($aftAtSm, WorkflowStepType::DgmAftReview, 'forwarded');
+        $returnedToLines = $this->memo($station, 'TAB-RETURNED-TO-LINES', MemoStatus::LineReview, WorkflowStepType::LineReview);
+        $this->step($returnedToLines, WorkflowStepType::AmCmcToScrutiny, 'returned');
+        $resubmitted = $this->memo($station, 'TAB-RESUBMITTED', MemoStatus::AmCmcReview);
+        $this->step($resubmitted, WorkflowStepType::AmCmcToScrutiny, 'returned');
+        $resubmitted->update(['current_workflow_step_id' => $this->step($resubmitted, WorkflowStepType::AmCmcToScrutiny, 'pending')]);
+        $this->step($aft, WorkflowStepType::AmCmcToScrutiny, 'forwarded');
         $legacyReceived = $this->legacyMemo($station, 'TAB-LEGACY-RECEIVED', WorkflowStage::OperationsManager, 'pending');
         $legacyProcessed = $this->legacyMemo($station, 'TAB-LEGACY-PROCESSED', WorkflowStage::DeputyGeneralManager, 'pending');
+        $legacyProcessed->approvals()->create([
+            'role' => WorkflowStage::OperationsManager->value,
+            'sequence' => WorkflowStage::OperationsManager->sequence(),
+            'decision' => 'approved',
+        ]);
+        $legacyReturned = $this->legacyMemo($station, 'TAB-LEGACY-RETURNED', WorkflowStage::OperationsManager, 'pending');
+        $legacyReturned->auditLogs()->create([
+            'actor_id' => $manager->id,
+            'event' => 'memo.workflow.return',
+            'after_values' => ['stage' => WorkflowStage::OperationsManager->value],
+        ]);
         $legacyApproved = $this->legacyMemo($station, 'TAB-LEGACY-APPROVED', WorkflowStage::DeputyGeneralManager, 'approved');
 
         $this->actingAs($manager)->get(route('sdm-memos.index'))
@@ -51,11 +77,18 @@ class AmCmcMemoTabsTest extends TestCase
         $this->get(route('sdm-memos.index', ['category' => 'received_from_lines', 'line_code' => 'YL']))
             ->assertOk()
             ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->sort()->values()->all() === [$received->id, $legacyReceived->id])
+            ->assertSeeInOrder(['Pending SDMs', 'Processed SDMs'])
             ->assertSee('name="category" value="received_from_lines"', false);
+
+        $this->get(route('sdm-memos.index', ['category' => 'received_from_lines', 'received_tab' => 'processed', 'line_code' => 'YL']))
+            ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->all() === [$forwardedFromLines->id])
+            ->assertSee('name="received_tab" value="processed"', false)
+            ->assertDontSee('name="memo_ids[]"', false);
 
         $this->get(route('sdm-memos.index', ['category' => 'processed_by_cmc']))
             ->assertOk()
-            ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->sort()->values()->all() === [$processed->id, $awaitingApproval->id, $legacyProcessed->id]);
+            ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->all() === [$processed->id]);
 
         $this->get(route('sdm-memos.index', ['category' => 'approved_by_dgm_cmc']))
             ->assertOk()

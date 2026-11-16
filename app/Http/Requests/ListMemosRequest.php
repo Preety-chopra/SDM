@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\AmCmcMemoCategory;
+use App\Enums\AmCmcReceivedSdmTab;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\StationManagerMemoStatus;
@@ -24,6 +25,7 @@ class ListMemosRequest extends FormRequest
         return [
             'pending_stage' => ['nullable', Rule::enum(WorkflowStage::class)],
             'category' => ['nullable', Rule::in($this->allowedCategories())],
+            'received_tab' => ['nullable', 'prohibited_unless:category,'.AmCmcMemoCategory::ReceivedFromLines->value, Rule::enum(AmCmcReceivedSdmTab::class)],
             'service_type' => ['nullable', Rule::enum(SdmType::class)],
             'station_id' => ['nullable', 'integer', Rule::exists('stations', 'id')],
             'line_code' => ['nullable', 'string', Rule::exists('lines', 'code')],
@@ -52,6 +54,15 @@ class ListMemosRequest extends FormRequest
     public function category(): ?string
     {
         return $this->validated('category');
+    }
+
+    public function receivedTab(): ?AmCmcReceivedSdmTab
+    {
+        if ($this->category() !== AmCmcMemoCategory::ReceivedFromLines->value) {
+            return null;
+        }
+
+        return $this->enum('received_tab', AmCmcReceivedSdmTab::class) ?? AmCmcReceivedSdmTab::Pending;
     }
 
     /** @return array<string, int|string> */

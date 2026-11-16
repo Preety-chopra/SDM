@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\AmCmcMemoCategory;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\WorkflowStepType;
@@ -13,18 +14,18 @@ class BulkForwardMemosRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->can('bulkForward', ServiceDeficiencyMemo::class);
+        return $this->user()->can('bulkAmCmcAction', ServiceDeficiencyMemo::class);
     }
 
     /** @return array<string, list<mixed>> */
     public function rules(): array
     {
         return [
-            'destination' => ['required', Rule::in([
-                WorkflowStepType::AmCmcToScrutiny->value,
-                WorkflowStepType::AmCmcToDgm->value,
-            ])],
-            'select_all' => ['nullable', 'boolean'],
+            'category' => ['nullable', Rule::in([AmCmcMemoCategory::ReceivedFromLines->value])],
+            'destination' => ['required', Rule::in($this->isReceivedFromLines()
+                ? [WorkflowStepType::AmCmcToScrutiny->value]
+                : [WorkflowStepType::AmCmcToScrutiny->value, WorkflowStepType::AmCmcToDgm->value])],
+            'select_all' => ['nullable', 'boolean', 'prohibited_if:category,'.AmCmcMemoCategory::ReceivedFromLines->value],
             'memo_ids' => [Rule::requiredIf(! $this->boolean('select_all')), 'nullable', 'array', 'min:1'],
             'memo_ids.*' => ['required', 'integer', 'distinct', Rule::exists(ServiceDeficiencyMemo::class, 'id')],
             'service_type' => ['nullable', Rule::enum(SdmType::class)],
@@ -39,6 +40,11 @@ class BulkForwardMemosRequest extends FormRequest
             ],
             'status' => ['nullable', Rule::enum(MemoStatus::class)],
         ];
+    }
+
+    public function isReceivedFromLines(): bool
+    {
+        return $this->input('category') === AmCmcMemoCategory::ReceivedFromLines->value;
     }
 
     public function destination(): WorkflowStepType

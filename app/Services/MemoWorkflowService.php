@@ -41,13 +41,15 @@ final class MemoWorkflowService
         array $filters,
         array $memoIds,
         bool $selectAll,
+        bool $receivedFromLines = false,
     ): int {
-        return DB::transaction(function () use ($actor, $stage, $filters, $memoIds, $selectAll): int {
+        return DB::transaction(function () use ($actor, $stage, $filters, $memoIds, $selectAll, $receivedFromLines): int {
             $memos = $this->memos->bulkForwardableFor(
                 $actor,
                 $stage,
                 $selectAll ? $filters : [],
                 $selectAll ? [] : $memoIds,
+                $receivedFromLines,
             );
 
             if ($memos->isEmpty() || (! $selectAll && $memos->count() !== count($memoIds))) {
@@ -65,17 +67,25 @@ final class MemoWorkflowService
     }
 
     /** @param list<int> $memoIds */
-    public function bulkCmcAction(User $actor, string $action, array $memoIds, ?int $cmcStaffId = null, ?string $remarks = null): int
-    {
-        $stage = $action === 'assign'
-            ? WorkflowStepType::CmcAssignment
-            : WorkflowStepType::CmcVerification;
+    public function bulkCmcAction(
+        User $actor,
+        string $action,
+        array $memoIds,
+        ?int $cmcStaffId = null,
+        ?string $remarks = null,
+        bool $amCmcReview = false,
+    ): int {
+        $stage = match (true) {
+            $amCmcReview => WorkflowStepType::AmCmcToDgm,
+            $action === 'assign' => WorkflowStepType::CmcAssignment,
+            default => WorkflowStepType::CmcVerification,
+        };
 
         return DB::transaction(function () use ($actor, $action, $memoIds, $cmcStaffId, $remarks, $stage): int {
             $memos = $this->memos->bulkCmcActionableFor($actor, $stage, $memoIds);
             if ($memos->isEmpty() || $memos->count() !== count($memoIds)) {
                 throw ValidationException::withMessages([
-                    'memo_ids' => 'Select only SDMs currently assigned to you for the chosen CMC SM action.',
+                    'memo_ids' => 'Select only SDMs currently assigned to you for this action.',
                 ]);
             }
 

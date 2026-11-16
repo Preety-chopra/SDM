@@ -22,7 +22,7 @@ class ServiceDeficiencyMemoPolicy
         return $user->can(UserPermission::CreateMemos->value);
     }
 
-    public function bulkForward(User $user): bool
+    public function bulkAmCmcAction(User $user): bool
     {
         return $user->is_enabled
             && $user->hasRole(UserRole::ManagerOperations->value)

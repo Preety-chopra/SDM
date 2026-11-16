@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\AmCmcMemoCategory;
+use App\Enums\AmCmcReceivedSdmTab;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\StationManagerMemoStatus;
@@ -109,28 +110,26 @@ class ServiceDeficiencyMemoController extends Controller
             }
         }
 
-        $memos = $this->memos->paginateFor($request->user(), $filters, $pendingStage, $category);
-        $bulkForwardingEnabled = $category === null
-            && $request->user()->can('bulkForward', ServiceDeficiencyMemo::class);
-        $bulkForwardDestinations = $bulkForwardingEnabled
+        $receivedTab = $request->receivedTab();
+        $memos = $this->memos->paginateFor($request->user(), $filters, $pendingStage, $category, $receivedTab);
+        $canBulkAmCmcAction = $isAmCmc && $request->user()->can('bulkAmCmcAction', ServiceDeficiencyMemo::class);
+        $bulkForwardLineReceipts = $receivedTab === AmCmcReceivedSdmTab::Pending && $canBulkAmCmcAction;
+        $bulkAmCmcReview = $category === AmCmcMemoCategory::ProcessedByCmc->value && $canBulkAmCmcAction;
+        $lineReceiptDestinations = $bulkForwardLineReceipts
             ? $memos->getCollection()
-                ->filter(fn (ServiceDeficiencyMemo $memo): bool => $memo->currentWorkflowStep?->assigned_to === $request->user()->id
-                    && $memo->currentWorkflowStep?->decision === 'pending'
-                    && in_array($memo->currentWorkflowStep?->stage, [
-                        WorkflowStepType::AmCmcToScrutiny,
-                        WorkflowStepType::AmCmcToDgm,
-                    ], true))
-                ->mapWithKeys(fn (ServiceDeficiencyMemo $memo): array => [
-                    (string) $memo->id => $memo->currentWorkflowStep->stage->value,
-                ])
+                ->filter(fn (ServiceDeficiencyMemo $memo): bool => $memo->workflow_version >= 2
+                    && $memo->currentWorkflowStep?->assigned_to === $request->user()->id)
+                ->mapWithKeys(fn (ServiceDeficiencyMemo $memo): array => [(string) $memo->id => WorkflowStepType::AmCmcToScrutiny->value])
             : collect();
-        $bulkCmcActionsEnabled = $category === null
+        $bulkCmcSmActions = $category === null
             && $request->user()->can('bulkCmcAction', ServiceDeficiencyMemo::class);
+        $bulkCmcActionsEnabled = $bulkCmcSmActions || $bulkAmCmcReview;
         $bulkCmcActions = $bulkCmcActionsEnabled
-            ? $memos->getCollection()->mapWithKeys(function (ServiceDeficiencyMemo $memo) use ($request): array {
+            ? $memos->getCollection()->mapWithKeys(function (ServiceDeficiencyMemo $memo) use ($request, $bulkAmCmcReview): array {
                 $step = $memo->currentWorkflowStep;
                 $actions = match (true) {
                     $step?->assigned_to !== $request->user()->id || $step?->decision !== 'pending' => [],
+                    $bulkAmCmcReview => ['forward', 'return'],
                     $step->stage === WorkflowStepType::CmcAssignment => ['assign'],
                     $step->stage === WorkflowStepType::CmcVerification => ['forward', 'return'],
                     default => [],
@@ -162,15 +161,18 @@ class ServiceDeficiencyMemoController extends Controller
             'statuses' => $statuses,
             'stations' => $this->masterData->stations(),
             'lines' => $this->masterData->lines(),
-            'bulkForwardingEnabled' => $bulkForwardingEnabled,
-            'bulkForwardDestinations' => $bulkForwardDestinations,
             'bulkCmcActionsEnabled' => $bulkCmcActionsEnabled,
             'bulkCmcActions' => $bulkCmcActions,
             'showActionColumn' => $showActionColumn,
-            'cmcStaffUsers' => $bulkCmcActionsEnabled
+            'cmcStaffUsers' => $bulkCmcSmActions
                 ? $this->users->enabledForRole(UserRole::CmcStaff)
                 : collect(),
             'memoCategoryTabs' => $memoCategoryTabs,
+            'receivedTab' => $receivedTab,
+            'receivedTabs' => AmCmcReceivedSdmTab::cases(),
+            'bulkForwardLineReceipts' => $bulkForwardLineReceipts,
+            'bulkAmCmcReview' => $bulkAmCmcReview,
+            'lineReceiptDestinations' => $lineReceiptDestinations,
         ]);
     }
 

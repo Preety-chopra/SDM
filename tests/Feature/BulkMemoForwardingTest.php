@@ -47,9 +47,10 @@ class BulkMemoForwardingTest extends TestCase
         $this->actingAs($amCmc)
             ->get(route('sdm-memos.index'))
             ->assertOk()
-            ->assertSee('Bulk forward Manager CMC memos')
-            ->assertSee('name="memo_ids[]"', false)
-            ->assertSee('Select every matching memo across all pages');
+            ->assertSee(route('sdm-memos.show', $toScrutiny))
+            ->assertSee(route('sdm-memos.show', $toDgm))
+            ->assertDontSee('Bulk forward Manager CMC memos')
+            ->assertDontSee('name="memo_ids[]"', false);
 
         $this->post(route('sdm-memos.bulk-forward'), [
             'destination' => WorkflowStepType::AmCmcToScrutiny->value,
@@ -74,6 +75,118 @@ class BulkMemoForwardingTest extends TestCase
         $this->assertSame(MemoStatus::DgmApproval, $toDgm->fresh()->status);
         $this->assertSame($dgmCmc->id, $toDgm->fresh()->currentWorkflowStep->assigned_to);
         $this->assertSame(2, AuditLog::query()->where('auditable_type', ServiceDeficiencyMemo::class)->count());
+    }
+
+    public function test_am_cmc_can_forward_selected_pending_line_sdms_to_sm_cmc(): void
+    {
+        $amCmc = $this->user(UserRole::ManagerOperations);
+        $smCmc = $this->user(UserRole::CmcTeamLead);
+        $first = $this->memoAtAmStage('RECEIVED-BULK-1', $amCmc, WorkflowStepType::AmCmcToScrutiny, $smCmc);
+        $second = $this->memoAtAmStage('RECEIVED-BULK-2', $amCmc, WorkflowStepType::AmCmcToScrutiny, $smCmc);
+        $unselected = $this->memoAtAmStage('RECEIVED-UNSELECTED', $amCmc, WorkflowStepType::AmCmcToScrutiny, $smCmc);
+        $category = ['category' => 'received_from_lines'];
+        $pending = route('sdm-memos.index', $category);
+
+        $this->actingAs($amCmc)->get($pending)
+            ->assertOk()->assertSee('Forward selected to SM/CMC')->assertSee('name="memo_ids[]"', false);
+
+        $this->post(route('sdm-memos.bulk-forward'), [
+            ...$category,
+            'destination' => WorkflowStepType::AmCmcToScrutiny->value,
+            'memo_ids' => [$first->id, $second->id],
+        ])->assertRedirect($pending)->assertSessionHasNoErrors();
+
+        foreach ([$first, $second] as $memo) {
+            $this->assertSame(WorkflowStepType::CmcAssignment, $memo->fresh()->currentWorkflowStep->stage);
+            $this->assertSame($smCmc->id, $memo->fresh()->currentWorkflowStep->assigned_to);
+        }
+        $this->get($pending)->assertOk()->assertSee($unselected->serial_number)->assertDontSee($first->serial_number);
+        $this->get(route('sdm-memos.index', [...$category, 'received_tab' => 'processed']))
+            ->assertOk()->assertSee($first->serial_number)->assertSee($second->serial_number)->assertDontSee($unselected->serial_number);
+    }
+
+    public function test_bulk_forwarding_line_receipts_rejects_memos_outside_the_pending_tab(): void
+    {
+        $amCmc = $this->user(UserRole::ManagerOperations);
+        $smCmc = $this->user(UserRole::CmcTeamLead);
+        $pending = $this->memoAtAmStage('RECEIVED-PENDING', $amCmc, WorkflowStepType::AmCmcToScrutiny, $smCmc);
+        $aft = $this->memoAtAmStage('RECEIVED-AFT', $amCmc, WorkflowStepType::AmCmcToScrutiny, $smCmc);
+        $this->step($aft, $this->user(UserRole::DgmAft), WorkflowStepType::DgmAftReview, 1)->update(['decision' => 'forwarded']);
+        $this->actingAs($amCmc)->post(route('sdm-memos.bulk-forward'), [
+            'category' => 'received_from_lines',
+            'destination' => WorkflowStepType::AmCmcToScrutiny->value,
+            'memo_ids' => [$pending->id, $aft->id],
+        ])->assertSessionHasErrors('memo_ids');
+
+        $this->assertSame(MemoStatus::AmCmcReview, $pending->fresh()->status);
+        $this->assertSame(MemoStatus::AmCmcReview, $aft->fresh()->status);
+    }
+
+    public function test_am_cmc_can_forward_or_revert_selected_verified_sdms_from_the_cmc_queue(): void
+    {
+        $amCmc = $this->user(UserRole::ManagerOperations);
+        $smCmc = $this->user(UserRole::CmcTeamLead);
+        $dgmCmc = $this->user(UserRole::DeputyGeneralManager);
+        $verifiedMemo = fn (string $serial): ServiceDeficiencyMemo => $this->memoAtAmStage($serial, $amCmc, WorkflowStepType::AmCmcToDgm, $dgmCmc);
+        $forward = collect(['CMC-APPROVAL-1', 'CMC-APPROVAL-2'])->map($verifiedMemo);
+        $revert = collect(['CMC-RECHECK-1', 'CMC-RECHECK-2'])->map($verifiedMemo);
+        foreach ($forward->concat($revert) as $memo) {
+            $this->step($memo, $smCmc, WorkflowStepType::CmcVerification, 5)->update(['decision' => 'forwarded']);
+        }
+        $category = ['category' => 'processed_by_cmc'];
+        $queue = route('sdm-memos.index', $category);
+        $bulkAction = route('sdm-memos.bulk-cmc-action');
+        $remarks = 'Recheck the supporting calculation.';
+
+        $this->actingAs($amCmc)->get($queue)
+            ->assertOk()->assertSee('name="memo_ids[]"', false)
+            ->assertSee('Send to DGM/CMC for approval')->assertSee('Revert to SM/CMC for rechecking');
+
+        $this->post($bulkAction, [...$category, 'action' => 'forward', 'memo_ids' => $forward->pluck('id')->all()])
+            ->assertRedirect($queue)->assertSessionHasNoErrors();
+
+        $returnPayload = [...$category, 'action' => 'return', 'memo_ids' => $revert->pluck('id')->all()];
+        $this->from($queue)->post($bulkAction, [...$returnPayload, 'remarks' => '   '])
+            ->assertRedirect($queue)->assertSessionHasErrors('remarks');
+        foreach ($revert as $memo) {
+            $this->assertSame(WorkflowStepType::AmCmcToDgm, $memo->fresh()->currentWorkflowStep->stage);
+        }
+        $this->post($bulkAction, [...$returnPayload, 'remarks' => $remarks])
+            ->assertRedirect($queue)->assertSessionHasNoErrors();
+
+        foreach ($forward as $memo) {
+            $this->assertSame(WorkflowStepType::DgmApproval, $memo->fresh()->currentWorkflowStep->stage);
+            $this->assertSame($dgmCmc->id, $memo->fresh()->currentWorkflowStep->assigned_to);
+        }
+        foreach ($revert as $memo) {
+            $this->assertSame(WorkflowStepType::CmcVerification, $memo->fresh()->currentWorkflowStep->stage);
+            $this->assertSame($smCmc->id, $memo->fresh()->currentWorkflowStep->assigned_to);
+            $this->assertSame($remarks, $memo->workflowSteps()->where('decision', 'returned')->sole()->remarks);
+            $this->assertTrue($memo->auditLogs()->where('event', 'memo.workflow.return')->where('actor_id', $amCmc->id)->exists());
+        }
+        $this->get($queue)->assertOk()->assertViewHas('memos', fn ($memos): bool => $memos->isEmpty());
+    }
+
+    public function test_am_cmc_bulk_review_rejects_memos_assigned_to_another_user_or_at_another_stage(): void
+    {
+        $amCmc = $this->user(UserRole::ManagerOperations);
+        $otherAmCmc = $this->user(UserRole::ManagerOperations);
+        $smCmc = $this->user(UserRole::CmcTeamLead);
+        $dgmCmc = $this->user(UserRole::DeputyGeneralManager);
+        $eligible = $this->memoAtAmStage('CMC-ELIGIBLE', $amCmc, WorkflowStepType::AmCmcToDgm, $dgmCmc);
+        $otherAssignee = $this->memoAtAmStage('CMC-OTHER-ASSIGNEE', $otherAmCmc, WorkflowStepType::AmCmcToDgm, $dgmCmc);
+        $otherStage = $this->memoAtAmStage('CMC-OTHER-STAGE', $amCmc, WorkflowStepType::AmCmcToScrutiny, $smCmc);
+        $payload = ['category' => 'processed_by_cmc', 'action' => 'forward'];
+        $route = route('sdm-memos.bulk-cmc-action');
+
+        $this->actingAs($smCmc)->post($route, [...$payload, 'memo_ids' => [$eligible->id]])->assertForbidden();
+        foreach ([$otherAssignee, $otherStage] as $ineligible) {
+            $this->actingAs($amCmc)->post($route, [...$payload, 'memo_ids' => [$eligible->id, $ineligible->id]])
+                ->assertSessionHasErrors('memo_ids');
+        }
+
+        $this->assertSame(WorkflowStepType::AmCmcToDgm, $eligible->fresh()->currentWorkflowStep->stage);
+        $this->assertSame(0, $eligible->auditLogs()->count());
     }
 
     public function test_select_all_forwards_every_eligible_memo_across_pages_and_honours_filters(): void

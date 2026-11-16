@@ -53,6 +53,11 @@
         @endif
 
         @if(session('pending_sdm_summary'))
+            @php
+                $pendingSdmParameters = auth()->user()?->hasRole(\App\Enums\UserRole::ManagerOperations->value)
+                    ? ['category' => \App\Enums\AmCmcMemoCategory::ReceivedFromLines->value, 'received_tab' => \App\Enums\AmCmcReceivedSdmTab::Pending->value]
+                    : ['category' => 'pending_action'];
+            @endphp
             <x-modal name="pending-sdm-summary" :show="true" maxWidth="lg" focusable>
                 <section role="dialog" aria-modal="true" aria-labelledby="pending-sdm-title" aria-describedby="pending-sdm-description" class="p-6 sm:p-7">
                     <div class="flex items-start justify-between gap-4">
@@ -65,7 +70,7 @@
                     </div>
 
                     <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <a href="{{ route('sdm-memos.index', ['category' => 'pending_action']) }}" class="block rounded-xl border border-gray-200 bg-gray-50 p-4 transition hover:border-emerald-400 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-emerald-600 dark:hover:bg-emerald-950 dark:focus:ring-offset-gray-800">
+                        <a href="{{ route('sdm-memos.index', $pendingSdmParameters) }}" class="block rounded-xl border border-gray-200 bg-gray-50 p-4 transition hover:border-emerald-400 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-emerald-600 dark:hover:bg-emerald-950 dark:focus:ring-offset-gray-800">
                             <dl>
                                 <dt class="text-sm font-semibold text-gray-600 dark:text-gray-300">Pending SDMs</dt>
                                 <dd class="mt-2 text-3xl font-black text-gray-950 dark:text-white">{{ session('pending_sdm_summary.total') }}</dd>

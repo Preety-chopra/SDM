@@ -494,6 +494,24 @@ class AuthenticationTest extends TestCase
             ->assertDontSee('Pending SDMs awaiting your action');
     }
 
+    public function test_am_cmc_pending_sdm_popup_opens_pending_sdms_received_from_lines(): void
+    {
+        $manager = User::factory()->create()->assignRole(UserRole::ManagerOperations->value);
+        $station = Station::query()->create(['code' => 'CMC-POPUP', 'name' => 'CMC Popup Station', 'is_active' => true]);
+        $memo = $this->workflowMemo($manager, $station, WorkflowStepType::AmCmcToScrutiny, 'CMC-POPUP-PENDING');
+        $pendingUrl = route('sdm-memos.index', ['category' => 'received_from_lines', 'received_tab' => 'pending']);
+
+        $this->post(route('login'), ['username' => $manager->name, 'password' => 'password'])
+            ->assertRedirect(route('dashboard', absolute: false));
+
+        $dashboard = $this->get(route('dashboard'))->assertOk();
+        $this->assertMatchesRegularExpression(
+            '/<a href="'.preg_quote(e($pendingUrl), '/').'"[^>]*>\s*<dl>\s*<dt[^>]*>Pending SDMs<\/dt>/s',
+            $dashboard->getContent(),
+        );
+        $this->get($pendingUrl)->assertOk()->assertSee($memo->serial_number);
+    }
+
     #[TestWith(['station_manager_signoff'])]
     #[TestWith(['line_penalty_review'])]
     #[TestWith(['am_cmc_to_scrutiny'])]

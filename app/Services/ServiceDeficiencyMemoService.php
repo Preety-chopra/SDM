@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Contracts\Repositories\ServiceDeficiencyMemoRepositoryInterface;
 use App\Contracts\Repositories\UserRepositoryInterface;
+use App\Enums\AmCmcReceivedSdmTab;
 use App\Enums\DeficiencyType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
@@ -37,9 +38,9 @@ final class ServiceDeficiencyMemoService
     ) {}
 
     /** @param array<string, int|string> $filters */
-    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null, ?string $category = null): LengthAwarePaginator
+    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null, ?string $category = null, ?AmCmcReceivedSdmTab $receivedTab = null): LengthAwarePaginator
     {
-        return $this->memos->paginateFor($user, $filters, $pendingStage, $category);
+        return $this->memos->paginateFor($user, $filters, $pendingStage, $category, $receivedTab);
     }
 
     /** @return Collection<int, ServiceDeficiencyMemo> */
