@@ -70,6 +70,18 @@ class ServiceDeficiencyMemoPolicy
             && $memo->approvals()->where('role', $memo->current_stage?->value)->where('assigned_to', $user->id)->where('decision', 'pending')->exists();
     }
 
+    public function returnToLineManager(User $user, ServiceDeficiencyMemo $memo): bool
+    {
+        if (! $user->hasRole(UserRole::ManagerOperations->value) || ! $this->act($user, $memo)) {
+            return false;
+        }
+
+        return $memo->workflow_version < 2
+            ? $memo->current_stage === WorkflowStage::OperationsManager
+            : in_array($memo->currentWorkflowStep?->stage, [WorkflowStepType::AmCmcToScrutiny, WorkflowStepType::AmCmcToDgm], true)
+                && ! $memo->isAftInspection();
+    }
+
     public function update(User $user, ServiceDeficiencyMemo $memo): bool
     {
         if ($user->is_enabled

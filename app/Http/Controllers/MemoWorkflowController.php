@@ -22,6 +22,10 @@ class MemoWorkflowController extends Controller
         $data = $request->validated();
         $this->workflow->act($sdmMemo, $request->user(), $data);
 
+        if ($data['action'] === 'return_to_line') {
+            return redirect()->route('sdm-memos.show', $sdmMemo)->with('status', 'SDM reverted to AM/Manager (Line).');
+        }
+
         if ($request->user()->hasRole(UserRole::AssistantManager->value)) {
             $message = match ($data['action']) {
                 'cancel_after_counselling' => 'SDM cancelled after counselling.',

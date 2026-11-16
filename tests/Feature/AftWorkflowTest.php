@@ -105,6 +105,21 @@ class AftWorkflowTest extends TestCase
         $this->actingAs($this->users['dgm_aft'])->get(route('sdm-memos.create'))->assertForbidden();
     }
 
+    public function test_am_cmc_cannot_revert_an_aft_report_to_line(): void
+    {
+        $memo = $this->submitReport();
+        $this->forward($memo, 'dgm_aft');
+        $this->forward($memo, 'deputy_general_manager');
+
+        $this->actingAs($this->users['manager_operations'])->get(route('sdm-memos.show', $memo))
+            ->assertOk()->assertDontSee('Revert to AM/Manager (Line)');
+        $this->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'return_to_line',
+            'remarks' => 'Check the inspection details.',
+        ])->assertForbidden();
+        $this->assertSame(WorkflowStepType::AmCmcToScrutiny, $memo->fresh()->currentWorkflowStep->stage);
+    }
+
     public function test_aft_drafts_keep_the_inspected_station_and_submit_to_dgm_aft(): void
     {
         $this->actingAs($this->users['aft'])->post(route('sdm-memos.store'), $this->reportData())->assertSessionHasNoErrors()->assertRedirect();

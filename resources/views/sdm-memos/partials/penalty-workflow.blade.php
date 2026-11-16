@@ -373,6 +373,9 @@
         @if($lineReviewStage)
             <x-memo-line-revert-form :memo="$memo" />
         @endif
+        @can('returnToLineManager', $memo)
+            <x-memo-line-revert-form :memo="$memo" action="return_to_line" label="Revert to AM/Manager (Line)" description="Return this SDM to the AM/Manager (Line) who forwarded it." />
+        @endcan
         @if($currentStep->stage === \App\Enums\WorkflowStepType::StationManager)
             @can('reassignStationManager', $memo)
                 <x-memo-handover-dialog

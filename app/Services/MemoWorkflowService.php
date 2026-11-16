@@ -101,6 +101,10 @@ final class MemoWorkflowService
         try {
             return DB::transaction(function () use ($memo, $actor, $data, &$storedPaths): ServiceDeficiencyMemo {
                 $memo = $this->memos->findForUpdate($memo->id);
+                if ($data['action'] === 'return_to_line') {
+                    return $this->returnToLineManager($memo, $actor, $data['remarks'] ?? null);
+                }
+
                 $isLineReview = $memo->workflow_version >= 2
                     ? $memo->currentWorkflowStep?->stage === WorkflowStepType::LineReview
                     : $memo->current_stage === WorkflowStage::LineManager;
@@ -219,6 +223,38 @@ final class MemoWorkflowService
             'step_id' => $step?->id,
             'stage' => $memo->workflow_version >= 2 ? WorkflowStepType::LineReview->value : WorkflowStage::LineManager->value,
             'returned_to' => $sender->id, 'remarks' => $remarks, 'status' => $memo->status->value,
+        ]);
+
+        return $memo->refresh();
+    }
+
+    private function returnToLineManager(ServiceDeficiencyMemo $memo, User $actor, ?string $remarks): ServiceDeficiencyMemo
+    {
+        abort_unless($actor->can('returnToLineManager', $memo), 403);
+        if (blank($remarks)) {
+            throw ValidationException::withMessages(['remarks' => 'The remarks field is required.']);
+        }
+
+        $sender = $this->memos->findForwardingLineManager($memo);
+        if ($sender === null) {
+            throw ValidationException::withMessages(['action' => 'The AM/Manager (Line) who sent this SDM must be enabled before it can be reverted.']);
+        }
+
+        $step = $memo->currentWorkflowStep;
+        $before = [
+            'status' => $memo->status->value,
+            'line_manager_action' => $memo->workflow_version < 2
+                ? $memo->lineManagerApproval?->only(['assigned_to', 'acted_by', 'signer_name', 'signer_employee_number', 'decision', 'remarks', 'acted_at'])
+                : null,
+        ];
+
+        $this->memos->returnToLineManager($memo, $actor, $sender, $remarks);
+        $this->audit->record($memo, $actor, 'memo.workflow.return', $before, [
+            'step_id' => $step?->id,
+            'stage' => $step?->stage->value ?? WorkflowStage::OperationsManager->value,
+            'returned_to' => $sender->id,
+            'remarks' => $remarks,
+            'status' => $memo->status->value,
         ]);
 
         return $memo->refresh();

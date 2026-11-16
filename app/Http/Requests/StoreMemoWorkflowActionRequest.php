@@ -15,7 +15,9 @@ class StoreMemoWorkflowActionRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->can('act', $this->route('sdm_memo'));
+        $ability = $this->input('action') === 'return_to_line' ? 'returnToLineManager' : 'act';
+
+        return $this->user()->can($ability, $this->route('sdm_memo'));
     }
 
     public function rules(): array
@@ -28,11 +30,12 @@ class StoreMemoWorkflowActionRequest extends FormRequest
 
         $action = $this->string('action')->toString();
         $stage = $memo->current_stage;
-        $requiresRemarks = in_array($action, ['return', 'cancel', 'cancel_after_counselling'], true)
+        $requiresRemarks = in_array($action, ['return', 'return_to_line', 'cancel', 'cancel_after_counselling'], true)
             || ($stage === WorkflowStage::StationManager && $action === 'request_cancellation');
         $allowedActions = match ($stage) {
             WorkflowStage::StationManager => ['forward', 'request_cancellation'],
             WorkflowStage::LineManager => ['forward', 'return', 'cancel', 'cancel_after_counselling'],
+            WorkflowStage::OperationsManager => ['forward', 'approve', 'cancel', 'request_cancellation', 'return_to_line'],
             default => ['forward', 'approve', 'cancel', 'request_cancellation'],
         };
 
@@ -69,12 +72,14 @@ class StoreMemoWorkflowActionRequest extends FormRequest
         $requiresAssessment = in_array($stage, [WorkflowStepType::LineReview, WorkflowStepType::CmcAssessment], true)
             && $action === 'forward';
         $requiresCmcAssessment = $stage === WorkflowStepType::CmcAssessment && $action === 'forward';
-        $requiresRemarks = in_array($action, ['return', 'cancel', 'cancel_after_counselling'], true)
+        $requiresRemarks = in_array($action, ['return', 'return_to_line', 'cancel', 'cancel_after_counselling'], true)
             || ($stage === WorkflowStepType::StationManager && $action === 'request_cancellation');
         $allowedActions = match ($stage) {
             WorkflowStepType::DgmAftReview, WorkflowStepType::DgmCmcToReview => ['forward'],
             WorkflowStepType::StationManager => ['forward', 'request_cancellation'],
             WorkflowStepType::LineReview => ['forward', 'return', 'cancel', 'cancel_after_counselling'],
+            WorkflowStepType::AmCmcToScrutiny => ['forward', 'return_to_line'],
+            WorkflowStepType::AmCmcToDgm => ['forward', 'return', 'return_to_line'],
             default => ['forward', 'approve', 'return', 'cancel', 'request_cancellation'],
         };
 

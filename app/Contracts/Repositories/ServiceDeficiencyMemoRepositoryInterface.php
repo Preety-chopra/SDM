@@ -58,6 +58,10 @@ interface ServiceDeficiencyMemoRepositoryInterface
 
     public function returnToStationManager(ServiceDeficiencyMemo $memo, User $lineManager, User $stationManager, string $remarks): void;
 
+    public function findForwardingLineManager(ServiceDeficiencyMemo $memo): ?User;
+
+    public function returnToLineManager(ServiceDeficiencyMemo $memo, User $actor, User $lineManager, string $remarks): void;
+
     public function markOpenedByStationManager(ServiceDeficiencyMemo $memo): ServiceDeficiencyMemo;
 
     public function markOpenedByLineManager(ServiceDeficiencyMemo $memo): ServiceDeficiencyMemo;

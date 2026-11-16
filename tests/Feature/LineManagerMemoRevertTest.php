@@ -28,6 +28,79 @@ class LineManagerMemoRevertTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
     }
 
+    #[TestWith([1, false])]
+    #[TestWith([2, false])]
+    #[TestWith([2, true])]
+    public function test_assigned_am_cmc_reverts_to_the_line_manager_who_forwarded_and_line_can_resend(int $version, bool $afterScrutiny): void
+    {
+        [$memo, , $lineManager] = $this->memoWithLineManager($version);
+        $forward = ['action' => 'forward'];
+        if ($version === 2) {
+            $forward['items'] = [[
+                'contract_penalty_clause_id' => $memo->serviceContract->penaltyClauses->first()->id,
+                'proposed_amount' => 100,
+            ]];
+        }
+        $url = route('sdm-memos.workflow.store', $memo);
+        $this->actingAs($lineManager)->post($url, $forward)->assertSessionHasNoErrors();
+        $memo->refresh();
+
+        if ($afterScrutiny) {
+            $step = $memo->workflowSteps()->where('stage', WorkflowStepType::AmCmcToDgm->value)->sole();
+            $memo->workflowSteps()->where('sequence', '<', $step->sequence)->where('decision', 'pending')
+                ->update(['decision' => 'forwarded', 'acted_at' => now()]);
+            $memo->update([
+                'current_workflow_step_id' => $step->id,
+                'cmc_staff_id' => $memo->workflowSteps()->where('stage', WorkflowStepType::CmcAssessment->value)->sole()->assigned_to,
+            ]);
+        }
+
+        $amCmc = $version === 2 ? $memo->currentWorkflowStep->assignee : $memo->approvals()
+            ->where('role', WorkflowStage::OperationsManager->value)->sole()->assignee;
+        $lineStep = $version === 2 ? $memo->lineReviewWorkflowStep : $memo->lineManagerApproval;
+        $lineStep->update(['assigned_to' => $this->user(UserRole::AssistantManager)->id]);
+        $remarks = 'Please verify the incident evidence and send the SDM again.';
+
+        $this->actingAs($amCmc)->get(route('sdm-memos.show', $memo))
+            ->assertOk()->assertSee('Revert to AM/Manager (Line)');
+        $this->post($url, ['action' => 'return_to_line'])->assertSessionHasErrors('remarks');
+        $this->actingAs($this->user(UserRole::ManagerOperations))
+            ->post($url, ['action' => 'return_to_line', 'remarks' => $remarks])->assertForbidden();
+        $this->actingAs($amCmc)->post($url, ['action' => 'return_to_line', 'remarks' => $remarks])
+            ->assertRedirectToRoute('sdm-memos.show', $memo)
+            ->assertSessionHas('status', 'SDM reverted to AM/Manager (Line).');
+
+        $memo->refresh();
+        $pending = $version === 2 ? $memo->currentWorkflowStep : $memo->lineManagerApproval;
+        $this->assertSame($lineManager->id, $pending->assigned_to);
+        $this->assertSame('pending', $pending->decision);
+        $this->assertSame($version === 2 ? WorkflowStepType::LineReview : WorkflowStage::LineManager,
+            $version === 2 ? $pending->stage : $memo->current_stage);
+        if ($version === 2) {
+            $this->assertSame('forwarded', $lineStep->fresh()->decision);
+            $this->assertSame($lineManager->id, $lineStep->fresh()->acted_by);
+            $this->assertNull($memo->cmc_staff_id);
+        }
+        $audit = $memo->auditLogs()->where('event', 'memo.workflow.return')->sole();
+        $this->assertSame($amCmc->id, $audit->actor_id);
+        $this->assertSame($lineManager->id, $audit->after_values['returned_to']);
+        $this->assertSame($remarks, $audit->after_values['remarks']);
+
+        $this->actingAs($lineManager)->get(route('sdm-memos.index', ['category' => 'pending']))
+            ->assertOk()->assertSee($memo->serial_number);
+        $this->get(route('sdm-memos.show', $memo))->assertOk()->assertSee($remarks);
+        $this->post($url, $forward)->assertSessionHasNoErrors();
+
+        $memo->refresh();
+        $this->assertSame($version === 2 ? WorkflowStepType::AmCmcToScrutiny : WorkflowStage::OperationsManager,
+            $version === 2 ? $memo->currentWorkflowStep->stage : $memo->current_stage);
+        if ($version === 2) {
+            $this->actingAs($memo->currentWorkflowStep->assignee)->post($url, ['action' => 'forward'])->assertSessionHasNoErrors();
+            $this->assertSame(WorkflowStepType::CmcAssignment, $memo->fresh()->currentWorkflowStep->stage);
+            $this->post($url, ['action' => 'return_to_line', 'remarks' => $remarks])->assertForbidden();
+        }
+    }
+
     #[TestWith([1])]
     #[TestWith([2])]
     public function test_assigned_am_line_reverts_to_the_sm_who_forwarded_and_the_sm_can_resend(int $version): void
