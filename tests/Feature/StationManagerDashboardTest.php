@@ -97,6 +97,35 @@ class StationManagerDashboardTest extends TestCase
             ->assertDontSee('TVS-FORWARDED');
     }
 
+    public function test_only_the_latest_station_manager_assignee_can_see_a_rerouted_sdm(): void
+    {
+        $previousManager = $this->stationManager('SM-100');
+        $newManager = $this->stationManager('SM-200');
+        [$station] = $this->stations();
+        $memo = $this->assignedMemo($previousManager, $station, 'REROUTED-SDM', MemoStatus::AwaitingStationManager, 'forwarded', '2026-09-18 09:00:00');
+        $step = $memo->workflowSteps()->create([
+            'round' => 2,
+            'sequence' => 3,
+            'stage' => WorkflowStepType::StationManager->value,
+            'role' => UserRole::StationManager->value,
+            'assigned_to' => $newManager->id,
+            'assigned_name' => $newManager->name,
+            'assigned_employee_number' => $newManager->employee_number,
+            'decision' => 'pending',
+        ]);
+        $memo->update(['current_workflow_step_id' => $step->id]);
+
+        $this->actingAs($previousManager)->get(route('dashboard'))
+            ->assertOk()
+            ->assertViewHas('stationManagerDashboard', fn (array $dashboard): bool => $dashboard['recent_sdms']->isEmpty());
+        $this->get(route('sdm-memos.show', $memo))->assertForbidden();
+
+        $this->actingAs($newManager)->get(route('dashboard'))
+            ->assertOk()
+            ->assertViewHas('stationManagerDashboard', fn (array $dashboard): bool => $dashboard['recent_sdms']->modelKeys() === [$memo->id]);
+        $this->get(route('sdm-memos.show', $memo))->assertOk();
+    }
+
     public function test_station_manager_dashboard_defaults_to_the_current_half_month(): void
     {
         $manager = $this->stationManager('SM-100');

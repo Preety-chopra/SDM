@@ -69,6 +69,16 @@ class ServiceDeficiencyMemo extends Model
             ->ofMany(['sequence' => 'max'], fn (Builder $query) => $query->where('stage', WorkflowStepType::StationManager->value));
     }
 
+    public function scopeAssignedToStationManager(Builder $query, User $manager): Builder
+    {
+        return $query->where('status', '!=', MemoStatus::Draft->value)
+            ->where(fn (Builder $query) => $query
+                ->where(fn (Builder $query) => $query->where('workflow_version', '<', 2)
+                    ->whereHas('stationManagerApproval', fn (Builder $approval) => $approval->where('assigned_to', $manager->id)))
+                ->orWhere(fn (Builder $query) => $query->where('workflow_version', '>=', 2)
+                    ->whereHas('stationManagerWorkflowStep', fn (Builder $step) => $step->where('assigned_to', $manager->id))));
+    }
+
     public function workflowSteps(): HasMany
     {
         return $this->hasMany(MemoWorkflowStep::class, 'memo_id')->orderBy('sequence');

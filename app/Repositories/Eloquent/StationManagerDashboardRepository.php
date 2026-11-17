@@ -78,14 +78,7 @@ final class StationManagerDashboardRepository implements StationManagerDashboard
     private function filteredQuery(User $manager, CarbonInterface $from, CarbonInterface $to, ?SdmType $serviceType, ?MemoStatus $status): Builder
     {
         return $this->memoQuery($from, $to, $serviceType, $status)
-            ->where(function (Builder $query) use ($manager): void {
-                $query->whereHas('workflowSteps', fn (Builder $query) => $query
-                    ->where('stage', WorkflowStepType::StationManager->value)
-                    ->where('assigned_to', $manager->id))
-                    ->orWhereHas('approvals', fn (Builder $query) => $query
-                        ->where('role', WorkflowStage::StationManager->value)
-                        ->where('assigned_to', $manager->id));
-            });
+            ->assignedToStationManager($manager);
     }
 
     private function memoQuery(CarbonInterface $from, CarbonInterface $to, ?SdmType $serviceType, ?MemoStatus $status): Builder

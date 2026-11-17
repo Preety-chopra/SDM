@@ -1147,12 +1147,8 @@ class SdmWorkflowTest extends TestCase
             ->assertSessionHas('memo_notifications_acknowledged_by', $firstStationManager->id)
             ->assertDontSee('data-memo-notification-count', false)
             ->assertSee($firstMemo->serial_number)
-            ->assertSee($secondMemo->serial_number)
-            ->assertViewHas('memos', function ($memos) use ($firstMemo, $secondMemo): bool {
-                $memoIds = collect($memos->items())->pluck('id');
-
-                return $memoIds->contains($firstMemo->id) && $memoIds->contains($secondMemo->id);
-            });
+            ->assertDontSee($secondMemo->serial_number)
+            ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->all() === [$firstMemo->id]);
 
         $this->get(route('dashboard'))
             ->assertOk()

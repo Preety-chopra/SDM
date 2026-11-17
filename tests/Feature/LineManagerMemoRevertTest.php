@@ -221,7 +221,11 @@ class LineManagerMemoRevertTest extends TestCase
         ])->assertSessionHasNoErrors();
 
         foreach (UserRole::cases() as $role) {
-            $viewer = $role === UserRole::Station ? $memo->creator : $this->user($role);
+            $viewer = match ($role) {
+                UserRole::Station => $memo->creator,
+                UserRole::StationManager => $sm,
+                default => $this->user($role),
+            };
             $response = $this->actingAs($viewer)->get(route('sdm-memos.index'))->assertOk();
 
             if ($role === UserRole::Aft) {

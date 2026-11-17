@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\UserRole;
+use App\Enums\WorkflowStage;
 use App\Models\Line;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
@@ -37,15 +38,27 @@ class StationManagerMemoTableTest extends TestCase
             'station_id' => $station->id,
         ]);
         $stationManager->assignRole(UserRole::StationManager->value);
+        $creator = User::factory()->create(['station_id' => $station->id]);
+        $creator->assignRole(UserRole::Station->value);
         $memo = ServiceDeficiencyMemo::query()->create([
             'service_type' => SdmType::Cfs->value,
-            'serial_number' => 'SM-TABLE-DRAFT',
+            'serial_number' => 'SM-TABLE-SUBMITTED',
             'station_id' => $station->id,
             'station_name' => $station->name,
             'line_code' => $line->code,
             'line_name' => $line->name,
-            'status' => MemoStatus::Draft->value,
-            'created_by' => $stationManager->id,
+            'status' => MemoStatus::Submitted->value,
+            'current_stage' => WorkflowStage::StationManager->value,
+            'created_by' => $creator->id,
+            'submitted_at' => now(),
+        ]);
+        $memo->approvals()->create([
+            'role' => WorkflowStage::StationManager->value,
+            'sequence' => WorkflowStage::StationManager->sequence(),
+            'assigned_to' => $stationManager->id,
+            'assigned_name' => $stationManager->name,
+            'assigned_employee_number' => $stationManager->employee_number,
+            'decision' => 'pending',
         ]);
 
         $response = $this->actingAs($stationManager)

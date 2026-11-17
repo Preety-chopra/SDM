@@ -231,6 +231,29 @@ class StationControllerMemoPortalTest extends TestCase
 
     #[TestWith([1])]
     #[TestWith([2])]
+    public function test_station_manager_lists_only_sdms_assigned_to_them(int $workflowVersion): void
+    {
+        [$controller, , $station, $stationManager] = $this->stationControllerWithHierarchy();
+        $otherManager = User::factory()->create(['station_id' => $station->id]);
+        $otherManager->assignRole(UserRole::StationManager->value);
+        $assignedMemo = $this->submittedMemo($controller, $stationManager, $workflowVersion, 'ASSIGNED-SDM', now(), 'pending');
+        $this->submittedMemo($controller, $otherManager, $workflowVersion, 'OTHER-MANAGER-SDM', now(), 'pending');
+        $this->memo($controller, 'UNASSIGNED-SDM', MemoStatus::Submitted, now());
+        $draft = $this->memo($stationManager, 'OWN-SM-DRAFT', MemoStatus::Draft, null);
+
+        foreach ([[], ['status' => 'submitted_to_me'], ['station_id' => $station->id]] as $filters) {
+            $this->actingAs($stationManager)->get(route('sdm-memos.index', $filters))
+                ->assertOk()
+                ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->all() === [$assignedMemo->id]);
+        }
+
+        $this->get(route('sdm-memos.index', ['status' => 'drafts_own']))
+            ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->all() === [$draft->id]);
+    }
+
+    #[TestWith([1])]
+    #[TestWith([2])]
     public function test_other_viewers_and_the_station_manager_list_do_not_lock_station_controller_edits(int $workflowVersion): void
     {
         [$controller, , , $stationManager] = $this->stationControllerWithHierarchy();
@@ -239,7 +262,8 @@ class StationControllerMemoPortalTest extends TestCase
         $otherManager->assignRole(UserRole::StationManager->value);
 
         $this->actingAs($controller)->get(route('sdm-memos.show', $memo))->assertOk();
-        $this->actingAs($otherManager)->get(route('sdm-memos.show', $memo))->assertOk();
+        $this->actingAs($otherManager)->get(route('sdm-memos.show', $memo))->assertForbidden();
+        $this->get(route('sdm-memos.staff-signature.download', $memo))->assertForbidden();
         $this->actingAs($stationManager)->get(route('sdm-memos.index'))->assertOk();
 
         $this->assertNull($memo->refresh()->station_manager_opened_at);

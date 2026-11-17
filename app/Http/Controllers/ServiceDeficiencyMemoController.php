@@ -342,6 +342,7 @@ class ServiceDeficiencyMemoController extends Controller
 
     public function edit(Request $request, ServiceDeficiencyMemo $sdmMemo): View
     {
+        Gate::authorize('view', $sdmMemo);
         Gate::authorize('update', $sdmMemo);
         $sdmMemo = $this->memos->recordStationManagerOpen($sdmMemo, $request->user());
         $sdmMemo->load(['deficiencies.lateReporting', 'publicComplaint', 'cashCheck', 'attachments']);

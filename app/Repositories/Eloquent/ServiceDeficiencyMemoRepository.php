@@ -59,6 +59,8 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
                 $query->where('status', '!=', MemoStatus::Draft->value)
                     ->orWhere('created_by', $user->id);
             })
+            ->when($isStationManager && $statusFilter !== StationManagerMemoStatus::DraftsOwn->value,
+                fn (Builder $query) => $query->assignedToStationManager($user))
             ->when($filters['service_type'] ?? null, fn ($query, $serviceType) => $query->where('service_type', $serviceType))
             ->when($filters['station_id'] ?? null, fn ($query, $stationId) => $query->where('station_id', $stationId))
             ->when($filters['line_code'] ?? null, fn ($query, $lineCode) => $query->where('line_code', $lineCode))
@@ -122,8 +124,6 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
                 ->where('status', MemoStatus::Draft->value)
                 ->where('created_by', $user->id);
         }
-
-        $this->scopeAssignedToStationManager($query, $user);
 
         return match ($status) {
             StationManagerMemoStatus::SubmittedToMe => $query,
@@ -189,23 +189,6 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
                 }),
             StationManagerMemoStatus::DraftsOwn => $query,
         };
-    }
-
-    private function scopeAssignedToStationManager(Builder $query, User $user): Builder
-    {
-        return $query->where(function (Builder $query) use ($user): void {
-            $query->where(function (Builder $query) use ($user): void {
-                $query->where('workflow_version', '<', 2)
-                    ->whereHas('approvals', fn (Builder $query) => $query
-                        ->where('role', WorkflowStage::StationManager->value)
-                        ->where('assigned_to', $user->id));
-            })->orWhere(function (Builder $query) use ($user): void {
-                $query->where('workflow_version', '>=', 2)
-                    ->whereHas('workflowSteps', fn (Builder $query) => $query
-                        ->where('stage', WorkflowStepType::StationManager->value)
-                        ->where('assigned_to', $user->id));
-            });
-        });
     }
 
     public function recentSubmittedBy(User $user, int $limit = 10): Collection
@@ -435,6 +418,7 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
     private function pendingActionQuery(User $user): Builder
     {
         return ServiceDeficiencyMemo::query()
+            ->when($user->hasRole(UserRole::StationManager->value), fn (Builder $query) => $query->assignedToStationManager($user))
             ->where(function ($query) use ($user): void {
                 $query->where(function ($query) use ($user): void {
                     $query->whereIn('status', [MemoStatus::Submitted->value, MemoStatus::UnderReview->value])

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\UserRole;
+use App\Enums\WorkflowStepType;
 use App\Models\Line;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\Station;
@@ -27,6 +28,7 @@ class MemoCmcStaffVisibilityTest extends TestCase
             'is_active' => true,
         ]);
         $creator = $this->user(UserRole::Station, ['station_id' => $station->id]);
+        $stationManager = $this->user(UserRole::StationManager);
         $assignedCmcStaff = $this->user(UserRole::CmcStaff, ['name' => 'Visible Only To CMC Roles']);
         $memo = ServiceDeficiencyMemo::query()->create([
             'service_type' => SdmType::Cfs->value,
@@ -40,6 +42,16 @@ class MemoCmcStaffVisibilityTest extends TestCase
             'workflow_version' => 2,
             'created_by' => $creator->id,
             'submitted_at' => now(),
+        ]);
+        $memo->workflowSteps()->create([
+            'round' => 1,
+            'sequence' => 1,
+            'stage' => WorkflowStepType::StationManager->value,
+            'role' => UserRole::StationManager->value,
+            'assigned_to' => $stationManager->id,
+            'assigned_name' => $stationManager->name,
+            'assigned_employee_number' => $stationManager->employee_number,
+            'decision' => 'forwarded',
         ]);
 
         foreach ([
@@ -60,7 +72,8 @@ class MemoCmcStaffVisibilityTest extends TestCase
             UserRole::StationManager,
             UserRole::AssistantManager,
         ] as $role) {
-            $this->actingAs($this->user($role))
+            $viewer = $role === UserRole::StationManager ? $stationManager : $this->user($role);
+            $this->actingAs($viewer)
                 ->get(route('sdm-memos.show', $memo))
                 ->assertOk()
                 ->assertDontSee('Memo CMC Staff')

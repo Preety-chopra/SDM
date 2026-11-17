@@ -27,38 +27,36 @@ class MemoTimelineVisibilityTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
     }
 
-    #[TestWith([1, true])]
-    #[TestWith([1, false])]
-    #[TestWith([2, true])]
-    #[TestWith([2, false])]
-    public function test_sm_timeline_stops_at_sm_review_while_pending_with_an_sm(int $version, bool $assignedViewer): void
+    #[TestWith([1])]
+    #[TestWith([2])]
+    public function test_sm_timeline_stops_at_sm_review_while_pending_with_an_sm(int $version): void
     {
         [$memo, $sm] = $this->pendingMemo($version);
-        $viewer = $assignedViewer ? $sm : $this->user(UserRole::StationManager);
 
-        $this->actingAs($viewer)->get(route('sdm-memos.show', $memo))
+        $this->actingAs($sm)->get(route('sdm-memos.show', $memo))
             ->assertOk()
             ->assertViewHas($version === 2 ? 'timelineSteps' : 'timelineApprovals', fn ($steps): bool => $steps->pluck('sequence')->all() === [1])
             ->assertDontSee(WorkflowStepType::LineReview->label());
+
+        $this->actingAs($this->user(UserRole::StationManager))->get(route('sdm-memos.show', $memo))->assertForbidden();
     }
 
-    #[TestWith([1, true])]
-    #[TestWith([1, false])]
-    #[TestWith([2, true])]
-    #[TestWith([2, false])]
-    public function test_sm_timeline_includes_am_review_after_sm_forwards_and_hides_later_levels(int $version, bool $assignedViewer): void
+    #[TestWith([1])]
+    #[TestWith([2])]
+    public function test_sm_timeline_includes_am_review_after_sm_forwards_and_hides_later_levels(int $version): void
     {
         [$memo, $sm, $am] = $this->pendingMemo($version);
-        $viewer = $assignedViewer ? $sm : $this->user(UserRole::StationManager);
         $this->actingAs($sm)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'forward',
             'forward_to_employee_number' => $am->employee_number,
         ])->assertSessionHasNoErrors()->assertRedirect();
 
-        $this->actingAs($viewer)->get(route('sdm-memos.show', $memo))
+        $this->get(route('sdm-memos.show', $memo))
             ->assertOk()
             ->assertViewHas($version === 2 ? 'timelineSteps' : 'timelineApprovals', fn ($steps): bool => $steps->pluck('sequence')->all() === [1, 2])
             ->assertDontSee(WorkflowStepType::AmCmcToScrutiny->label());
+
+        $this->actingAs($this->user(UserRole::StationManager))->get(route('sdm-memos.show', $memo))->assertForbidden();
     }
 
     public function test_opening_the_sdm_expands_the_timeline_for_visible_workflow_remarks(): void

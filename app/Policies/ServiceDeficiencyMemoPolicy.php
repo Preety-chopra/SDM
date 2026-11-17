@@ -42,6 +42,10 @@ class ServiceDeficiencyMemoPolicy
             return $memo->created_by === $user->id;
         }
 
+        if ($user->hasRole(UserRole::StationManager->value)) {
+            return $memo->newQuery()->whereKey($memo->id)->assignedToStationManager($user)->exists();
+        }
+
         if ($user->isStationController()) {
             return $user->can(UserPermission::ViewOwnMemos->value)
                 && $memo->created_by === $user->id;
