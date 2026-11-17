@@ -6,6 +6,7 @@ use App\Contracts\Repositories\ServiceDeficiencyMemoRepositoryInterface;
 use App\Enums\AmCmcMemoCategory;
 use App\Enums\AmCmcReceivedSdmTab;
 use App\Enums\CmcTeamLeadMemoCategory;
+use App\Enums\CmcVerificationSdmTab;
 use App\Enums\MemoStatus;
 use App\Enums\StationManagerMemoStatus;
 use App\Enums\UserRole;
@@ -22,7 +23,7 @@ use Illuminate\Support\Collection;
 final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepositoryInterface
 {
     /** @param array<string, int|string> $filters */
-    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null, ?string $category = null, ?AmCmcReceivedSdmTab $receivedTab = null): LengthAwarePaginator
+    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null, ?string $category = null, ?AmCmcReceivedSdmTab $receivedTab = null, ?CmcVerificationSdmTab $verificationTab = null): LengthAwarePaginator
     {
         $isStationManager = $user->hasRole(UserRole::StationManager->value);
         $statusFilter = $filters['status'] ?? null;
@@ -72,7 +73,7 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
                 ->whereHas('approvals', fn ($query) => $query
                     ->where('role', $pendingStage->value)
                     ->where('decision', 'pending')))
-            ->when($category, fn (Builder $query, string $category) => $this->scopeToInboxCategory($query, $user, $category, $receivedTab))
+            ->when($category, fn (Builder $query, string $category) => $this->scopeToInboxCategory($query, $user, $category, $receivedTab, $verificationTab))
             ->latest()
             ->paginate(15)
             ->withQueryString();
@@ -250,21 +251,23 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
             ->paginate(15);
     }
 
-    private function scopeToInboxCategory(Builder $query, User $user, string $category, ?AmCmcReceivedSdmTab $receivedTab): Builder
+    private function scopeToInboxCategory(Builder $query, User $user, string $category, ?AmCmcReceivedSdmTab $receivedTab, ?CmcVerificationSdmTab $verificationTab): Builder
     {
         if ($category === CmcTeamLeadMemoCategory::PendingStaffAssignment->value) {
             return $query->where('workflow_version', '>=', 2)
                 ->whereHas('currentWorkflowStep', fn (Builder $step) => $step
-                    ->where('stage', WorkflowStepType::CmcAssignment->value)
+                    ->whereIn('stage', [WorkflowStepType::CmcAssignment->value, WorkflowStepType::CmcVerification->value])
                     ->where('assigned_to', $user->id)
-                    ->where('decision', 'pending'));
+                    ->where('decision', 'pending'))
+                ->where(fn (Builder $query) => $query
+                    ->whereHas('currentWorkflowStep', fn (Builder $step) => $step->where('stage', WorkflowStepType::CmcAssignment->value))
+                    ->orWhereHas('latestActedWorkflowStep', fn (Builder $step) => $step
+                        ->where('stage', WorkflowStepType::AmCmcToDgm->value)
+                        ->where('decision', 'returned')));
         }
 
         if ($category === CmcTeamLeadMemoCategory::ProcessedByStaff->value) {
-            return $query->where('workflow_version', '>=', 2)
-                ->whereHas('currentWorkflowStep', fn (Builder $step) => $step
-                    ->whereIn('stage', [WorkflowStepType::CmcVerification->value, WorkflowStepType::AmCmcToDgm->value, WorkflowStepType::DgmApproval->value])
-                    ->where('decision', 'pending'));
+            return $this->scopeToCmcVerificationTab($query, $user, $verificationTab ?? CmcVerificationSdmTab::Pending);
         }
 
         if ($category === AmCmcMemoCategory::ReceivedFromLines->value) {
@@ -300,6 +303,28 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
                         ->where('assignment_source', $assignmentSource));
             });
         });
+    }
+
+    private function scopeToCmcVerificationTab(Builder $query, User $user, CmcVerificationSdmTab $tab): Builder
+    {
+        $query->where('workflow_version', '>=', 2);
+
+        if ($tab === CmcVerificationSdmTab::Pending) {
+            return $query->whereHas('currentWorkflowStep', fn (Builder $step) => $step
+                ->where('stage', WorkflowStepType::CmcVerification->value)
+                ->where('assigned_to', $user->id)
+                ->where('decision', 'pending'));
+        }
+
+        return $query->whereHas('workflowSteps', fn (Builder $step) => $step
+            ->where('stage', WorkflowStepType::CmcVerification->value)
+            ->where('decision', 'forwarded'))
+            ->where(fn (Builder $memo) => $memo
+                ->whereNull('current_workflow_step_id')
+                ->orWhereHas('currentWorkflowStep', fn (Builder $step) => $step->whereIn('stage', [
+                    WorkflowStepType::AmCmcToDgm->value,
+                    WorkflowStepType::DgmApproval->value,
+                ])));
     }
 
     private function scopeToAmCmcCategory(Builder $query, AmCmcMemoCategory $category): Builder

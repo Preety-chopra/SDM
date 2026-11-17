@@ -494,12 +494,14 @@ class AuthenticationTest extends TestCase
             ->assertDontSee('Pending SDMs awaiting your action');
     }
 
-    public function test_am_cmc_pending_sdm_popup_opens_pending_sdms_received_from_lines(): void
+    #[TestWith([UserRole::ManagerOperations, WorkflowStepType::AmCmcToScrutiny, ['category' => 'received_from_lines', 'received_tab' => 'pending']])]
+    #[TestWith([UserRole::CmcTeamLead, WorkflowStepType::CmcAssignment, ['category' => 'pending_cmc_staff_assignment']])]
+    public function test_cmc_pending_sdm_popup_opens_the_roles_assignment_queue(UserRole $role, WorkflowStepType $stage, array $queue): void
     {
-        $manager = User::factory()->create()->assignRole(UserRole::ManagerOperations->value);
+        $manager = User::factory()->create()->assignRole($role->value);
         $station = Station::query()->create(['code' => 'CMC-POPUP', 'name' => 'CMC Popup Station', 'is_active' => true]);
-        $memo = $this->workflowMemo($manager, $station, WorkflowStepType::AmCmcToScrutiny, 'CMC-POPUP-PENDING');
-        $pendingUrl = route('sdm-memos.index', ['category' => 'received_from_lines', 'received_tab' => 'pending']);
+        $memo = $this->workflowMemo($manager, $station, $stage, 'CMC-POPUP-PENDING');
+        $pendingUrl = route('sdm-memos.index', $queue);
 
         $this->post(route('login'), ['username' => $manager->name, 'password' => 'password'])
             ->assertRedirect(route('dashboard', absolute: false));

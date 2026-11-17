@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Enums\AmCmcMemoCategory;
 use App\Enums\AmCmcReceivedSdmTab;
 use App\Enums\CmcTeamLeadMemoCategory;
+use App\Enums\CmcVerificationSdmTab;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\StationManagerMemoStatus;
@@ -27,6 +28,7 @@ class ListMemosRequest extends FormRequest
             'pending_stage' => ['nullable', Rule::enum(WorkflowStage::class)],
             'category' => ['nullable', Rule::in($this->allowedCategories())],
             'received_tab' => ['nullable', 'prohibited_unless:category,'.AmCmcMemoCategory::ReceivedFromLines->value, Rule::enum(AmCmcReceivedSdmTab::class)],
+            'verification_tab' => ['nullable', 'prohibited_unless:category,'.CmcTeamLeadMemoCategory::ProcessedByStaff->value, Rule::enum(CmcVerificationSdmTab::class)],
             'service_type' => ['nullable', Rule::enum(SdmType::class)],
             'station_id' => ['nullable', 'integer', Rule::exists('stations', 'id')],
             'line_code' => ['nullable', 'string', Rule::exists('lines', 'code')],
@@ -64,6 +66,15 @@ class ListMemosRequest extends FormRequest
         }
 
         return $this->enum('received_tab', AmCmcReceivedSdmTab::class) ?? AmCmcReceivedSdmTab::Pending;
+    }
+
+    public function verificationTab(): ?CmcVerificationSdmTab
+    {
+        if ($this->category() !== CmcTeamLeadMemoCategory::ProcessedByStaff->value) {
+            return null;
+        }
+
+        return $this->enum('verification_tab', CmcVerificationSdmTab::class) ?? CmcVerificationSdmTab::Pending;
     }
 
     /** @return array<string, int|string> */

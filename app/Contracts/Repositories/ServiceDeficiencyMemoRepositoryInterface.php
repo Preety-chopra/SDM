@@ -3,6 +3,7 @@
 namespace App\Contracts\Repositories;
 
 use App\Enums\AmCmcReceivedSdmTab;
+use App\Enums\CmcVerificationSdmTab;
 use App\Enums\WorkflowStage;
 use App\Enums\WorkflowStepType;
 use App\Models\ServiceDeficiencyMemo;
@@ -13,7 +14,7 @@ use Illuminate\Support\Collection;
 interface ServiceDeficiencyMemoRepositoryInterface
 {
     /** @param array<string, int|string> $filters */
-    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null, ?string $category = null, ?AmCmcReceivedSdmTab $receivedTab = null): LengthAwarePaginator;
+    public function paginateFor(User $user, array $filters = [], ?WorkflowStage $pendingStage = null, ?string $category = null, ?AmCmcReceivedSdmTab $receivedTab = null, ?CmcVerificationSdmTab $verificationTab = null): LengthAwarePaginator;
 
     /**
      * @param  array<string, int|string>  $filters

@@ -461,7 +461,12 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertViewHas('deficiencyOptionsByType', function (array $optionsByType): bool {
                 foreach (SdmType::cases() as $type) {
                     $expectedDescriptions = collect(PenaltyClauseTemplates::for($type))
-                        ->pluck('description');
+                        ->pluck('description')
+                        ->map(fn (string $description): string => match ($description) {
+                            'Public complaint on any account in a proved case of deficiency' => 'Proved Public complaint on any account',
+                            'Overcharging in proved cases' => 'Proved Overcharging cases',
+                            default => $description,
+                        });
                     if ($type !== SdmType::BaggageHandling) {
                         $expectedDescriptions->splice(3, 1, [
                             'Late reporting',
@@ -756,7 +761,7 @@ class ServiceDeficiencyMemoTest extends TestCase
         $deficiencies = [
             DeficiencyType::DressCode->value => 'Poor dress code',
             DeficiencyType::MobilePhoneOnDuty->value => 'Carrying a mobile phone on duty or listening to music on mobile/other devices',
-            DeficiencyType::PublicComplaint->value => 'Public complaint on any account in a proved case of deficiency',
+            DeficiencyType::PublicComplaint->value => 'Proved Public complaint on any account',
             DeficiencyType::PossessionOfLiveTickets->value => 'Possession of live QR tickets or CSCs',
         ];
 
@@ -780,6 +785,58 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->get(route('sdm-memos.show', $memo))
             ->assertOk()
             ->assertSeeText(array_values($deficiencies));
+    }
+
+    public function test_submission_and_updates_keep_the_selected_deficiencies(): void
+    {
+        [$user] = $this->stationUserWithLine();
+        $contractor = Contractor::query()->create(['name' => 'Metro Services', 'is_active' => true]);
+        $deficiencies = [
+            DeficiencyType::PublicComplaint->value => 'Proved Public complaint on any account',
+            DeficiencyType::Overcharging->value => 'Proved Overcharging cases',
+            DeficiencyType::DressCode->value => 'Poor dress code',
+        ];
+        $data = [
+            'service_type' => SdmType::Ticketing->value,
+            'contractor_id' => $contractor->id,
+            'incident_date' => '18-08-2026',
+            'incident_time' => '14:25',
+            'staff_name' => 'Test Staff',
+            'employee_number' => 'EMP-10',
+            'station_manager_employee_number' => User::query()->role(UserRole::StationManager->value)->value('employee_number'),
+            'outsourced_staff_acknowledged' => '1',
+            'deficiencies' => array_keys($deficiencies),
+        ];
+
+        $draft = $this->actingAs($user)->post(route('sdm-memos.store'), $data)->assertSessionHasNoErrors();
+        $memo = ServiceDeficiencyMemo::query()->sole();
+        $edit = route('sdm-memos.edit', $memo);
+        $draft->assertRedirect($edit);
+
+        $data['staff_name'] = 'Updated Staff';
+        $this->from($edit)->post(route('sdm-memos.update', $memo), $data)
+            ->assertSessionHasNoErrors()
+            ->assertRedirect($edit);
+        $editPage = $this->get($edit)->assertOk();
+        $document = new \DOMDocument;
+        @$document->loadHTML($editPage->getContent());
+        $selected = (new \DOMXPath($document))->evaluate('string(//form/@data-selected-deficiencies)');
+        $this->assertEqualsCanonicalizing(array_keys($deficiencies), json_decode($selected, true, flags: JSON_THROW_ON_ERROR));
+        $this->get(route('sdm-memos.drafts'))->assertOk()->assertSeeText(array_values($deficiencies));
+
+        $this->post(route('sdm-memos.submit', $memo), $data)
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('sdm-memos.index'));
+        $memo->refresh();
+        $this->assertSame(MemoStatus::Submitted, $memo->status);
+        $this->assertSame(array_keys($deficiencies), $memo->deficiencies()->orderBy('id')->pluck('type')->map->value->all());
+
+        $this->from($edit)->post(route('sdm-memos.update', $memo), [...$data, 'staff_name' => 'Corrected Staff'])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect($edit);
+        $this->assertSame('Corrected Staff', $memo->refresh()->staff_name);
+        $this->get(route('sdm-memos.index'))->assertOk()->assertSeeText(array_values($deficiencies));
+        $this->get(route('sdm-memos.show', $memo))->assertOk()->assertSeeText(array_values($deficiencies));
     }
 
     #[TestWith([false, []])]

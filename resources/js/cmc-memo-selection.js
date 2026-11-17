@@ -7,7 +7,10 @@ export function createCmcMemoSelection() {
         init() {
             this.actions = JSON.parse(this.$el.dataset.actions || '{}');
             this.action = this.$el.dataset.initialAction || 'assign';
-            this.selected = JSON.parse(this.$el.dataset.selected || '[]').map(String);
+            const selected = JSON.parse(this.$el.dataset.selected || '[]');
+            this.selected = Array.isArray(selected)
+                ? this.availableIds().filter((id) => selected.includes(id) || selected.includes(Number(id)))
+                : [];
             this.$watch('action', () => {
                 this.selected = this.selected.filter((id) => this.isAvailable(id));
             });

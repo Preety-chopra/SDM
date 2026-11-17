@@ -52,3 +52,25 @@ test('CMC selection keeps only memos eligible for the chosen action', () => {
     assert.deepEqual(selection.selected, ['32']);
     assert.equal(selection.isAvailable('31'), false);
 });
+
+test('CMC verification restores only eligible selections after validation fails', () => {
+    const selection = createCmcMemoSelection();
+    selection.$el = {
+        dataset: {
+            actions: '{"41":["forward","return"],"42":["forward","return"]}',
+            initialAction: 'return',
+            selected: '[41, 49, 42]',
+        },
+    };
+    selection.$watch = () => {};
+
+    selection.init();
+
+    assert.equal(selection.action, 'return');
+    assert.deepEqual(selection.selected, ['41', '42']);
+
+    selection.$el.dataset.selected = '"invalid input"';
+    selection.init();
+
+    assert.deepEqual(selection.selected, []);
+});

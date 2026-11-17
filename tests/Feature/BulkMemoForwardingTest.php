@@ -165,6 +165,19 @@ class BulkMemoForwardingTest extends TestCase
             $this->assertTrue($memo->auditLogs()->where('event', 'memo.workflow.return')->where('actor_id', $amCmc->id)->exists());
         }
         $this->get($queue)->assertOk()->assertViewHas('memos', fn ($memos): bool => $memos->isEmpty());
+
+        $assignmentQueue = route('sdm-memos.index', ['category' => 'pending_cmc_staff_assignment']);
+        $this->actingAs($smCmc)->get($assignmentQueue)
+            ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->sort()->values()->all() === $revert->pluck('id')->all());
+        $this->actingAs($this->user(UserRole::CmcTeamLead))->get($assignmentQueue)
+            ->assertOk()->assertViewHas('memos', fn ($memos): bool => $memos->isEmpty());
+
+        $this->actingAs($smCmc)->post(route('sdm-memos.workflow.store', $revert->first()), ['action' => 'forward'])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->get($assignmentQueue)
+            ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->all() === [$revert->last()->id]);
     }
 
     public function test_am_cmc_bulk_review_rejects_memos_assigned_to_another_user_or_at_another_stage(): void

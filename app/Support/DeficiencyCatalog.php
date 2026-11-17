@@ -36,6 +36,7 @@ final class DeficiencyCatalog
                         DeficiencyType::IndulgenceInMalpractices->value => DeficiencyType::IndulgenceInMalpractices->label(),
                         ...($includeLegacyTomDeficiency ? [$deficiency->value => $clause['description']] : []),
                     ],
+                    DeficiencyType::PublicComplaint, DeficiencyType::Overcharging => [$deficiency->value => $deficiency->label()],
                     default => [$deficiency->value => $clause['description']],
                 };
 

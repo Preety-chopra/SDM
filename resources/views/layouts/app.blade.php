@@ -54,9 +54,12 @@
 
         @if(session('pending_sdm_summary'))
             @php
-                $pendingSdmParameters = auth()->user()?->hasRole(\App\Enums\UserRole::ManagerOperations->value)
-                    ? ['category' => \App\Enums\AmCmcMemoCategory::ReceivedFromLines->value, 'received_tab' => \App\Enums\AmCmcReceivedSdmTab::Pending->value]
-                    : ['category' => 'pending_action'];
+                $user = auth()->user();
+                $pendingSdmParameters = match (true) {
+                    $user?->hasRole(\App\Enums\UserRole::CmcTeamLead->value) => ['category' => \App\Enums\CmcTeamLeadMemoCategory::PendingStaffAssignment->value],
+                    $user?->hasRole(\App\Enums\UserRole::ManagerOperations->value) => ['category' => \App\Enums\AmCmcMemoCategory::ReceivedFromLines->value, 'received_tab' => \App\Enums\AmCmcReceivedSdmTab::Pending->value],
+                    default => ['category' => 'pending_action'],
+                };
             @endphp
             <x-modal name="pending-sdm-summary" :show="true" maxWidth="lg" focusable>
                 <section role="dialog" aria-modal="true" aria-labelledby="pending-sdm-title" aria-describedby="pending-sdm-description" class="p-6 sm:p-7">

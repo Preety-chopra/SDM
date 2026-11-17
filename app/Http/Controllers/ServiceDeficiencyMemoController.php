@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\AmCmcMemoCategory;
 use App\Enums\AmCmcReceivedSdmTab;
 use App\Enums\CmcTeamLeadMemoCategory;
+use App\Enums\CmcVerificationSdmTab;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\StationManagerMemoStatus;
@@ -121,9 +122,9 @@ class ServiceDeficiencyMemoController extends Controller
         }
 
         $cmcStaffAssignmentTab = $category === CmcTeamLeadMemoCategory::PendingStaffAssignment->value;
-        $cmcStaffProcessedTab = $category === CmcTeamLeadMemoCategory::ProcessedByStaff->value;
+        $verificationTab = $request->verificationTab();
         $receivedTab = $request->receivedTab();
-        $memos = $this->memos->paginateFor($request->user(), $filters, $pendingStage, $category, $receivedTab);
+        $memos = $this->memos->paginateFor($request->user(), $filters, $pendingStage, $category, $receivedTab, $verificationTab);
         $canBulkAmCmcAction = $isAmCmc && $request->user()->can('bulkAmCmcAction', ServiceDeficiencyMemo::class);
         $bulkForwardLineReceipts = $receivedTab === AmCmcReceivedSdmTab::Pending && $canBulkAmCmcAction;
         $bulkAmCmcReview = $category === AmCmcMemoCategory::ProcessedByCmc->value && $canBulkAmCmcAction;
@@ -133,7 +134,7 @@ class ServiceDeficiencyMemoController extends Controller
                     && $memo->currentWorkflowStep?->assigned_to === $request->user()->id)
                 ->mapWithKeys(fn (ServiceDeficiencyMemo $memo): array => [(string) $memo->id => WorkflowStepType::AmCmcToScrutiny->value])
             : collect();
-        $bulkCmcSmActions = ($category === null || $cmcStaffAssignmentTab || $cmcStaffProcessedTab)
+        $bulkCmcSmActions = ($cmcStaffAssignmentTab || $verificationTab === CmcVerificationSdmTab::Pending)
             && $request->user()->can('bulkCmcAction', ServiceDeficiencyMemo::class);
         $bulkCmcActionsEnabled = $bulkCmcSmActions || $bulkAmCmcReview;
         $bulkCmcActions = $bulkCmcActionsEnabled
@@ -152,6 +153,7 @@ class ServiceDeficiencyMemoController extends Controller
             : collect();
         $showActionColumn = ! $isStationManager
             && ! $isLineManager
+            && ! ($isCmcTeamLead && ($category === null || $cmcStaffAssignmentTab || $verificationTab !== null))
             && $memos->getCollection()->contains(
                 fn (ServiceDeficiencyMemo $memo): bool => $this->hasVisibleTableAction(
                     $request->user(),
@@ -176,12 +178,13 @@ class ServiceDeficiencyMemoController extends Controller
             'bulkCmcActionsEnabled' => $bulkCmcActionsEnabled,
             'bulkCmcActions' => $bulkCmcActions,
             'showActionColumn' => $showActionColumn,
-            'cmcStaffUsers' => $bulkCmcSmActions && ! $cmcStaffProcessedTab
+            'cmcStaffUsers' => $bulkCmcSmActions && $cmcStaffAssignmentTab
                 ? $this->users->enabledForRole(UserRole::CmcStaff)
                 : collect(),
             'memoCategoryTabs' => $memoCategoryTabs,
             'cmcStaffAssignmentTab' => $cmcStaffAssignmentTab,
-            'cmcStaffProcessedTab' => $cmcStaffProcessedTab,
+            'verificationTab' => $verificationTab,
+            'verificationTabs' => CmcVerificationSdmTab::cases(),
             'receivedTab' => $receivedTab,
             'receivedTabs' => AmCmcReceivedSdmTab::cases(),
             'bulkForwardLineReceipts' => $bulkForwardLineReceipts,
