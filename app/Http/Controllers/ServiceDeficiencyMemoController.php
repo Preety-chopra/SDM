@@ -29,6 +29,7 @@ use App\Services\ServiceContractService;
 use App\Services\ServiceDeficiencyMemoService;
 use App\Services\UserService;
 use App\Support\DeficiencyCatalog;
+use App\Support\StationOptions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -416,8 +417,8 @@ class ServiceDeficiencyMemoController extends Controller
         $stations = $this->masterData->stations(true);
         $isAft = $request->user()->hasRole(UserRole::Aft->value);
         abort_if($isAft && $stations->isEmpty(), 422, 'No active stations are available for inspection.');
-        $selectedStationId = $memo?->station_id
-            ?? $request->session()->get('auth.station_id', $request->user()->station_id);
+        $loginStationId = $request->session()->get('auth.station_id', $request->user()->station_id);
+        $selectedStationId = $memo?->station_id ?? $loginStationId;
         $station = $stations->firstWhere('id', (int) $selectedStationId);
         abort_unless($isAft || $station, 422, 'Select an active station when signing in.');
 
@@ -435,7 +436,8 @@ class ServiceDeficiencyMemoController extends Controller
             'contractors' => $this->masterData->contractors(true),
             'contractorIdsByServiceType' => $memo === null ? $this->contracts->memoContractorIdsByServiceType() : null,
             'contractorContracts' => $this->contracts->memoContractorOptions($isAft ? null : $station->id),
-            'stations' => $stations,
+            'complaintStationOptions' => StationOptions::from($stations),
+            'defaultComplaintStationId' => $loginStationId,
             'issuanceStations' => $isAft ? $stations : collect(),
             'sdmTypes' => SdmType::cases(),
             'deficiencyOptionsByType' => DeficiencyCatalog::grouped($memo?->hasLegacyTomDeficiency() ?? false),

@@ -6,16 +6,14 @@ use App\Contracts\Repositories\StationRepositoryInterface;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
-use App\Models\Line;
-use App\Models\Station;
 use App\Services\AuthenticationService;
 use App\Services\FeedbackService;
 use App\Services\ServiceDeficiencyMemoService;
 use App\Services\UserSessionService;
+use App\Support\StationOptions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
@@ -32,28 +30,7 @@ class AuthenticatedSessionController extends Controller
      */
     public function create(): View
     {
-        $lineOrder = array_flip(Line::DISPLAY_ORDER);
-        $stationOptions = $this->stations->active()
-            ->sortBy(function (Station $station) use ($lineOrder): array {
-                $lineCode = $station->metroLine?->code;
-
-                return [
-                    $lineOrder[$lineCode] ?? count($lineOrder),
-                    $lineCode === null,
-                    $lineCode,
-                    $lineCode === null ? PHP_INT_MAX : ($station->sequence_no ?? PHP_INT_MAX),
-                ];
-            })
-            ->map(function (Station $station): array {
-                $lineCode = $station->metroLine?->code;
-
-                return [
-                    'id' => $station->id,
-                    'label' => $lineCode === null ? $station->name : Str::start($lineCode, 'L-').' '.$station->name,
-                ];
-            });
-
-        return view('auth.login', ['stationOptions' => $stationOptions]);
+        return view('auth.login', ['stationOptions' => StationOptions::from($this->stations->active())]);
     }
 
     /**

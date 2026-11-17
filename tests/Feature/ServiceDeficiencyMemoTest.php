@@ -1279,6 +1279,70 @@ class ServiceDeficiencyMemoTest extends TestCase
             ->assertSee('x-cloak', false);
     }
 
+    public function test_public_complaint_station_defaults_to_the_login_station_and_lists_the_login_options(): void
+    {
+        [$controller, $homeLine, $homeStation] = $this->stationUserWithLine('2');
+        $line = Line::query()->create(['code' => '1', 'name' => 'Line 1', 'is_active' => true]);
+        $loginStation = $line->stations()->create(['code' => 'L1-Z', 'name' => 'Zulu', 'sequence_no' => 1, 'is_active' => true]);
+        $alternate = $line->stations()->create(['code' => 'L1-A', 'name' => 'Alpha', 'sequence_no' => 2, 'is_active' => true]);
+        $homeLine->stations()->create(['code' => 'L2-I', 'name' => 'Inactive', 'is_active' => false]);
+
+        $response = $this->actingAs($controller)
+            ->withSession(['auth.station_id' => $loginStation->id])
+            ->get(route('sdm-memos.create'))
+            ->assertOk();
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $select = '//select[@name="public_complaint[station_id]"]';
+        $options = [];
+        foreach ($xpath->query($select.'/option[@value != ""]') as $option) {
+            $options[$option->getAttribute('value')] = $option->textContent;
+        }
+
+        $this->assertSame((string) $loginStation->id, $xpath->evaluate('string('.$select.'/option[@selected]/@value)'));
+        $this->assertSame([
+            $loginStation->id => 'L-1 Zulu',
+            $alternate->id => 'L-1 Alpha',
+            $homeStation->id => 'L-2 2 Station',
+        ], $options);
+        $this->assertSame(1, $xpath->query($select.'[not(@disabled)]')->length);
+    }
+
+    public function test_public_complaint_station_preserves_the_choice_after_validation(): void
+    {
+        [$controller, $line, $loginStation] = $this->stationUserWithLine();
+        $chosenStation = $line->stations()->create(['code' => 'ALT', 'name' => 'Alternate', 'is_active' => true]);
+
+        $this->actingAs($controller)
+            ->withSession([
+                'auth.station_id' => $loginStation->id,
+                '_old_input' => ['public_complaint' => ['station_id' => $chosenStation->id]],
+            ])
+            ->get(route('sdm-memos.create'))
+            ->assertOk()
+            ->assertSee('<option value="'.$chosenStation->id.'" selected>L-RED Alternate</option>', false);
+    }
+
+    public function test_public_complaint_station_preserves_the_saved_choice_when_editing(): void
+    {
+        [$controller, $line, $loginStation] = $this->stationUserWithLine();
+        $complaintStation = $line->stations()->create(['code' => 'CMP', 'name' => 'Complaint Station', 'is_active' => true]);
+        $memo = $this->draft($controller, SdmType::Cfs, 'COMPLAINT-STATION');
+        $memo->publicComplaint()->create([
+            'complaint_serial_number' => 'PC-10',
+            'station_id' => $complaintStation->id,
+            'station_name' => $complaintStation->name,
+        ]);
+
+        $this->actingAs($controller)
+            ->withSession(['auth.station_id' => $loginStation->id])
+            ->get(route('sdm-memos.edit', $memo))
+            ->assertOk()
+            ->assertSee('<option value="'.$complaintStation->id.'" selected>L-RED Complaint Station</option>', false);
+    }
+
     public function test_station_controller_create_form_has_a_clear_submit_forwarding_prompt(): void
     {
         [$user] = $this->stationUserWithLine();

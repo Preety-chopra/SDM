@@ -5,6 +5,7 @@
     $lateTime = fn (string $field) => substr((string) old('late_reporting.'.$field, $late?->$field), 0, 5);
     $overchargeAmount = old('overcharge_amount', $memo?->deficiencies->first(fn ($item) => $item->type === \App\Enums\DeficiencyType::Overcharging)?->overcharge_amount);
     $shortfallCount = old('shortfall_count', $memo?->deficiencies->first(fn ($item) => $item->type === \App\Enums\DeficiencyType::ShortDeployment)?->shortfall_count);
+    $complaintStationId = old('public_complaint.station_id', $memo?->publicComplaint?->station_id ?? $defaultComplaintStationId);
     $incidentTime = substr((string) old('incident_time', $memo?->incident_time ?? now('Asia/Kolkata')->format('H:i')), 0, 5);
     $cashAmountType = old('cash_check.amount_type', $memo?->cashCheck?->amount_type);
     $inputClass = 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100';
@@ -337,11 +338,11 @@
                             <x-text-input name="public_complaint[number]" class="mt-1 block w-full" :value="old('public_complaint.number',$memo?->publicComplaint?->complaint_serial_number)"/>
                         </div>
                         <div>
-                            <x-input-label value="Public complaint station"/>
-                            <select name="public_complaint[station_id]" class="{{ $inputClass }}">
+                            <x-input-label for="public_complaint_station_id" value="Public complaint station"/>
+                            <select id="public_complaint_station_id" name="public_complaint[station_id]" class="{{ $inputClass }}">
                                 <option value="">Select station</option>
-                                @foreach($stations as $complaintStation)
-                                    <option value="{{ $complaintStation->id }}" @selected((string)old('public_complaint.station_id',$memo?->publicComplaint?->station_id)===(string)$complaintStation->id)>{{ $complaintStation->name }}</option>
+                                @foreach($complaintStationOptions as $option)
+                                    <option value="{{ $option['id'] }}" @selected((string) $complaintStationId === (string) $option['id'])>{{ $option['label'] }}</option>
                                 @endforeach
                             </select>
                         </div>
