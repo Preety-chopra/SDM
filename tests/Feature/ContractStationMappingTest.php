@@ -15,6 +15,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
+use ZipArchive;
 
 class ContractStationMappingTest extends TestCase
 {
@@ -227,6 +228,138 @@ class ContractStationMappingTest extends TestCase
         $this->get('/contract-station-mapping')->assertForbidden();
         $this->get($this->mappingUrl($station, $contract))->assertForbidden();
         $this->patch($this->mappingUrl($station, $contract), [])->assertForbidden();
+    }
+
+    public function test_administrator_can_download_all_station_mappings_as_excel(): void
+    {
+        $central = $this->station('Central Junction');
+        $central->update(['sequence_no' => 0]);
+        $north = $this->station('Northern Terminus');
+        $ticketing = $this->contract($central, 'Ticketing Agency');
+        $ticketing->stations()->attach([$central->id, $north->id]);
+        $this->contract($central, 'CFA Agency', SdmType::Cfs);
+        $this->contract($central, 'W&W Agency', SdmType::WandW);
+        $this->contract($central, 'Marshal Agency', SdmType::Marshal);
+        $this->contract($central, 'Draft Agency')->update(['status' => 'draft']);
+        $this->contract($central, 'Retired Agency')->update(['status' => 'retired']);
+        $this->contract($central, 'Unassigned Agency')->update(['is_station_unassigned' => true]);
+        $this->contract($central, 'Baggage Agency', SdmType::BaggageHandling);
+        foreach (range(1, 31) as $sequence) {
+            Station::query()->create([
+                'code' => 'EXTRA-'.$sequence, 'name' => 'Extra Stop '.$sequence,
+                'line_id' => $central->line_id, 'sequence_no' => $sequence,
+            ]);
+        }
+        $administrator = $this->user(UserRole::Administrator);
+
+        $response = $this->actingAs($administrator)->get('/contract-station-mapping/export?page=2');
+
+        $response->assertOk()->assertDownload('station-contract-mapping.xlsx')
+            ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $rows = $this->workbookRows($response->getContent());
+        $this->assertCount(34, $rows);
+        $this->assertSame(['S.no.', 'Line Code', 'Station Code', 'TVS Agnecy', 'CFA Agency', 'W&W Agency', 'Marshal Agency'], $rows[0]);
+        $this->assertSame(['1', 'CENTRAL', 'CENTRAL', 'Ticketing Agency', 'CFA Agency', 'W&W Agency', 'Marshal Agency'], $rows[1]);
+        $this->assertSame(['2', 'CENTRAL', 'EXTRA-1', '', '', '', ''], $rows[2]);
+        $this->assertSame(['33', 'NORTHERN', 'NORTHERN', 'Ticketing Agency', '', '', ''], $rows[33]);
+        $audit = AuditLog::query()->where('event', 'contract.station_mapping_exported')->sole();
+        $this->assertSame($administrator->id, $audit->actor_id);
+        $this->assertSame(33, $audit->after_values['station_count']);
+    }
+
+    public function test_excel_download_respects_status_service_and_station_filters(): void
+    {
+        $central = $this->station('Central Junction');
+        $north = $this->station('Northern Terminus');
+        $this->contract($central, 'Published TVS');
+        $this->contract($central, 'Previous TVS')->update(['status' => 'retired']);
+        $this->contract($central, 'Previous Marshal', SdmType::Marshal)->update(['status' => 'retired']);
+        $this->contract($north, 'Northern TVS')->update(['status' => 'retired']);
+
+        $response = $this->actingAs($this->user(UserRole::Administrator))
+            ->get('/contract-station-mapping/export?status=retired&service_type=token_vending&station_search=%20cENtr%20');
+
+        $response->assertOk();
+        $this->assertSame([
+            ['S.no.', 'Line Code', 'Station Code', 'TVS Agnecy', 'CFA Agency', 'W&W Agency', 'Marshal Agency'],
+            ['1', 'CENTRAL', 'CENTRAL', 'Previous TVS', '', '', ''],
+        ], $this->workbookRows($response->getContent()));
+    }
+
+    public function test_excel_download_preserves_codes_and_agency_names_as_text_and_includes_multiple_agencies(): void
+    {
+        $lineTen = Line::query()->create(['code' => '10', 'name' => 'Line Ten']);
+        $lineTwo = Line::query()->create(['code' => '2', 'name' => 'Line Two']);
+        Station::query()->create(['code' => 'TEN', 'name' => 'Ten', 'line_id' => $lineTen->id]);
+        $station = Station::query()->create(['code' => '001', 'name' => 'Two', 'line_id' => $lineTwo->id]);
+        $this->contract($station, '=TVS & "Agency"');
+        $second = $this->contract($station, 'Second Agency');
+        $second->replicate()->fill(['version' => 2])->save();
+
+        $response = $this->actingAs($this->user(UserRole::Administrator))->get('/contract-station-mapping/export');
+
+        $response->assertOk();
+        $rows = $this->workbookRows($response->getContent());
+        $this->assertSame(['1', '2', '001', "=TVS & \"Agency\"\nSecond Agency", '', '', ''], $rows[1]);
+        $this->assertSame(['2', '10', 'TEN', '', '', '', ''], $rows[2]);
+    }
+
+    public function test_excel_download_with_no_matching_stations_contains_the_headings(): void
+    {
+        $this->station('Central Junction');
+
+        $response = $this->actingAs($this->user(UserRole::Administrator))
+            ->get('/contract-station-mapping/export?station_search=Missing');
+
+        $response->assertOk();
+        $this->assertSame([
+            ['S.no.', 'Line Code', 'Station Code', 'TVS Agnecy', 'CFA Agency', 'W&W Agency', 'Marshal Agency'],
+        ], $this->workbookRows($response->getContent()));
+    }
+
+    public function test_mapping_page_links_to_excel_download_with_current_filters(): void
+    {
+        $filters = ['status' => 'retired', 'service_type' => 'marshal', 'station_search' => 'Central'];
+
+        $this->actingAs($this->user(UserRole::Administrator))
+            ->get(route('contract-station-mapping.index', $filters))
+            ->assertOk()->assertSeeText('Download Excel')
+            ->assertSee('href="'.e(url('/contract-station-mapping/export').'?'.http_build_query($filters)).'"', false);
+    }
+
+    public function test_guests_and_station_users_cannot_download_station_mappings(): void
+    {
+        $this->get('/contract-station-mapping/export')->assertRedirect(route('login'));
+        $this->actingAs($this->user(UserRole::Station))
+            ->get('/contract-station-mapping/export')->assertForbidden();
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'contract.station_mapping_exported']);
+    }
+
+    private function workbookRows(string $content): array
+    {
+        $path = tempnam(sys_get_temp_dir(), 'mapping-test-');
+        file_put_contents($path, $content);
+        $zip = new ZipArchive;
+
+        try {
+            $this->assertTrue($zip->open($path));
+            foreach (['[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels', 'xl/styles.xml'] as $part) {
+                $this->assertNotFalse(simplexml_load_string($zip->getFromName($part)));
+            }
+            $sheet = simplexml_load_string($zip->getFromName('xl/worksheets/sheet1.xml'));
+            $this->assertNotFalse($sheet);
+            $this->assertSame([], $sheet->xpath('//*[local-name()="f"]'));
+
+            return array_map(fn ($row): array => array_map(
+                fn ($cell): string => (string) ((string) $cell['t'] === 'inlineStr' ? $cell->is->t : $cell->v),
+                iterator_to_array($row->children(), false),
+            ), $sheet->xpath('//*[local-name()="sheetData"]/*[local-name()="row"]'));
+        } finally {
+            if ($zip->status === ZipArchive::ER_OK) {
+                $zip->close();
+            }
+            unlink($path);
+        }
     }
 
     private function station(string $name): Station

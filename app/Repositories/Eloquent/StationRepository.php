@@ -22,6 +22,16 @@ final class StationRepository implements StationRepositoryInterface
 
     public function paginateForContractMapping(?string $stationSearch): LengthAwarePaginator
     {
+        return $this->contractMappingQuery($stationSearch)->paginate(30);
+    }
+
+    public function allForContractMapping(?string $stationSearch): Collection
+    {
+        return $this->contractMappingQuery($stationSearch)->get();
+    }
+
+    private function contractMappingQuery(?string $stationSearch): Builder
+    {
         $lineOrder = implode(' ', array_map(fn (int $position): string => 'WHEN ? THEN '.$position, array_keys(Line::DISPLAY_ORDER)));
 
         return Station::query()
@@ -38,8 +48,7 @@ final class StationRepository implements StationRepositoryInterface
             ->orderByRaw('stations.sequence_no IS NULL')
             ->orderBy('stations.sequence_no')
             ->orderBy('stations.name')
-            ->orderBy('stations.id')
-            ->paginate(30);
+            ->orderBy('stations.id');
     }
 
     public function masterRows(): BaseCollection

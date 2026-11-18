@@ -13,6 +13,8 @@ interface StationRepositoryInterface
 
     public function paginateForContractMapping(?string $stationSearch): LengthAwarePaginator;
 
+    public function allForContractMapping(?string $stationSearch): Collection;
+
     public function active(): Collection;
 
     public function activeWithLines(): Collection;

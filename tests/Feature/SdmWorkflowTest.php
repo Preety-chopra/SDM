@@ -991,7 +991,7 @@ class SdmWorkflowTest extends TestCase
             ->assertSeeInOrder([$memo->serial_number, 'Cancellation requested by SM']);
         $this->actingAs($lineManager)->get(route('sdm-memos.show', $memo))
             ->assertOk()
-            ->assertSee('name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM"', false)
+            ->assertDontSee('name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM"', false)
             ->assertSee('name="action" value="cancel_after_counselling" data-sdm-confirm data-confirmation-action="Cancel after counselling"', false);
         $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), ['action' => 'cancel'])
             ->assertSessionHasErrors('remarks');

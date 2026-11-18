@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\DeficiencyType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\UserRole;
@@ -75,6 +76,26 @@ class BulkMemoForwardingTest extends TestCase
         $this->assertSame(MemoStatus::DgmApproval, $toDgm->fresh()->status);
         $this->assertSame($dgmCmc->id, $toDgm->fresh()->currentWorkflowStep->assigned_to);
         $this->assertSame(2, AuditLog::query()->where('auditable_type', ServiceDeficiencyMemo::class)->count());
+    }
+
+    public function test_bulk_forward_respects_and_preserves_the_deficiency_filter(): void
+    {
+        $amCmc = $this->user(UserRole::ManagerOperations);
+        $smCmc = $this->user(UserRole::CmcTeamLead);
+        $matching = $this->memoAtAmStage('DEFICIENCY-MATCH', $amCmc, WorkflowStepType::AmCmcToScrutiny, $smCmc);
+        $matching->deficiencies()->create(['type' => DeficiencyType::LateReporting]);
+        $other = $this->memoAtAmStage('DEFICIENCY-OTHER', $amCmc, WorkflowStepType::AmCmcToScrutiny, $smCmc);
+        $other->deficiencies()->create(['type' => DeficiencyType::DressCode]);
+
+        $this->actingAs($amCmc)->post(route('sdm-memos.bulk-forward'), [
+            'destination' => WorkflowStepType::AmCmcToScrutiny->value,
+            'select_all' => true,
+            'deficiency_type' => 'late_reporting',
+        ])->assertRedirect(route('sdm-memos.index', ['deficiency_type' => 'late_reporting']))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(MemoStatus::CmcAssignment, $matching->fresh()->status);
+        $this->assertSame(MemoStatus::AmCmcReview, $other->fresh()->status);
     }
 
     public function test_am_cmc_can_forward_selected_pending_line_sdms_to_sm_cmc(): void

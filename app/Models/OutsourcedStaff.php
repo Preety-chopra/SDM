@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable(['contractor_id', 'employee_id', 'name', 'father_name', 'date_of_birth', 'aadhaar_number', 'category', 'gender', 'designation', 'entry_permit_number', 'verification_status', 'is_active'])]
 class OutsourcedStaff extends Model
@@ -28,6 +29,11 @@ class OutsourcedStaff extends Model
     public function contractor(): BelongsTo
     {
         return $this->belongsTo(Contractor::class);
+    }
+
+    public function historicalSdms(): HasMany
+    {
+        return $this->hasMany(HistoricalSdm::class);
     }
 
     protected function maskedAadhaar(): Attribute

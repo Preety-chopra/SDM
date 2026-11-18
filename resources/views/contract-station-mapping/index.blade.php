@@ -2,7 +2,10 @@
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <h1 class="text-xl font-semibold text-gray-900 dark:text-white">Contract station mapping</h1>
-            <a href="{{ route('contracts.index') }}" class="text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-300">Service contracts</a>
+            <div class="flex flex-wrap items-center gap-4">
+                <a href="{{ route('contract-station-mapping.export', ['status' => $status, 'service_type' => $serviceType?->value, 'station_search' => $stationSearch]) }}" class="inline-flex items-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:focus:ring-offset-gray-900">Download Excel</a>
+                <a href="{{ route('contracts.index') }}" class="text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-300">Service contracts</a>
+            </div>
         </div>
     </x-slot>
 

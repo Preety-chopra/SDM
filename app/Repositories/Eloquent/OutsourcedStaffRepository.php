@@ -25,7 +25,7 @@ final class OutsourcedStaffRepository implements OutsourcedStaffRepositoryInterf
             ->when(isset($filters['is_active']), fn (Builder $query) => $query->where('is_active', $filters['is_active']))
             ->when($filters['verification_status'] ?? null, fn (Builder $query, string $status) => $query->where('verification_status', $status))
             ->orderBy('employee_id')->orderBy('id')
-            ->paginate(25)->withQueryString();
+            ->paginate(25)->withQueryString()->appends(['is_active' => $filters['is_active'] ?? '']);
     }
 
     public function save(?OutsourcedStaff $staff, array $attributes): OutsourcedStaff

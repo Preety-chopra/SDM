@@ -8,6 +8,7 @@ use App\Enums\SdmType;
 use App\Models\ServiceContract;
 use App\Models\Station;
 use App\Models\User;
+use App\Support\ContractStationMappingWorkbook;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -18,19 +19,12 @@ final class ContractStationMappingService
         private StationRepositoryInterface $stations,
         private ServiceContractRepositoryInterface $contracts,
         private AuditService $audit,
+        private ContractStationMappingWorkbook $workbook,
     ) {}
 
     public function index(string $status, ?SdmType $serviceType, ?string $stationSearch): array
     {
         $stations = $this->stations->paginateForContractMapping($stationSearch);
-        $contractsByStation = collect();
-
-        foreach ($this->contracts->stationMappings($stations->pluck('id')->all(), $status, $serviceType) as $contract) {
-            $stationIds = $contract->stations->modelKeys() ?: [$contract->station_id];
-            foreach ($stationIds as $stationId) {
-                $contractsByStation->getOrPut($stationId, fn () => collect())->push($contract);
-            }
-        }
 
         return [
             'stations' => $stations->appends([
@@ -39,8 +33,50 @@ final class ContractStationMappingService
                 'station_search' => $stationSearch,
             ]),
             'stationGroups' => $stations->getCollection()->groupBy('line_id'),
-            'contractsByStation' => $contractsByStation,
+            'contractsByStation' => $this->contractsByStation($stations->pluck('id')->all(), $status, $serviceType),
         ];
+    }
+
+    public function export(string $status, ?SdmType $serviceType, ?string $stationSearch, User $actor): string
+    {
+        $stations = $this->stations->allForContractMapping($stationSearch);
+        $contractsByStation = $this->contractsByStation($stations->modelKeys(), $status, $serviceType);
+        $rows = [];
+
+        foreach ($stations as $station) {
+            $agencies = $contractsByStation->get($station->id, collect())->groupBy('service_type');
+            $row = [count($rows) + 1, $station->metroLine?->code ?? '', $station->code];
+
+            foreach ([SdmType::Ticketing, SdmType::Cfs, SdmType::WandW, SdmType::Marshal] as $type) {
+                $row[] = $agencies->get($type->value, collect())->pluck('contractor.name')->unique()->implode("\n");
+            }
+
+            $rows[] = $row;
+        }
+
+        $content = $this->workbook->write($rows);
+        $this->audit->record($actor, $actor, 'contract.station_mapping_exported', after: [
+            'status' => $status,
+            'service_type' => $serviceType?->value,
+            'station_search' => $stationSearch,
+            'station_count' => count($rows),
+        ]);
+
+        return $content;
+    }
+
+    private function contractsByStation(array $stationIds, string $status, ?SdmType $serviceType): Collection
+    {
+        $contractsByStation = collect();
+
+        foreach ($this->contracts->stationMappings($stationIds, $status, $serviceType) as $contract) {
+            $assignedIds = $contract->stations->modelKeys() ?: [$contract->station_id];
+            foreach ($assignedIds as $stationId) {
+                $contractsByStation->getOrPut($stationId, fn () => collect())->push($contract);
+            }
+        }
+
+        return $contractsByStation;
     }
 
     public function canReassign(Station $station, ServiceContract $source): bool

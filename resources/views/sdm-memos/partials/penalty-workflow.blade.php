@@ -365,7 +365,9 @@
                         <button name="action" value="request_cancellation" data-sdm-confirm data-confirmation-action="Request cancellation" class="rounded-lg border border-rose-600 px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500 dark:text-rose-300 dark:hover:bg-rose-950/40">Request for cancellation</button>
                         <x-memo-station-manager-actions :memo="$memo" />
                     @elseif($currentStep->stage === \App\Enums\WorkflowStepType::LineReview)
-                        <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg border border-rose-700 bg-white px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:bg-gray-900 dark:text-rose-300 dark:hover:bg-rose-950/40">Cancel SDM</button>
+                        @unless(auth()->user()->hasRole(\App\Enums\UserRole::AssistantManager->value))
+                            <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg border border-rose-700 bg-white px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:bg-gray-900 dark:text-rose-300 dark:hover:bg-rose-950/40">Cancel SDM</button>
+                        @endunless
                         <button name="action" value="cancel_after_counselling" data-sdm-confirm data-confirmation-action="Cancel after counselling" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel after counselling</button>
                     @endif
                 @endif

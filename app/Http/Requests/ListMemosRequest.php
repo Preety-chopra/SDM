@@ -6,6 +6,7 @@ use App\Enums\AmCmcMemoCategory;
 use App\Enums\AmCmcReceivedSdmTab;
 use App\Enums\CmcTeamLeadMemoCategory;
 use App\Enums\CmcVerificationSdmTab;
+use App\Enums\DeficiencyType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\StationManagerMemoStatus;
@@ -30,6 +31,7 @@ class ListMemosRequest extends FormRequest
             'received_tab' => ['nullable', 'prohibited_unless:category,'.AmCmcMemoCategory::ReceivedFromLines->value, Rule::enum(AmCmcReceivedSdmTab::class)],
             'verification_tab' => ['nullable', 'prohibited_unless:category,'.CmcTeamLeadMemoCategory::ProcessedByStaff->value, Rule::enum(CmcVerificationSdmTab::class)],
             'service_type' => ['nullable', Rule::enum(SdmType::class)],
+            'deficiency_type' => ['nullable', Rule::enum(DeficiencyType::class)],
             'station_id' => ['nullable', 'integer', Rule::exists('stations', 'id')],
             'line_code' => ['nullable', 'string', Rule::exists('lines', 'code')],
             'incident_date' => ['nullable', 'date_format:Y-m-d'],
@@ -83,6 +85,7 @@ class ListMemosRequest extends FormRequest
         return array_filter(
             $this->safe()->only([
                 'service_type',
+                'deficiency_type',
                 'station_id',
                 'line_code',
                 'incident_date',

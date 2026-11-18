@@ -625,9 +625,9 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertSee('data-timeline-state="current"', false)
             ->assertDontSee('Manager CMC forwarding for scrutiny')
             ->assertDontSee('DGM/CMC approval')
-            ->assertSee('value="cancel"', false)
-            ->assertSee('Cancel SDM')
-            ->assertSee('name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM"', false)
+            ->assertDontSee('value="cancel"', false)
+            ->assertDontSee('Cancel SDM')
+            ->assertSee('name="action" value="cancel_after_counselling" data-sdm-confirm data-confirmation-action="Cancel after counselling"', false)
             ->assertDontSee('R1 ·');
         $this->actingAs($lineManager)->post(route('sdm-memos.workflow.store', $memo), [
             'action' => 'forward',
@@ -1097,8 +1097,8 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->actingAs($stationUser)->get(route('sdm-memos.edit', $memo))->assertForbidden();
         $this->actingAs($lineManager)->get(route('sdm-memos.show', $memo))
             ->assertOk()
-            ->assertSee('name="action" value="cancel"', false)
-            ->assertSee('Cancel SDM')
+            ->assertDontSee('name="action" value="cancel"', false)
+            ->assertDontSee('Cancel SDM')
             ->assertSee('name="action" value="cancel_after_counselling"', false)
             ->assertSee('Cancel after counselling');
         $allMemos = $this->actingAs($lineManager)->get(route('sdm-memos.index'))

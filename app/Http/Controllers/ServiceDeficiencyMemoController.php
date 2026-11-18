@@ -6,6 +6,7 @@ use App\Enums\AmCmcMemoCategory;
 use App\Enums\AmCmcReceivedSdmTab;
 use App\Enums\CmcTeamLeadMemoCategory;
 use App\Enums\CmcVerificationSdmTab;
+use App\Enums\DeficiencyType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\StationManagerMemoStatus;
@@ -173,6 +174,12 @@ class ServiceDeficiencyMemoController extends Controller
             'cmcTeamLeadTable' => $isCmcTeamLead,
             'headerFilterTable' => $usesHeaderFilterTable,
             'sdmTypes' => SdmType::cases(),
+            'deficiencyTypes' => $request->user()->hasAnyRole([
+                UserRole::ManagerOperations->value,
+                UserRole::CmcTeamLead->value,
+                UserRole::CmcStaff->value,
+                UserRole::DeputyGeneralManager->value,
+            ]) ? DeficiencyType::cases() : [],
             'statuses' => $statuses,
             'stations' => $this->masterData->stations(),
             'lines' => $this->masterData->lines(),

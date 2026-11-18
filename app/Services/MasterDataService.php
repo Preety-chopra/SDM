@@ -64,12 +64,14 @@ final class MasterDataService
 
     public function deleteStation(Station $station): void
     {
+        throw_if($this->repository->stationHasHistoricalSdms($station), ValidationException::withMessages(['station' => 'This station is used by historical SDMs and cannot be deleted. Disable it instead.']));
         throw_if($station->users()->exists() || $station->memos()->exists() || $station->serviceContracts()->exists() || $station->aftCashCheckEntries()->exists(), ValidationException::withMessages(['station' => 'This station is in use and cannot be deleted. Disable it instead.']));
         $station->delete();
     }
 
     public function deleteContractor(Contractor $contractor): void
     {
+        throw_if($this->repository->contractorHasHistoricalSdms($contractor), ValidationException::withMessages(['contractor' => 'This contractor is used by historical SDMs and cannot be deleted. Disable it instead.']));
         throw_if($this->repository->contractorHasOutsourcedStaff($contractor), ValidationException::withMessages(['contractor' => 'This contractor has outsourced staff and cannot be deleted. Disable it instead.']));
         throw_if($contractor->memos()->exists(), ValidationException::withMessages(['contractor' => 'This contractor is used by memos and cannot be deleted. Disable it instead.']));
         $contractor->delete();

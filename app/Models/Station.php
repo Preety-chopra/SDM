@@ -29,6 +29,11 @@ class Station extends Model
         return $this->hasMany(ServiceDeficiencyMemo::class);
     }
 
+    public function historicalSdms(): HasMany
+    {
+        return $this->hasMany(HistoricalSdm::class);
+    }
+
     public function serviceContracts(): BelongsToMany
     {
         return $this->belongsToMany(ServiceContract::class, 'service_contract_station');

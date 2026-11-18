@@ -34,7 +34,7 @@
                     <x-input-label for="filter_active" value="Staff status" />
                     <select id="filter_active" name="is_active" class="mt-1 w-full rounded-md border-gray-300 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
                         <option value="">All staff</option>
-                        <option value="1" @selected(request('is_active') === '1')>Active</option>
+                        <option value="1" @selected(request()->input('is_active', '1') === '1')>Active</option>
                         <option value="0" @selected(request('is_active') === '0')>Inactive</option>
                     </select>
                 </div>

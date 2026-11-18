@@ -1482,6 +1482,36 @@ class ServiceDeficiencyMemoTest extends TestCase
         $this->assertNull($memo->deficiencies()->sole()->overcharge_amount);
     }
 
+    #[TestWith(['09:15', '18:15'])]
+    #[TestWith(['23:45', '08:45'])]
+    #[TestWith(['09:00', '17:30'])]
+    public function test_late_reporting_shift_times_are_saved_restored_and_audited(string $start, string $end): void
+    {
+        [$user] = $this->stationUserWithLine();
+
+        $response = $this->actingAs($user)->post(route('sdm-memos.store'), [
+            'service_type' => SdmType::Cfs->value,
+            'deficiencies' => [DeficiencyType::LateReporting->value],
+            'late_reporting' => [
+                'booked_shift_from' => $start,
+                'booked_shift_to' => $end,
+                'actual_reporting_time' => $start,
+            ],
+        ]);
+
+        $response->assertSessionHasNoErrors()->assertRedirect();
+        $memo = ServiceDeficiencyMemo::query()->sole();
+        $lateReporting = $memo->deficiencies()->sole()->lateReporting;
+        $this->assertSame($start, $lateReporting->booked_shift_from);
+        $this->assertSame($end, $lateReporting->booked_shift_to);
+        $audit = AuditLog::query()->where('event', 'memo.created')->sole();
+        $this->assertSame($start, $audit->after_values['deficiencies'][0]['late_reporting']['booked_shift_from']);
+        $this->assertSame($end, $audit->after_values['deficiencies'][0]['late_reporting']['booked_shift_to']);
+        $this->get(route('sdm-memos.edit', $memo))->assertOk()
+            ->assertSee('data-booked-shift-from="'.$start.'"', false)
+            ->assertSee('data-booked-shift-to="'.$end.'"', false);
+    }
+
     public function test_late_reporting_uses_custom_times_and_displays_the_calculated_delay(): void
     {
         [$user] = $this->stationUserWithLine();

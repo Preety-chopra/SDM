@@ -107,6 +107,16 @@ export function createMemoForm() {
 
             return option?.label || type;
         },
+        syncBookedShiftTo(startTime) {
+            if (!/^([01]\d|2[0-3]):[0-5]\d(?::00)?$/.test(startTime)) {
+                this.bookedShiftTo = '';
+                return;
+            }
+
+            const [hours, minutes] = startTime.split(':').map(Number);
+            const endHour = String((hours + 9) % 24).padStart(2, '0');
+            this.bookedShiftTo = `${endHour}:${String(minutes).padStart(2, '0')}`;
+        },
         get delayLabel() {
             if (!this.bookedShiftFrom || !this.actualReportingTime) {
                 return '';

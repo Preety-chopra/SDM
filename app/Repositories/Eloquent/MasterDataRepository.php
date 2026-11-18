@@ -44,6 +44,16 @@ final class MasterDataRepository implements MasterDataRepositoryInterface
         return $contractor->outsourcedStaff()->exists();
     }
 
+    public function contractorHasHistoricalSdms(Contractor $contractor): bool
+    {
+        return $contractor->historicalSdms()->exists();
+    }
+
+    public function stationHasHistoricalSdms(Station $station): bool
+    {
+        return $station->historicalSdms()->exists();
+    }
+
     public function saveStation(?Station $station, array $attributes): Station
     {
         $station ??= new Station;

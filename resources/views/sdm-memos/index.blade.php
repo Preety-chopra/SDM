@@ -275,6 +275,18 @@
                                                     </select>
                                                 </x-column-filter-dropdown>
                                                 @break
+                                            @case('SDM deficiency')
+                                                @if($deficiencyTypes === [])
+                                                    {{ $heading }}
+                                                    @break
+                                                @endif
+                                                <x-column-filter-dropdown label="SDM deficiency" :active="filled($filters['deficiency_type'] ?? null)" width="w-80">
+                                                    <select x-ref="picker" data-filter-picker form="sdm-filter-form" name="deficiency_type" aria-label="Filter by SDM deficiency" @change="$el.form.requestSubmit()" class="block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
+                                                        <option value="">All deficiencies</option>
+                                                        @foreach($deficiencyTypes as $deficiencyType)<option value="{{ $deficiencyType->value }}" @selected(($filters['deficiency_type'] ?? '') === $deficiencyType->value)>{{ $deficiencyType->label() }}</option>@endforeach
+                                                    </select>
+                                                </x-column-filter-dropdown>
+                                                @break
                                             @case('Line / station')
                                                 <x-column-filter-dropdown label="Line / station" :active="filled($filters['line_code'] ?? null) || filled($filters['station_id'] ?? null)" width="w-64">
                                                     <div class="grid gap-3">
@@ -407,7 +419,9 @@
                                         @else
                                             @can('act', $memo)
                                                 @if($isDirectCancellationStage)
-                                                    <x-memo-cancellation-dialog :memo="$memo" action="cancel" />
+                                                    @unless(auth()->user()->hasRole(\App\Enums\UserRole::AssistantManager->value))
+                                                        <x-memo-cancellation-dialog :memo="$memo" action="cancel" />
+                                                    @endunless
                                                     <x-memo-cancellation-dialog :memo="$memo" action="cancel_after_counselling" />
                                                 @endif
                                             @endcan

@@ -12,6 +12,11 @@ class OutsourcedStaffIndexRequest extends FormRequest
         return $this->user()->can(UserPermission::ManageContractors->value);
     }
 
+    protected function prepareForValidation(): void
+    {
+        $this->mergeIfMissing(['is_active' => '1']);
+    }
+
     public function rules(): array
     {
         return [

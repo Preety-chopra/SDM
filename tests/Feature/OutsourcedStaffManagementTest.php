@@ -134,6 +134,33 @@ class OutsourcedStaffManagementTest extends TestCase
             ->assertViewHas('staff', fn ($rows) => $rows->total() === 1);
     }
 
+    public function test_staff_list_defaults_to_active_staff(): void
+    {
+        $active = OutsourcedStaff::factory()->create(['name' => 'Active default employee']);
+        OutsourcedStaff::factory()->create(['name' => 'Inactive excluded employee', 'is_active' => false]);
+
+        $this->actingAs($this->administrator())->get(route('outsourced-staff.index'))
+            ->assertOk()
+            ->assertSee('<option value="1" selected>Active</option>', false)
+            ->assertSee($active->name)
+            ->assertDontSee('Inactive excluded employee')
+            ->assertViewHas('staff', fn ($rows) => $rows->total() === 1);
+    }
+
+    public function test_staff_list_can_explicitly_show_all_staff(): void
+    {
+        $active = OutsourcedStaff::factory()->create(['name' => 'Active included employee']);
+        $inactive = OutsourcedStaff::factory()->create(['name' => 'Inactive included employee', 'is_active' => false]);
+
+        $this->actingAs($this->administrator())->get(route('outsourced-staff.index', ['is_active' => '']))
+            ->assertOk()
+            ->assertDontSee('<option value="1" selected>Active</option>', false)
+            ->assertSee($active->name)
+            ->assertSee($inactive->name)
+            ->assertViewHas('staff', fn ($rows) => $rows->total() === 2)
+            ->assertViewHas('staff', fn ($rows) => str_contains($rows->url(2), 'is_active='));
+    }
+
     public function test_staff_list_is_paginated_and_does_not_expose_aadhaar(): void
     {
         OutsourcedStaff::factory()->count(26)->create(['aadhaar_number' => '012345678901']);

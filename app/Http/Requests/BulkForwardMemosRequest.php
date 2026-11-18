@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\AmCmcMemoCategory;
+use App\Enums\DeficiencyType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\WorkflowStepType;
@@ -29,6 +30,7 @@ class BulkForwardMemosRequest extends FormRequest
             'memo_ids' => [Rule::requiredIf(! $this->boolean('select_all')), 'nullable', 'array', 'min:1'],
             'memo_ids.*' => ['required', 'integer', 'distinct', Rule::exists(ServiceDeficiencyMemo::class, 'id')],
             'service_type' => ['nullable', Rule::enum(SdmType::class)],
+            'deficiency_type' => ['nullable', Rule::enum(DeficiencyType::class)],
             'station_id' => ['nullable', 'integer', Rule::exists('stations', 'id')],
             'line_code' => ['nullable', 'string', Rule::exists('lines', 'code')],
             'incident_date' => ['nullable', 'date_format:Y-m-d'],
@@ -69,6 +71,7 @@ class BulkForwardMemosRequest extends FormRequest
         return array_filter(
             $this->safe()->only([
                 'service_type',
+                'deficiency_type',
                 'station_id',
                 'line_code',
                 'incident_date',

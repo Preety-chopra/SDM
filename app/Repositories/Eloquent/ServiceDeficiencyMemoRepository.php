@@ -62,6 +62,8 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
             ->when($isStationManager && $statusFilter !== StationManagerMemoStatus::DraftsOwn->value,
                 fn (Builder $query) => $query->assignedToStationManager($user))
             ->when($filters['service_type'] ?? null, fn ($query, $serviceType) => $query->where('service_type', $serviceType))
+            ->when($filters['deficiency_type'] ?? null, fn (Builder $query, string $type) => $query
+                ->whereHas('deficiencies', fn (Builder $query) => $query->where('type', $type)))
             ->when($filters['station_id'] ?? null, fn ($query, $stationId) => $query->where('station_id', $stationId))
             ->when($filters['line_code'] ?? null, fn ($query, $lineCode) => $query->where('line_code', $lineCode))
             ->when($filters['incident_date'] ?? null, fn ($query, $incidentDate) => $query->whereDate('incident_date', $incidentDate))
@@ -86,6 +88,8 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
         return ServiceDeficiencyMemo::query()
             ->when($memoIds !== [], fn (Builder $query) => $query->whereKey($memoIds))
             ->when($filters['service_type'] ?? null, fn (Builder $query, string $serviceType) => $query->where('service_type', $serviceType))
+            ->when($filters['deficiency_type'] ?? null, fn (Builder $query, string $type) => $query
+                ->whereHas('deficiencies', fn (Builder $query) => $query->where('type', $type)))
             ->when($filters['station_id'] ?? null, fn (Builder $query, int|string $stationId) => $query->where('station_id', $stationId))
             ->when($filters['line_code'] ?? null, fn (Builder $query, string $lineCode) => $query->where('line_code', $lineCode))
             ->when($filters['incident_date'] ?? null, fn (Builder $query, string $incidentDate) => $query->whereDate('incident_date', $incidentDate))

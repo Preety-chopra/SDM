@@ -291,7 +291,9 @@
                                 @endif
                             @endif
                             @if($memo->current_stage === \App\Enums\WorkflowStage::LineManager)
-                                <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg border border-rose-700 bg-white px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:bg-gray-900 dark:text-rose-300 dark:hover:bg-rose-950/40">Cancel SDM</button>
+                                @unless(auth()->user()->hasRole(\App\Enums\UserRole::AssistantManager->value))
+                                    <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg border border-rose-700 bg-white px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:bg-gray-900 dark:text-rose-300 dark:hover:bg-rose-950/40">Cancel SDM</button>
+                                @endunless
                                 <button name="action" value="cancel_after_counselling" data-sdm-confirm data-confirmation-action="Cancel after counselling" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel after counselling</button>
                             @elseif($memo->current_stage !== \App\Enums\WorkflowStage::StationManager)
                                 <button name="action" value="cancel" data-sdm-confirm data-confirmation-action="Cancel SDM" class="rounded-lg bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white">Cancel SDM</button>

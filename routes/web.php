@@ -108,6 +108,7 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::get('/contracts/{contract}/source', [ServiceContractController::class, 'source'])->name('contracts.source');
     Route::resource('contracts', ServiceContractController::class);
     Route::get('/contract-station-mapping', [ContractStationMappingController::class, 'index'])->name('contract-station-mapping.index');
+    Route::get('/contract-station-mapping/export', [ContractStationMappingController::class, 'export'])->name('contract-station-mapping.export');
     Route::get('/contract-station-mapping/{station}/{contract}', [ContractStationMappingController::class, 'edit'])->name('contract-station-mapping.edit');
     Route::patch('/contract-station-mapping/{station}/{contract}', [ContractStationMappingController::class, 'update'])->name('contract-station-mapping.update');
 });

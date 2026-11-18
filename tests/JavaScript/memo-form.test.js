@@ -1,6 +1,74 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { createMemoForm } from '../../resources/js/memo-form.js';
+
+for (const [start, end] of [['09:15', '18:15'], ['00:00', '09:00'], ['15:00', '00:00'], ['23:45', '08:45'], ['09:15:00', '18:15']]) {
+    test(`entering booked shift from ${start} fills booked shift to ${end}`, () => {
+        const form = createMemoForm();
+
+        form.syncBookedShiftTo(start);
+
+        assert.equal(form.bookedShiftTo, end);
+    });
+}
+
+for (const eventName of ['input', 'change']) {
+    test(`the start time field handles ${eventName} events and updates the bound end time`, () => {
+        const template = readFileSync(new URL('../../resources/views/sdm-memos/form.blade.php', import.meta.url), 'utf8');
+        const startInput = template.match(/<input\b[^>]*id="booked_shift_from"[^>]*>/)[0];
+        const endInput = template.match(/<input\b[^>]*id="booked_shift_to"[^>]*>/)[0];
+        const handler = startInput.match(new RegExp(`@${eventName}="([^"]+)"`))?.[1];
+        assert.ok(handler, `The start time needs an ${eventName} handler`);
+        const form = createMemoForm();
+
+        runInNewContext(`with ($data) { ${handler} }`, { $data: form, $event: { target: { value: '23:45' } } });
+
+        const endModel = endInput.match(/x-model="([^"]+)"/)[1];
+        assert.equal(form[endModel], '08:45');
+        assert.doesNotMatch(endInput, /\s(?:readonly|disabled)(?:\s|=|>)/);
+
+        form[endModel] = '09:30';
+
+        assert.equal(form.bookedShiftTo, '09:30');
+    });
+}
+
+test('booked shift to remains editable and recalculates when the start time changes', () => {
+    const form = createMemoForm();
+    form.syncBookedShiftTo('09:00');
+
+    form.bookedShiftTo = '17:30';
+
+    assert.equal(form.bookedShiftTo, '17:30');
+
+    form.syncBookedShiftTo('10:15');
+
+    assert.equal(form.bookedShiftTo, '19:15');
+});
+
+test('clearing or entering an incomplete start time clears the calculated end time', () => {
+    const form = createMemoForm();
+
+    for (const start of ['', '09:', '24:00', '09:60']) {
+        form.bookedShiftTo = '18:00';
+
+        form.syncBookedShiftTo(start);
+
+        assert.equal(form.bookedShiftTo, '');
+    }
+});
+
+test('restoring saved or validation times preserves a custom booked shift end time', () => {
+    const form = createMemoForm();
+    form.$el = { dataset: { bookedShiftFrom: '09:00', bookedShiftTo: '17:30' } };
+
+    form.init();
+
+    assert.equal(form.bookedShiftFrom, '09:00');
+    assert.equal(form.bookedShiftTo, '17:30');
+});
 
 test('removing one selected deficiency preserves the other selections and available options', () => {
     const form = createMemoForm();

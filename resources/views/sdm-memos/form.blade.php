@@ -223,7 +223,7 @@
                     <div x-cloak x-show="has('late_reporting')" class="mt-6 rounded-xl bg-gray-50 p-4 dark:bg-gray-900">
                         <div class="grid gap-4 md:grid-cols-3">
                             <div><x-input-label for="booked_shift_from" value="Booked shift from" required/>
-                                <input id="booked_shift_from" type="time" name="late_reporting[booked_shift_from]" value="{{ $lateTime('booked_shift_from') }}" x-model="bookedShiftFrom" class="{{ $inputClass }}">
+                                <input id="booked_shift_from" type="time" name="late_reporting[booked_shift_from]" value="{{ $lateTime('booked_shift_from') }}" x-model="bookedShiftFrom" @input="$data.syncBookedShiftTo($event.target.value)" @change="bookedShiftFrom = $event.target.value; $data.syncBookedShiftTo(bookedShiftFrom)" class="{{ $inputClass }}">
                             </div>
                             <div><x-input-label for="booked_shift_to" value="Booked shift to" required/>
                                 <input id="booked_shift_to" type="time" name="late_reporting[booked_shift_to]" value="{{ $lateTime('booked_shift_to') }}" x-model="bookedShiftTo" class="{{ $inputClass }}">

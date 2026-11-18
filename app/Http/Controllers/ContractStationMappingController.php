@@ -9,6 +9,7 @@ use App\Models\Station;
 use App\Services\ContractStationMappingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
 
@@ -24,8 +25,7 @@ class ContractStationMappingController extends Controller
 
         $serviceType = $this->serviceFilter($request);
         $stationSearch = $this->stationSearch($request);
-        $requestedStatus = $request->query('status');
-        $status = is_string($requestedStatus) && isset(self::STATUS_TABS[$requestedStatus]) ? $requestedStatus : 'published';
+        $status = $this->statusFilter($request);
 
         return view('contract-station-mapping.index', [
             ...$this->mappings->index($status, $serviceType, $stationSearch),
@@ -34,6 +34,22 @@ class ContractStationMappingController extends Controller
             'serviceType' => $serviceType,
             'serviceTypes' => SdmType::cases(),
             'stationSearch' => $stationSearch,
+        ]);
+    }
+
+    public function export(Request $request): Response
+    {
+        Gate::authorize('viewAny', ServiceContract::class);
+
+        return response($this->mappings->export(
+            $this->statusFilter($request),
+            $this->serviceFilter($request),
+            $this->stationSearch($request),
+            $request->user(),
+        ), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="station-contract-mapping.xlsx"',
+            'Cache-Control' => 'private, no-store',
         ]);
     }
 
@@ -68,6 +84,13 @@ class ContractStationMappingController extends Controller
         $type = $request->query('service_type');
 
         return is_string($type) ? SdmType::tryFrom($type) : null;
+    }
+
+    private function statusFilter(Request $request): string
+    {
+        $status = $request->query('status');
+
+        return is_string($status) && isset(self::STATUS_TABS[$status]) ? $status : 'published';
     }
 
     private function listQuery(Request $request): array
