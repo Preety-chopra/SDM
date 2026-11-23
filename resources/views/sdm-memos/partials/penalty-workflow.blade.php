@@ -115,6 +115,8 @@
 </section>
 @endif
 
+@include('sdm-memos.partials.remarks')
+
 <details data-case-timeline data-default-collapsed="{{ $hasWorkflowRemarks ? 'false' : 'true' }}" @if($hasWorkflowRemarks)open @endif class="group rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-5">
     <summary class="flex cursor-pointer list-none items-center justify-between gap-4 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800">
         <span class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -211,9 +213,6 @@
     </div>
 </details>
 
-@if($priorApprovedCases->isNotEmpty())
-    <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"><h3 class="font-semibold">Previous approved cases for this staff member</h3><div class="mt-3 flex flex-col gap-2">@foreach($priorApprovedCases as $prior)<a href="{{ route('sdm-memos.show', $prior) }}" class="rounded-lg bg-gray-50 p-3 text-sm hover:bg-emerald-50 dark:bg-gray-900 dark:hover:bg-emerald-950">{{ $prior->service_type->code() }} · {{ $prior->incident_date?->format('d-m-Y') }} · {{ $prior->assessments->first()?->negative_points ?? 0 }} points</a>@endforeach</div></section>
-@endif
 
 @can('act', $memo)
     <section class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 dark:border-emerald-900 dark:bg-emerald-950/40" @if($assessmentStage) x-data='{ selectedClauses: @json($selectedClauseIds), showAllClauses: false }' @endif>

@@ -32,6 +32,15 @@ final class OutsourcedStaffService
         ];
     }
 
+    public function suggestionsForMemo(string $prefix, int $contractorId): array
+    {
+        return $this->staff->employeeIdSuggestions(trim($prefix), $contractorId)
+            ->map(fn (OutsourcedStaff $staff): array => [
+                'employee_number' => $staff->employee_id,
+                'staff_name' => $staff->name,
+            ])->all();
+    }
+
     public function resolveMemoStaff(array $data): array
     {
         $identifier = $data['employee_number'] ?? null;

@@ -19,7 +19,7 @@ final class HistoricalSdmImportService
         private AuditService $audit,
     ) {}
 
-    public function import(string $path, int $contractorId, User $actor, bool $dryRun = false, string $sheet = 'previous records of JMD'): array
+    public function import(string $path, int $contractorId, ?User $actor, bool $dryRun = false, string $sheet = 'previous records of JMD'): array
     {
         Validator::make(['contractor_id' => $contractorId], ['contractor_id' => ['required', 'integer', 'exists:contractors,id']])->validate();
         $rows = $this->reader->read($path, $sheet);
@@ -108,7 +108,7 @@ final class HistoricalSdmImportService
                 return $result;
             }
             $import = $this->records->createImport([
-                'contractor_id' => $contractorId, 'imported_by' => $actor->id, 'source_file' => basename($path),
+                'contractor_id' => $contractorId, 'imported_by' => $actor?->id, 'source_file' => basename($path),
                 'source_sha256' => $sha256, 'source_sheet' => $sheet, 'row_count' => count($prepared), 'summary' => $summary,
             ]);
             $this->records->insertRecords(array_map(fn (array $attributes): array => ['import_id' => $import->id, ...$attributes], $prepared));

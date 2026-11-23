@@ -69,7 +69,7 @@ final class AftCashCheckReportService
                 $report->entries()->create([
                     ...Arr::only($row, self::INPUT_FIELDS),
                     'sequence' => $index + 1,
-                    'station_code' => $station?->code, 'station_name' => $station?->name, 'line_code' => $station?->metroLine?->code,
+                    'station_code' => $station?->code, 'station_name' => $station?->name, 'line_code' => $station?->operationalLineCode(),
                     'difference_amount' => $difference,
                     'cash_status' => $difference === null ? null : ($difference === '0.00' ? 'OK' : (str_starts_with($difference, '-') ? 'SHORT' : 'EXCESS')),
                 ]);

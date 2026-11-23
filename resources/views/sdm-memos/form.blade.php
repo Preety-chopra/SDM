@@ -19,8 +19,10 @@
         ? 'SM employee number'
         : 'Manager/Assistant Manager (O)-Line employee number';
     $confirmationPreview = [];
+    $displayLineCode = $memo?->line_code ?? $station?->operationalLineCode();
+    $displayLineName = $memo?->line_name ?? $station?->operationalLineName();
     $confirmationFields = [
-        ...($issuanceStations->isEmpty() ? [['label' => 'Line', 'value' => collect([$station?->metroLine?->code, $station?->metroLine?->name])->filter()->join(' · ')]] : []),
+        ...($issuanceStations->isEmpty() ? [['label' => 'Line', 'value' => collect([$displayLineCode, $displayLineName])->filter()->join(' · ')]] : []),
         $issuanceStations->isNotEmpty()
             ? ['label' => 'Inspected station', 'name' => 'station_id']
             : ['label' => 'Station', 'value' => collect([$station?->code, $station?->name])->filter()->join(' · ')],
@@ -33,7 +35,7 @@
         ...($requiresForwarding ? [['label' => 'Forward to', 'name' => $forwardingField]] : []),
     ];
     $pageTitle = $memo ? ($isDraft ? 'Edit SDM draft' : 'Edit submitted SDM') : 'Create Service Deficiency Memo';
-    $memoLocation = collect([$station?->metroLine?->code, $station?->name])->filter()->join(' · ');
+    $memoLocation = collect([$displayLineCode, $station?->name])->filter()->join(' · ');
     $checkingOfficialDefaults = [
         'checking_official_name' => request()->user()->name,
         'checking_official_designation' => request()->user()->designation,
@@ -85,7 +87,7 @@
                                 <select id="station_id" name="station_id" x-model="stationId" @change="syncContractor()" class="{{ $inputClass }}" required>
                                     <option value="">Select inspected station</option>
                                     @foreach($issuanceStations as $issuanceStation)
-                                        <option value="{{ $issuanceStation->id }}">{{ $issuanceStation->code }} · {{ $issuanceStation->name }} ({{ $issuanceStation->metroLine?->name }})</option>
+                                        <option value="{{ $issuanceStation->id }}">{{ $issuanceStation->code }} · {{ $issuanceStation->name }} ({{ $issuanceStation->operationalLineName() }})</option>
                                     @endforeach
                                 </select>
                                 <x-input-error :messages="$errors->get('station_id')" class="mt-2"/>
@@ -107,14 +109,14 @@
                                 <select id="station_id" name="station_id" class="{{ $inputClass }}" required>
                                     <option value="">Select assigned station</option>
                                     @foreach($issuanceStations as $issuanceStation)
-                                        <option value="{{ $issuanceStation->id }}" @selected((string) old('station_id', $memo?->station_id) === (string) $issuanceStation->id)>{{ $issuanceStation->code }} · {{ $issuanceStation->name }} ({{ $issuanceStation->metroLine?->name }})</option>
+                                        <option value="{{ $issuanceStation->id }}" @selected((string) old('station_id', $memo?->station_id) === (string) $issuanceStation->id)>{{ $issuanceStation->code }} · {{ $issuanceStation->name }} ({{ $issuanceStation->operationalLineName() }})</option>
                                     @endforeach
                                 </select>
                             </div>
                         @else
                             <div>
                                 <x-input-label value="Line"/>
-                                <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ collect([$station->metroLine?->code, $station->metroLine?->name])->filter()->join(', ') ?: 'Not assigned' }}</p>
+                                <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ collect([$displayLineCode, $displayLineName])->filter()->join(', ') ?: 'Not assigned' }}</p>
                             </div>
                             <div>
                                 <x-input-label value="Station"/><p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ $station->code }} · {{ $station->name }}</p>
@@ -125,8 +127,8 @@
 
                             <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
                                 {{ collect([
-                                    $station?->metroLine?->code,
-                                    $station?->metroLine?->name,
+                                    $displayLineCode,
+                                    $displayLineName,
                                 ])->filter()->join(' · ') ?: 'Not assigned' }}
                             </p>
                         </div> --}}
@@ -162,7 +164,7 @@
                         @if($issuanceStations->isEmpty())
                         <div>
                             <x-input-label value="Line" required/>
-                            <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ collect([$station->metroLine?->code, $station->metroLine?->name])->filter()->join(' · ') ?: 'Not assigned' }}</p>
+                            <p class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ collect([$displayLineCode, $displayLineName])->filter()->join(' · ') ?: 'Not assigned' }}</p>
                         </div>
                         <div>
                             <x-input-label value="Station" required/>
@@ -177,10 +179,23 @@
                             <x-input-label for="incident_time" value="Time of incident (HH:MM, IST)" required/>
                             <x-text-input id="incident_time" type="time" name="incident_time" step="60" class="mt-1 block w-full" :value="$incidentTime" required/>
                         </div>
-                        <div>
+                        <div class="relative" @click.outside="closeStaffSuggestions()" @keydown.escape.prevent.stop="closeStaffSuggestions()" @keydown.tab="closeStaffSuggestions()">
                             <x-input-label for="employee_number" value="Outsourced Staff- Employee number" required/>
-                            <x-text-input id="employee_number" name="employee_number" class="mt-1 block w-full" x-model="staffIdentifier" @input="resetStaffLookup()" @input.debounce.400ms="lookupStaff()" maxlength="100" autocomplete="off" aria-describedby="staff_identifier_help staff_lookup_status" :value="old('employee_number',$memo?->employee_number)"/>
-                            <p id="staff_identifier_help" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Enter EMP ID or Aadhaar number to fetch the employee name.</p>
+                            <x-text-input id="employee_number" name="employee_number" class="mt-1 block w-full" x-model="staffIdentifier" @input="resetStaffLookup()" @input.debounce.400ms="lookupStaff()"
+                                @focus="staffSuggestionsDismissed=false; staffSuggestionsOpen=staffSuggestions.length > 0"
+                                @keydown.arrow-down.prevent="moveStaffSuggestion(1)" @keydown.arrow-up.prevent="moveStaffSuggestion(-1)"
+                                @keydown.enter="if (staffSuggestionsOpen && staffSuggestionIndex >= 0) { $event.preventDefault(); selectStaffSuggestion(staffSuggestions[staffSuggestionIndex]); }"
+                                role="combobox" aria-autocomplete="list" aria-controls="staff-suggestions" x-bind:aria-expanded="staffSuggestionsOpen.toString()" x-bind:aria-activedescendant="staffSuggestionsOpen && staffSuggestionIndex >= 0 ? `staff-suggestion-${staffSuggestionIndex}` : null"
+                                maxlength="100" autocomplete="off" aria-describedby="staff_identifier_help staff_lookup_status" :value="old('employee_number',$memo?->employee_number)"/>
+                            <ul id="staff-suggestions" role="listbox" aria-label="Outsourced staff suggestions" x-cloak x-show="staffSuggestionsOpen" class="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                                <template x-for="(staff, index) in staffSuggestions" :key="staff.employee_number">
+                                    <li :id="`staff-suggestion-${index}`" role="option" :aria-selected="(staffSuggestionIndex === index).toString()" @mousedown.prevent @click="selectStaffSuggestion(staff)" @mouseenter="staffSuggestionIndex=index" :class="staffSuggestionIndex === index ? 'bg-emerald-50 dark:bg-emerald-900/40' : ''" class="cursor-pointer px-3 py-2 text-sm text-gray-900 dark:text-gray-100">
+                                        <span class="font-semibold" x-text="staff.employee_number"></span>
+                                        <span class="text-gray-600 dark:text-gray-300" x-text="staff.staff_name"></span>
+                                    </li>
+                                </template>
+                            </ul>
+                            <p id="staff_identifier_help" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Start typing an EMP ID and select a suggestion, or enter the complete Aadhaar number to fetch the employee name.</p>
                             <p id="staff_lookup_status" role="status" aria-live="polite" x-text="staffLookupMessage" class="mt-1 text-xs text-gray-600 dark:text-gray-300"></p>
                             <x-input-error :messages="$errors->get('employee_number')" class="mt-1"/>
                         </div>
@@ -214,7 +229,7 @@
                         <div id="deficiencies-options" x-cloak x-show="deficiencyOpen && serviceType" class="absolute z-20 mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-900">
                             <template x-for="option in availableDeficiencies" :key="option.value">
                                 <label class="flex cursor-pointer items-start gap-3 rounded px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800">
-                                    <input type="checkbox" name="deficiencies[]" :value="option.value" :data-preview-value="option.label" x-model="selected" class="mt-0.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500">
+                                    <input type="checkbox" name="deficiencies[]" :value="option.value" :data-preview-value="option.label" x-model="selected" @change="deficiencyOpen=false; $nextTick(() => $refs.deficienciesControl.focus())" class="mt-0.5 rounded border-gray-300 text-emerald-700 focus:ring-emerald-500">
                                     <span class="text-sm text-gray-700 dark:text-gray-200"><span x-show="option.serial_number" class="font-semibold" x-text="`${option.serial_number}. `"></span><span x-text="option.label"></span></span>
                                 </label>
                             </template>

@@ -1,5 +1,15 @@
 # Reference data seeders
 
+For outsourced staff, use the standalone `OutsourcedStaffSeeder` with its private
+snapshot. See [outsourced staff deployment instructions](../../docs/outsourced-staff.md#seed-an-existing-server-from-localhost).
+Personal staff data is excluded from Git and from the default database seeder.
+
+For historical SDMs, use the standalone `HistoricalSdmSeeder` after the contractor,
+station and staff masters are in place. Upload its private manifest and original
+XLSX workbook separately. See [historical data server upload](../../docs/historical-sdm-import.md#seed-the-historical-data-on-an-existing-server)
+for the files and server command. This seeder is excluded from `DatabaseSeeder`;
+reruns skip an identical import without changing existing records or audits.
+
 `LineSeeder` recreates all 16 existing lines. `StationSeeder` recreates all 289
 stations and automatically creates missing lines. Both use the real database
 snapshot in `data/locations.json` from 31 October 2026.

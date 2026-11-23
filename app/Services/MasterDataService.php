@@ -35,11 +35,17 @@ final class MasterDataService
 
     public function saveLine(?Line $line, array $data): Line
     {
+        throw_if($line?->merged_into_line_id !== null, ValidationException::withMessages(['line' => 'Merged lines are retained for history and cannot be edited.']));
+
         return DB::transaction(fn () => $this->repository->saveLine($line, $data));
     }
 
     public function saveStation(?Station $station, array $data): Station
     {
+        if ($station !== null && isset($data['line_id']) && (int) $data['line_id'] !== $station->line_id) {
+            throw_if($station->line_section_id !== null, ValidationException::withMessages(['line_id' => 'Merge the sections back into a whole line before moving this station to another line.']));
+        }
+
         return DB::transaction(fn () => $this->repository->saveStation($station, $data));
     }
 
@@ -58,12 +64,14 @@ final class MasterDataService
 
     public function deleteLine(Line $line): void
     {
+        throw_if($line->merged_into_line_id !== null || $line->sections()->exists(), ValidationException::withMessages(['line' => 'This line has section or merge history and cannot be deleted. Disable it instead.']));
         throw_if($line->stations()->exists() || $line->serviceContracts()->exists(), ValidationException::withMessages(['line' => 'This line is assigned to one or more stations or contracts and cannot be deleted.']));
         $line->delete();
     }
 
     public function deleteStation(Station $station): void
     {
+        throw_if($this->repository->stationHasSectionHistory($station), ValidationException::withMessages(['station' => 'This station is used by section history and cannot be deleted. Disable it instead.']));
         throw_if($this->repository->stationHasHistoricalSdms($station), ValidationException::withMessages(['station' => 'This station is used by historical SDMs and cannot be deleted. Disable it instead.']));
         throw_if($station->users()->exists() || $station->memos()->exists() || $station->serviceContracts()->exists() || $station->aftCashCheckEntries()->exists(), ValidationException::withMessages(['station' => 'This station is in use and cannot be deleted. Disable it instead.']));
         $station->delete();

@@ -5,9 +5,11 @@ namespace App\Providers;
 use App\Contracts\Repositories\AftCashCheckReportRepositoryInterface;
 use App\Contracts\Repositories\AuditLogRepositoryInterface;
 use App\Contracts\Repositories\DesignationRepositoryInterface;
+use App\Contracts\Repositories\EmployeeHistoryRepositoryInterface;
 use App\Contracts\Repositories\FeedbackRepositoryInterface;
 use App\Contracts\Repositories\HistoricalSdmRepositoryInterface;
 use App\Contracts\Repositories\LineManagerDashboardRepositoryInterface;
+use App\Contracts\Repositories\LineTopologyRepositoryInterface;
 use App\Contracts\Repositories\MasterDataRepositoryInterface;
 use App\Contracts\Repositories\OutsourcedStaffRepositoryInterface;
 use App\Contracts\Repositories\RoleRepositoryInterface;
@@ -32,9 +34,11 @@ use App\Policies\UserPolicy;
 use App\Repositories\Eloquent\AftCashCheckReportRepository;
 use App\Repositories\Eloquent\AuditLogRepository;
 use App\Repositories\Eloquent\DesignationRepository;
+use App\Repositories\Eloquent\EmployeeHistoryRepository;
 use App\Repositories\Eloquent\FeedbackRepository;
 use App\Repositories\Eloquent\HistoricalSdmRepository;
 use App\Repositories\Eloquent\LineManagerDashboardRepository;
+use App\Repositories\Eloquent\LineTopologyRepository;
 use App\Repositories\Eloquent\MasterDataRepository;
 use App\Repositories\Eloquent\OutsourcedStaffRepository;
 use App\Repositories\Eloquent\RoleRepository;
@@ -63,6 +67,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(EmployeeHistoryRepositoryInterface::class, EmployeeHistoryRepository::class);
+        $this->app->bind(LineTopologyRepositoryInterface::class, LineTopologyRepository::class);
         $this->app->bind(AftCashCheckReportRepositoryInterface::class, AftCashCheckReportRepository::class);
         $this->app->bind(AuditLogRepositoryInterface::class, AuditLogRepository::class);
         $this->app->bind(FeedbackRepositoryInterface::class, FeedbackRepository::class);

@@ -69,6 +69,13 @@
             </a>
         @endcan
 
+        @can('viewEmployeeHistory', \App\Models\ServiceDeficiencyMemo::class)
+            <a href="{{ route('employee-history.index') }}" title="Employee history" class="{{ $baseClasses }} {{ request()->routeIs('employee-history.*') || request()->routeIs('sdm-memos.employee-history') ? $activeClasses : $idleClasses }}">
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 11a9 9 0 1 1 3 7M3 4v7h7m2-4v5l3 2" /></svg>
+                <span x-show="! collapsed || mobileOpen" class="truncate">Employee history</span>
+            </a>
+        @endcan
+
         @can('viewAny', \App\Models\AftCashCheckReport::class)
             <a href="{{ route('aft-cash-check-reports.index') }}" title="AFT cash-check reports" class="{{ $baseClasses }} {{ request()->routeIs('aft-cash-check-reports.*') ? $activeClasses : $idleClasses }}">
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 3h10v18H7zM10 7h4M10 11h4M10 15h4" /></svg>

@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\UserPermission;
 use App\Models\Line;
+use App\Models\LineSection;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -17,7 +18,7 @@ class SaveLineRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'code' => ['required', 'string', 'max:30', Rule::unique(Line::class)->ignore($this->route('line'))],
+            'code' => ['required', 'string', 'max:30', Rule::unique(Line::class)->ignore($this->route('line')), Rule::unique(LineSection::class, 'code')],
             'name' => ['required', 'string', 'max:255'],
             'is_active' => ['required', 'boolean'],
         ];

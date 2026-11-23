@@ -73,8 +73,8 @@ final class StationRepository implements StationRepositoryInterface
     public function active(): Collection
     {
         return Station::query()
-            ->select(['id', 'code', 'name', 'line_id', 'sequence_no'])
-            ->with('metroLine:id,code,name')
+            ->select(['id', 'code', 'name', 'line_id', 'line_section_id', 'sequence_no'])
+            ->with(['metroLine:id,code,name', 'lineSection:id,code,name'])
             ->where('is_active', true)
             ->orderBy('name')
             ->get();

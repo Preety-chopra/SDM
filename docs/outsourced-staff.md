@@ -32,6 +32,58 @@ The same importer is available through Sail:
 
 Use actual contractor IDs from the target environment. Remove `--dry-run` after reviewing validation results. The actor must be enabled and have contractor management permission. The command supports additional agency mappings using repeated `--agency=CODE=ID` options. The workbook is not bundled in the repository.
 
+## Seed an existing server from localhost
+
+`OutsourcedStaffSeeder` restores the local staff snapshot without requiring the
+original workbook or copying the local database. The prepared snapshot contains
+all 3,498 staff and the names and active status of their three contractors.
+
+Deploy these code files:
+
+```text
+database/seeders/OutsourcedStaffSeeder.php
+app/Services/OutsourcedStaffSeedService.php
+```
+
+Separately copy the private file
+`storage/app/private/seed-data/outsourced-staff.json` from localhost into the same
+relative path on the server. This file contains personal data, including Aadhaar
+values, and is deliberately excluded from Git. Transfer it through the existing
+SSH/WinSCP connection, keep it outside `public/`, and restrict access to the
+application's operating-system user. A Git pull alone does not transfer it.
+
+Run only this seeder from the deployed project directory:
+
+```bash
+cd /home/administrator/SDM/SDM
+sudo docker compose exec laravel.test php artisan db:seed --class=OutsourcedStaffSeeder --force
+```
+
+The command prints created and skipped counts. Contractors are matched by name,
+not localhost IDs. Missing contractors are created; existing contractors and
+staff are preserved, including inactive status and any server edits. Employee
+IDs are compared case-insensitively, so reruns create no duplicate staff or audit
+entries. Invalid snapshots and audit failures roll back the entire operation.
+
+Aadhaar values are encrypted using the destination application's own key and
+their lookup hashes are regenerated. Do not copy or change the local `APP_KEY`
+on the server. Staff seed audits record only operational fields, with a null
+system actor; personal identity details are excluded from audit values.
+
+This seeder is intentionally standalone because its private snapshot is not
+bundled with source code. It fails with upload instructions when the snapshot is
+missing. Avoid rerunning the full `DatabaseSeeder` for this task: that seeder also
+resets administrator credentials and role assignments. After successful seeding
+and verification, remove the private snapshot from the server if it is no longer
+needed there.
+
+Verification: all 57 related seeder, staff management, and lookup tests passed
+(318 assertions), and Laravel Pint passed. An isolated full-snapshot restoration
+with a fresh application key reproduced all 3,498 records and all their fields,
+created three contractors and 3,501 audit entries, then skipped all 3,498 staff
+on a second run without adding audits. The development database was unchanged.
+The complete PHP suite also passed: 905 tests and 7,103 assertions.
+
 ## Staff lookup while filling an SDM
 
 Select the contractor, then enter an EMP ID or Aadhaar in **Outsourced Staff- Employee number**. The form fills the registered name and makes it read-only when there is one exact match within that agency. Aadhaar matches are replaced with the employee's EMP ID in the form and in the saved SDM. Spaces or hyphens in an Aadhaar are accepted.

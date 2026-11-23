@@ -19,17 +19,19 @@ final class StationOptions
 
         return $stations
             ->sortBy(function (Station $station) use ($lineOrder): array {
-                $lineCode = $station->metroLine?->code;
+                $lineCode = $station->operationalLineCode();
+                $baseCode = $station->metroLine?->code;
 
                 return [
-                    $lineOrder[$lineCode] ?? count($lineOrder),
-                    $lineCode === null,
+                    $lineOrder[$baseCode] ?? count($lineOrder),
+                    $baseCode === null,
+                    $baseCode,
                     $lineCode,
                     $lineCode === null ? PHP_INT_MAX : ($station->sequence_no ?? PHP_INT_MAX),
                 ];
             })
             ->map(function (Station $station): array {
-                $lineCode = $station->metroLine?->code;
+                $lineCode = $station->operationalLineCode();
 
                 return [
                     'id' => $station->id,

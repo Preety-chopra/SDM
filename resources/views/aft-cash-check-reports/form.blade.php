@@ -3,7 +3,7 @@
         ...$entry->only(['station_id', 'check_type', 'tom_number', 'operator_name', 'employee_number', 'employer', 'eos_number', 'cash_as_per_eos', 'actual_cash', 'hidden_amount', 'cash_deposit_at_station']),
         'check_date' => $entry->check_date?->toDateString(), 'check_time' => substr((string) $entry->check_time, 0, 5),
     ])->all() : []);
-    $stationOptions = $stations->map(fn ($station) => ['id' => $station->id, 'line_code' => $station->metroLine?->code]);
+    $stationOptions = $stations->map(fn ($station) => ['id' => $station->id, 'line_code' => $station->operationalLineCode()]);
 @endphp
 <x-app-layout title="AFT Cash Check Report">
     <x-slot name="header">
@@ -34,7 +34,7 @@
                             <label :for="'cash-' + row._key + '-station'" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Station <span aria-hidden="true" class="font-bold text-red-600 dark:text-red-400">*</span></label>
                             <select :id="'cash-' + row._key + '-station'" :name="'entries[' + index + '][station_id]'" x-model="row.station_id" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
                                 <option value="">Choose station</option>
-                                @foreach($stations as $station)<option value="{{ $station->id }}">{{ $station->code }} · {{ $station->name }} ({{ $station->metroLine?->code }})</option>@endforeach
+                                @foreach($stations as $station)<option value="{{ $station->id }}">{{ $station->code }} · {{ $station->name }} ({{ $station->operationalLineCode() }})</option>@endforeach
                             </select>
                             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Line: <span x-text="lineFor(row)"></span></p>
                         </div>

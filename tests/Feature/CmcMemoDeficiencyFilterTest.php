@@ -71,6 +71,45 @@ class CmcMemoDeficiencyFilterTest extends TestCase
             ->assertSee('All deficiencies');
     }
 
+    #[TestWith([null])]
+    #[TestWith([SdmType::Cfs])]
+    #[TestWith([SdmType::Ticketing])]
+    #[TestWith([SdmType::WandW])]
+    #[TestWith([SdmType::Marshal])]
+    #[TestWith([SdmType::BaggageHandling])]
+    public function test_cmc_staff_pending_dropdown_uses_the_creation_form_deficiencies(?SdmType $serviceType): void
+    {
+        $line = Line::query()->create(['code' => 'RED', 'name' => 'Red Line', 'is_active' => true]);
+        $station = Station::query()->create([
+            'code' => 'RED-01', 'name' => 'Central Station', 'line_id' => $line->id, 'is_active' => true,
+        ]);
+        $creator = $this->user(UserRole::Station);
+        $creator->update(['station_id' => $station->id]);
+        $form = $this->actingAs($creator)->get(route('sdm-memos.create'))->assertOk();
+        $optionsByType = $form->viewData('deficiencyOptionsByType');
+        $expected = ['' => 'All deficiencies'];
+        foreach ($serviceType ? [$optionsByType[$serviceType->value]] : $optionsByType as $options) {
+            foreach ($options as $option) {
+                $expected[$option['value']] ??= $option['label'];
+            }
+        }
+
+        $response = $this->actingAs($this->user(UserRole::CmcStaff))->get(route('sdm-memos.index', array_filter([
+            'category' => 'pending', 'service_type' => $serviceType?->value,
+        ])))->assertOk();
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $options = (new \DOMXPath($document))->query('//select[@name="deficiency_type"]/option');
+        $actual = [];
+        foreach ($options as $option) {
+            $value = $option->getAttribute('value');
+            $this->assertArrayNotHasKey($value, $actual);
+            $actual[$value] = trim($option->textContent);
+        }
+        $this->assertSame($expected, $actual);
+    }
+
     public function test_deficiency_filter_is_applied_before_pagination_and_preserved_in_links(): void
     {
         for ($index = 1; $index <= 16; $index++) {

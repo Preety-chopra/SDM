@@ -21,6 +21,7 @@ class LookupOutsourcedStaffRequest extends FormRequest
         return [
             'staff_identifier' => ['required', 'string', 'max:100'],
             'contractor_id' => ['required', 'integer', 'exists:contractors,id'],
+            'suggest' => ['sometimes', 'boolean'],
         ];
     }
 }

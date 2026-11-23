@@ -52,4 +52,14 @@ final class OutsourcedStaffRepository implements OutsourcedStaffRepositoryInterf
                 }
             })->limit(2)->get();
     }
+
+    public function employeeIdSuggestions(string $prefix, int $contractorId): Collection
+    {
+        $pattern = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $prefix).'%';
+
+        return OutsourcedStaff::query()->select(['employee_id', 'name'])
+            ->where('contractor_id', $contractorId)
+            ->whereRaw("employee_id LIKE ? ESCAPE '!'", [$pattern])
+            ->orderBy('employee_id')->limit(10)->get();
+    }
 }

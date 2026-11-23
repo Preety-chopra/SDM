@@ -9,6 +9,7 @@ use App\Models\MemoApproval;
 use App\Models\MemoWorkflowStep;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 final class MemoTimelineService
@@ -78,7 +79,7 @@ final class MemoTimelineService
 
     /**
      * @param  Collection<int, MemoApproval>  $visibleApprovals
-     * @return list<array{label: string, remarks: string}>
+     * @return list<array{label: string, author: string, remarks: string, acted_at: \DateTimeInterface|null}>
      */
     public function visibleLegacyRemarks(ServiceDeficiencyMemo $memo, User $viewer, Collection $visibleApprovals): array
     {
@@ -100,16 +101,49 @@ final class MemoTimelineService
 
             $previousRemarks = $return->before_values[$snapshot]['remarks'] ?? null;
             if (filled($previousRemarks) && $visibleStages->containsStrict($previousStage)) {
-                $remarks[] = ['label' => $previousStage->label(), 'remarks' => $previousRemarks];
+                $remarks[] = [
+                    'label' => $previousStage->label(),
+                    'author' => $return->before_values[$snapshot]['signer_name'] ?? 'Unknown user',
+                    'remarks' => $previousRemarks,
+                    'acted_at' => isset($return->before_values[$snapshot]['acted_at'])
+                        ? Carbon::parse($return->before_values[$snapshot]['acted_at'])
+                        : null,
+                ];
             }
 
             $returnRemarks = $return->after_values['remarks'] ?? null;
             if (filled($returnRemarks) && ($visibleStages->containsStrict($stage) || ($return->after_values['returned_to'] ?? null) === $viewer->id)) {
-                $remarks[] = ['label' => $returnLabel, 'remarks' => $returnRemarks];
+                $remarks[] = [
+                    'label' => $returnLabel,
+                    'author' => $return->actor?->name ?? 'Unknown user',
+                    'remarks' => $returnRemarks,
+                    'acted_at' => $return->created_at,
+                ];
             }
         }
 
         return $remarks;
+    }
+
+    /**
+     * @param  Collection<int, MemoWorkflowStep|MemoApproval>  $steps
+     * @param  list<array{label: string, author: string, remarks: string, acted_at: \DateTimeInterface|null}>  $legacyRemarks
+     * @return list<array{label: string, author: string, remarks: string, acted_at: \DateTimeInterface|null}>
+     */
+    public function remarks(Collection $steps, array $legacyRemarks = []): array
+    {
+        return [
+            ...$legacyRemarks,
+            ...$steps->filter(fn (MemoWorkflowStep|MemoApproval $step): bool => filled($step->remarks))
+                ->map(fn (MemoWorkflowStep|MemoApproval $step): array => [
+                    'label' => $step instanceof MemoWorkflowStep ? $step->stage->label() : $step->role->label(),
+                    'author' => $step instanceof MemoWorkflowStep
+                        ? ($step->actor_name ?? 'Unknown user')
+                        : ($step->signer_name ?? $step->actor?->name ?? 'Unknown user'),
+                    'remarks' => $step->remarks,
+                    'acted_at' => $step->acted_at,
+                ])->values()->all(),
+        ];
     }
 
     /**

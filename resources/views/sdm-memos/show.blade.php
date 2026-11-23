@@ -13,21 +13,13 @@
             $isStationManagerViewer = auth()->user()->hasRole(\App\Enums\UserRole::StationManager->value);
         @endphp
         <div class="mx-auto flex max-w-5xl flex-col gap-6 px-4 sm:px-6 lg:px-8">
+            @can('viewEmployeeHistory', \App\Models\ServiceDeficiencyMemo::class)
+                <div class="flex justify-end">
+                    <a href="{{ route('sdm-memos.employee-history', $memo) }}" class="rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-emerald-300 dark:hover:bg-emerald-950">View employee history</a>
+                </div>
+            @endcan
             @if($memo->cancellationLabel())
                 <div class="rounded-lg border border-rose-200 bg-rose-50 p-4 font-semibold text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{ $memo->cancellationLabel() }}</div>
-            @endif
-            @if($legacyWorkflowRemarks !== [])
-                <section class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-                    <h3 class="font-semibold">Previous workflow remarks</h3>
-                    <dl class="mt-2 flex flex-col gap-3">
-                        @foreach($legacyWorkflowRemarks as $remark)
-                            <div>
-                                <dt class="font-semibold">{{ $remark['label'] }}</dt>
-                                <dd class="whitespace-pre-wrap break-words">{{ $remark['remarks'] }}</dd>
-                            </div>
-                        @endforeach
-                    </dl>
-                </section>
             @endif
             @can('update', $memo)
                 @unless($isStationManagerViewer && auth()->user()->can('act', $memo))
@@ -182,6 +174,7 @@
             @if($memo->workflow_version >= 2)
                 @include('sdm-memos.partials.penalty-workflow')
             @elseif($memo->submitted_at)
+                @include('sdm-memos.partials.remarks')
                 <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                     <h3 class="font-semibold text-gray-900 dark:text-white">Approval history</h3>
                     <ol class="mt-4 flex flex-col gap-4">

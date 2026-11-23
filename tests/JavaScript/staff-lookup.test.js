@@ -17,7 +17,7 @@ test('a match fills and locks the name and replaces Aadhaar with the employee ID
         assert.equal(url, '/sdm-memos/staff-lookup');
         assert.equal(options.method, 'POST');
         assert.equal(options.headers['X-CSRF-TOKEN'], 'test-csrf');
-        assert.deepEqual(JSON.parse(options.body), { staff_identifier: '012345678901', contractor_id: '23' });
+        assert.deepEqual(JSON.parse(options.body), { staff_identifier: '012345678901', contractor_id: '23', suggest: true });
         return { ok: true, json: async () => ({ status: 'found', employee_number: '900001', staff_name: 'Registered staff' }) };
     });
 
@@ -85,14 +85,90 @@ test('changing the contractor discards a matched name and looks up the identifie
     form.$watch = (field, callback) => { assert.equal(field, 'contractorId'); onChange = callback; };
     form.init();
     form.staffLookupUrl = '/sdm-memos/staff-lookup';
+    form.staffSuggestions = [{ employee_number: 'OLD-ID', staff_name: 'Old contractor staff' }];
+    form.staffSuggestionsOpen = true;
     form.contractorId = '24';
     t.mock.method(globalThis, 'fetch', async (url, options) => {
         assert.equal(JSON.parse(options.body).contractor_id, '24');
-        return { ok: true, json: async () => ({ status: 'missing' }) };
+        return { ok: true, json: async () => ({ status: 'missing', suggestions: [{ employee_number: 'NEW-ID', staff_name: 'New contractor staff' }] }) };
     });
 
     await onChange();
 
     assert.equal(form.staffName, '');
     assert.equal(form.staffNameReadOnly, false);
+    assert.deepEqual(form.staffSuggestions, [{ employee_number: 'NEW-ID', staff_name: 'New contractor staff' }]);
+    assert.equal(form.staffSuggestionsOpen, false);
+});
+
+test('typing a partial employee ID shows suggestions and choosing one fills the staff and closes the list', async (t) => {
+    const form = formForLookup();
+    form.staffIdentifier = 'EMP-';
+    const suggestions = [
+        { employee_number: 'EMP-001', staff_name: 'First staff' },
+        { employee_number: 'EMP-002', staff_name: 'Second staff' },
+    ];
+    t.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => ({ status: 'missing', suggestions }) }));
+
+    await form.lookupStaff();
+
+    assert.deepEqual(form.staffSuggestions, suggestions);
+    assert.equal(form.staffSuggestionsOpen, true);
+    assert.match(form.staffLookupMessage, /suggestions/i);
+
+    form.selectStaffSuggestion(suggestions[1]);
+
+    assert.equal(form.staffIdentifier, 'EMP-002');
+    assert.equal(form.staffName, 'Second staff');
+    assert.equal(form.staffNameReadOnly, true);
+    assert.equal(form.staffSuggestionsOpen, false);
+});
+
+test('staff suggestions can be navigated by keyboard and disappear when the identifier changes', () => {
+    const form = formForLookup();
+    form.staffSuggestions = [{ employee_number: 'EMP-001', staff_name: 'First staff' }, { employee_number: 'EMP-002', staff_name: 'Second staff' }];
+
+    form.moveStaffSuggestion(1);
+    assert.equal(form.staffSuggestionsOpen, true);
+    assert.equal(form.staffSuggestionIndex, 0);
+    form.moveStaffSuggestion(1);
+    assert.equal(form.staffSuggestionIndex, 1);
+    form.moveStaffSuggestion(1);
+    assert.equal(form.staffSuggestionIndex, 0);
+    form.moveStaffSuggestion(-1);
+    assert.equal(form.staffSuggestionIndex, 1);
+
+    form.resetStaffLookup();
+
+    assert.deepEqual(form.staffSuggestions, []);
+    assert.equal(form.staffSuggestionsOpen, false);
+    assert.equal(form.staffSuggestionIndex, -1);
+});
+
+test('dismissed suggestions stay closed if an outstanding lookup completes', async (t) => {
+    const form = formForLookup();
+    let finish;
+    t.mock.method(globalThis, 'fetch', () => new Promise((resolve) => { finish = resolve; }));
+    const lookup = form.lookupStaff();
+
+    form.closeStaffSuggestions();
+    finish({ ok: true, json: async () => ({ status: 'missing', suggestions: [{ employee_number: 'EMP-001', staff_name: 'First staff' }] }) });
+    await lookup;
+
+    assert.equal(form.staffSuggestionsOpen, false);
+});
+
+test('a stale lookup cannot replace a chosen staff suggestion', async (t) => {
+    const form = formForLookup();
+    let finish;
+    t.mock.method(globalThis, 'fetch', () => new Promise((resolve) => { finish = resolve; }));
+    const lookup = form.lookupStaff();
+    form.selectStaffSuggestion({ employee_number: 'EMP-002', staff_name: 'Chosen staff' });
+    finish({ ok: true, json: async () => ({ status: 'found', employee_number: 'EMP-001', staff_name: 'Stale staff', suggestions: [] }) });
+
+    await lookup;
+
+    assert.equal(form.staffIdentifier, 'EMP-002');
+    assert.equal(form.staffName, 'Chosen staff');
+    assert.equal(form.staffSuggestionsOpen, false);
 });

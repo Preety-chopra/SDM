@@ -12,6 +12,16 @@ use App\Models\User;
 
 class ServiceDeficiencyMemoPolicy
 {
+    public function viewEmployeeHistory(User $user): bool
+    {
+        return $user->is_enabled && $user->hasAnyRole([
+            UserRole::ManagerOperations->value,
+            UserRole::CmcTeamLead->value,
+            UserRole::CmcStaff->value,
+            UserRole::DeputyGeneralManager->value,
+        ]);
+    }
+
     public function viewAny(User $user): bool
     {
         return true;

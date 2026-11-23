@@ -203,23 +203,26 @@ final class ServiceDeficiencyMemoService
                     $beforeAuditValues['cash_check'] = $this->auditValues($memo)['cash_check'];
                 }
                 $stationId = $this->submissionStationId($user, $data, $memo);
-                $station = Station::query()->with('metroLine')->whereKey($stationId)->where('is_active', true)->firstOrFail();
+                $station = Station::query()->with(['metroLine', 'lineSection'])->whereKey($stationId)->where('is_active', true)->firstOrFail();
                 abort_unless($station->metroLine?->is_active, 422, 'Your station must be assigned to an active line.');
                 $contractor = filled($data['contractor_id'] ?? null) ? Contractor::query()->whereKey($data['contractor_id'])->firstOrFail() : null;
                 $isAft = $user->hasRole(UserRole::Aft->value);
                 $contract = $submit ? $this->resolveContract($data, true, $station->id, $isAft) : $memo?->serviceContract;
                 $issuedAt = CarbonImmutable::now();
+                $preserveLocation = $memo !== null && $memo->station_id === $station->id;
+                $lineCode = $preserveLocation ? $memo->line_code : $station->operationalLineCode();
+                $lineName = $preserveLocation ? $memo->line_name : $station->operationalLineName();
 
                 $attributes = [
                     'service_type' => $data['service_type'],
                     'serial_number' => $submit
-                        ? $this->generateSerialNumber($station->metroLine->code, $station->code, SdmType::from($data['service_type']), $issuedAt)
+                        ? $this->generateSerialNumber($lineCode, $station->code, SdmType::from($data['service_type']), $issuedAt)
                         : $memo?->serial_number,
                     'is_urgent' => $data['is_urgent'] ?? $memo?->is_urgent ?? false,
                     'station_id' => $station->id,
-                    'station_name' => $station->name,
-                    'line_name' => $station->metroLine->name,
-                    'line_code' => $station->metroLine->code,
+                    'station_name' => $preserveLocation ? $memo->station_name : $station->name,
+                    'line_name' => $lineName,
+                    'line_code' => $lineCode,
                     'contractor_id' => $contractor?->id,
                     'service_contract_id' => $contract?->id,
                     'contractor_name' => $contractor?->name,

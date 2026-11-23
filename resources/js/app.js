@@ -7,6 +7,7 @@ import { createBulkMemoSelection } from './bulk-memo-selection';
 import { createCmcMemoSelection } from './cmc-memo-selection';
 import { createMemoCancellationDialog } from './memo-cancellation-dialog';
 import { createContractForm } from './contract-form';
+import { createLineSectionsForm } from './line-sections-form';
 import { createMemoForm } from './memo-form';
 import { createAftCashCheckForm } from './aft-cash-check-form';
 import { createSdmActionFeedback } from './sdm-action-feedback';
@@ -46,6 +47,7 @@ Alpine.data('userForm', () => ({
 }));
 
 Alpine.data('contractForm', () => createContractForm());
+Alpine.data('lineSectionsForm', () => createLineSectionsForm());
 
 Alpine.data('employeeAutocomplete', () => ({
     candidates: [],

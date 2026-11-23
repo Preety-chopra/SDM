@@ -49,3 +49,91 @@ App\Models\HistoricalSdm::query()
 ```
 
 The migration's `down()` removes both history tables and their imported data. Back up historical data before rolling it back.
+
+## Seed the historical data on an existing server
+
+`HistoricalSdmSeeder` imports the prepared historical workbooks through the same
+validated importer. The local bundle contains the original JMD workbook with
+5,217 historical SDMs. It uses contractor names rather than localhost database
+IDs, and does not require a server user ID or a copy of the local encryption key.
+
+Deploy these code files together:
+
+```text
+database/seeders/HistoricalSdmSeeder.php
+app/Services/HistoricalSdmSeedService.php
+app/Services/HistoricalSdmImportService.php
+```
+
+Separately upload these two private files from localhost into the same relative
+paths on the server:
+
+```text
+storage/app/private/seed-data/historical-sdms.json
+storage/app/private/seed-data/JMD Staff records.xlsx
+```
+
+Use the existing SSH/WinSCP connection. The workbook contains personal data and
+is excluded from Git. Keep both files outside `public/`, readable only by the
+application's operating-system user. Upload the workbook without opening and
+resaving it: its SHA-256 must match the manifest. A Git pull does not transfer
+these private files. The preparation and verification scripts in the local
+directory are not needed on the server.
+
+Ensure the history migration has been applied and the contractor master exists
+under `JMD Consultants Global Pvt. Ltd.`. Import stations and outsourced staff
+before history so the importer can link them using the destination's IDs. If
+needed, use the standalone station, service contract and outsourced staff
+seeders documented in [reference data seeders](../database/seeders/README.md) and
+[staff deployment](outsourced-staff.md#seed-an-existing-server-from-localhost).
+Existing contractors, stations and staff are not modified by the history seeder.
+
+After taking a database backup, run from the deployed project directory:
+
+```bash
+cd /home/administrator/SDM/SDM
+sudo docker compose exec laravel.test php artisan db:seed --class=HistoricalSdmSeeder --force
+```
+
+For a server without Docker, the equivalent command is:
+
+```bash
+php artisan db:seed --class=HistoricalSdmSeeder --force
+```
+
+The command reports created and skipped rows, followed by source issue counts.
+The first import should create 5,217 rows; an identical existing import should
+skip all 5,217. Avoid running the full `DatabaseSeeder` for this upload because it
+also resets administrator credentials and role assignments.
+
+The manifest has `version: 1` and an `imports` list. Each entry specifies
+`contractor_name`, `file` (an XLSX basename in the same private directory),
+`sheet`, `sha256` and `row_count`. Multiple workbooks can be listed; the complete
+bundle commits in one transaction. Missing or ambiguous contractors, missing or
+changed files, unexpected row counts, invalid workbook data, or an audit failure
+roll back every new import in that run. The seeder does not create contractors.
+
+Source rows, repeated memo numbers, financial values and original identity
+details are preserved. Aadhaar is encrypted with the destination application's
+own key. Each new import has a null system actor and the existing
+`historical_sdm.imported` audit event, which contains provenance and counts without
+personal identity values. Live memos, approvals and penalties are not created.
+
+Matching and source issues are calculated against the target masters, so issue
+counts can differ between environments. Reruns leave existing imports and server
+edits untouched, including their original importing user and links; they do not
+relink history after staff or stations are added later. Do not change the
+workbook or checksum to force a rerun, as that creates a separate import.
+
+After verifying the import, remove the uploaded private files from the server if
+they are no longer needed.
+
+### Local verification — 23 November 2026
+
+All 977 PHP tests passed (7,614 assertions), including 16 historical seeder
+cases. Laravel Pint passed for the changed PHP files. An additional isolated
+restoration of the complete private bundle used a fresh encryption key and
+compared all 5,217 rows against the previously verified source hashes, with no
+mismatches. It reproduced INR 2,728,321.00 in contractor penalties and 21,806.00
+negative points. A second seed added no records or audits. These checks did not
+modify the development database; no server upload has been performed.

@@ -114,6 +114,7 @@ final class ServiceContractRepository implements ServiceContractRepositoryInterf
 
     public function setStations(ServiceContract $contract, Collection $stations, int $actorId): void
     {
+        $contract->location_snapshot = null;
         $primary = $stations->firstWhere('id', $contract->station_id) ?? $stations->first();
         $contract->stations()->sync($stations->pluck('id')->all());
         $this->syncLines($contract, $stations->pluck('line_id')->filter()->unique()->all());

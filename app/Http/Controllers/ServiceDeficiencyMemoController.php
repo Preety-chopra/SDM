@@ -6,7 +6,6 @@ use App\Enums\AmCmcMemoCategory;
 use App\Enums\AmCmcReceivedSdmTab;
 use App\Enums\CmcTeamLeadMemoCategory;
 use App\Enums\CmcVerificationSdmTab;
-use App\Enums\DeficiencyType;
 use App\Enums\MemoStatus;
 use App\Enums\SdmType;
 use App\Enums\StationManagerMemoStatus;
@@ -23,6 +22,7 @@ use App\Http\Requests\UpdateMemoRequest;
 use App\Http\Requests\UpdateMemoStationManagerRequest;
 use App\Models\ServiceDeficiencyMemo;
 use App\Models\User;
+use App\Services\LineTopologyService;
 use App\Services\MasterDataService;
 use App\Services\MemoAssessmentService;
 use App\Services\MemoTimelineService;
@@ -45,6 +45,7 @@ class ServiceDeficiencyMemoController extends Controller
         private MemoAssessmentService $assessments,
         private MemoTimelineService $timeline,
         private ServiceContractService $contracts,
+        private LineTopologyService $lineTopology,
     ) {}
 
     public function index(ListMemosRequest $request): View
@@ -174,15 +175,20 @@ class ServiceDeficiencyMemoController extends Controller
             'cmcTeamLeadTable' => $isCmcTeamLead,
             'headerFilterTable' => $usesHeaderFilterTable,
             'sdmTypes' => SdmType::cases(),
-            'deficiencyTypes' => $request->user()->hasAnyRole([
+            'deficiencyOptions' => $request->user()->hasAnyRole([
                 UserRole::ManagerOperations->value,
                 UserRole::CmcTeamLead->value,
                 UserRole::CmcStaff->value,
                 UserRole::DeputyGeneralManager->value,
-            ]) ? DeficiencyType::cases() : [],
+            ]) ? collect(isset($filters['service_type'])
+                ? DeficiencyCatalog::for(SdmType::from($filters['service_type']))
+                : collect(DeficiencyCatalog::grouped())->flatten(1)->all())
+                ->unique('value')
+                ->values()
+                ->all() : [],
             'statuses' => $statuses,
             'stations' => $this->masterData->stations(),
-            'lines' => $this->masterData->lines(),
+            'lines' => $this->lineTopology->filterOptions($this->masterData->lines()),
             'bulkCmcActionsEnabled' => $bulkCmcActionsEnabled,
             'bulkCmcActions' => $bulkCmcActions,
             'showActionColumn' => $showActionColumn,
@@ -269,7 +275,7 @@ class ServiceDeficiencyMemoController extends Controller
             'staffAcknowledgement', 'workflowSteps.assignee', 'currentWorkflowStep', 'cmcStaff', 'assessments.items',
             'penaltyLetters', 'currentPenaltyLetter', 'objections', 'deduction',
             'cancellationApproval', 'cancellationWorkflowStep',
-            ...($sdmMemo->workflow_version < 2 ? ['legacyWorkflowReturns'] : []),
+            ...($sdmMemo->workflow_version < 2 ? ['legacyWorkflowReturns.actor:id,name'] : []),
         ]);
 
         $timelineSteps = $this->timeline->visibleSteps($sdmMemo, $request->user());
@@ -294,9 +300,12 @@ class ServiceDeficiencyMemoController extends Controller
             'deficiencyLabels' => $deficiencyLabels,
             'timelineSteps' => $timelineSteps,
             'timelineApprovals' => $timelineApprovals,
-            'legacyWorkflowRemarks' => $sdmMemo->workflow_version < 2
-                ? $this->timeline->visibleLegacyRemarks($sdmMemo, $request->user(), $timelineApprovals)
-                : [],
+            'workflowRemarks' => $this->timeline->remarks(
+                $sdmMemo->workflow_version >= 2 ? $timelineSteps : $timelineApprovals,
+                $sdmMemo->workflow_version < 2
+                    ? $this->timeline->visibleLegacyRemarks($sdmMemo, $request->user(), $timelineApprovals)
+                    : [],
+            ),
             'stationManagerConfirmationPreview' => $stationManagerConfirmationPreview,
             'showContractAssessment' => ! $request->user()->isStationController()
                 && ! $request->user()->hasRole(UserRole::StationManager->value),
@@ -338,12 +347,6 @@ class ServiceDeficiencyMemoController extends Controller
                 && $request->user()->can('act', $sdmMemo)) || $request->user()->can('assignCmcStaff', $sdmMemo)
                 ? $this->users->enabledForRole(UserRole::CmcStaff)
                 : collect(),
-            'priorApprovedCases' => filled($sdmMemo->employee_number) ? ServiceDeficiencyMemo::query()
-                ->whereKeyNot($sdmMemo->id)
-                ->where('employee_number', $sdmMemo->employee_number)
-                ->whereHas('assessments', fn ($query) => $query->where('status', 'approved'))
-                ->with(['assessments' => fn ($query) => $query->where('status', 'approved')])
-                ->latest('incident_date')->limit(10)->get() : collect(),
         ]);
     }
 

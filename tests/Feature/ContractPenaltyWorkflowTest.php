@@ -93,6 +93,43 @@ class ContractPenaltyWorkflowTest extends TestCase
         $this->assertCount(12, $revision->penaltyClauses);
     }
 
+    public function test_contract_retirement_is_submitted_only_from_the_confirmation_dialog(): void
+    {
+        $administrator = $this->user(UserRole::Administrator);
+        $contractor = Contractor::factory()->create();
+        $contract = $this->contract($contractor, $administrator, SdmType::Cfs, 'RETIRE-CONFIRM');
+        $contract->update(['status' => 'published']);
+
+        $response = $this->actingAs($administrator)->get(route('contracts.show', $contract));
+
+        $response->assertOk()->assertSee('Are you sure you want to retire this contract?');
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $trigger = $xpath->query('//button[normalize-space(.) = "Retire"]')->item(0);
+        $this->assertSame('button', $trigger?->getAttribute('type'));
+        $this->assertSame(0, $xpath->query('//button[normalize-space(.) = "Retire"]/ancestor::form')->length);
+        $dialog = '//dialog[@id="retire-contract-confirmation"]';
+        $this->assertSame(1, $xpath->query($dialog.'[not(@open)]')->length);
+        $this->assertSame(1, $xpath->query($dialog.'//button[@type="button" and normalize-space(.) = "No"]')->length);
+        $this->assertSame(1, $xpath->query($dialog.'//form[@method="POST" and @action="'.route('contracts.retire', $contract).'"]//button[@type="submit" and normalize-space(.) = "Yes, retire contract"]')->length);
+        $this->assertSame('published', $contract->fresh()->status);
+    }
+
+    #[TestWith(['draft'])]
+    #[TestWith(['retired'])]
+    public function test_unpublished_contracts_do_not_offer_retirement_confirmation(string $status): void
+    {
+        $administrator = $this->user(UserRole::Administrator);
+        $contractor = Contractor::factory()->create();
+        $contract = $this->contract($contractor, $administrator, SdmType::Cfs, 'NO-RETIRE');
+        $contract->update(['status' => $status]);
+
+        $this->actingAs($administrator)->get(route('contracts.show', $contract))
+            ->assertOk()
+            ->assertDontSee('id="retire-contract-confirmation"', false);
+    }
+
     #[TestWith([null, 'published'])]
     #[TestWith(['published', 'published'])]
     #[TestWith(['retired', 'retired'])]
@@ -1069,7 +1106,8 @@ class ContractPenaltyWorkflowTest extends TestCase
 
         $this->actingAs($stationManager)->get(route('sdm-memos.index'))
             ->assertOk()
-            ->assertSee('>Cancellation requested</span>', false);
+            ->assertSee('>Cancellation requested</span>', false)
+            ->assertSeeInOrder([$memo->serial_number, 'Cancellation requested by SM']);
     }
 
     public function test_contract_workflow_am_line_can_cancel_after_counselling_with_mandatory_remarks(): void
@@ -1091,6 +1129,10 @@ class ContractPenaltyWorkflowTest extends TestCase
             'remarks' => 'Cancellation requested by Station Manager.',
         ])->assertRedirect();
         $this->actingAs($lineManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee($memo->serial_number)
+            ->assertDontSee('Cancellation requested by SM');
+        $this->actingAs($stationManager)->get(route('sdm-memos.index'))
             ->assertOk()
             ->assertSee($memo->serial_number)
             ->assertDontSee('Cancellation requested by SM');

@@ -276,14 +276,14 @@
                                                 </x-column-filter-dropdown>
                                                 @break
                                             @case('SDM deficiency')
-                                                @if($deficiencyTypes === [])
+                                                @if($deficiencyOptions === [])
                                                     {{ $heading }}
                                                     @break
                                                 @endif
                                                 <x-column-filter-dropdown label="SDM deficiency" :active="filled($filters['deficiency_type'] ?? null)" width="w-80">
                                                     <select x-ref="picker" data-filter-picker form="sdm-filter-form" name="deficiency_type" aria-label="Filter by SDM deficiency" @change="$el.form.requestSubmit()" class="block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
                                                         <option value="">All deficiencies</option>
-                                                        @foreach($deficiencyTypes as $deficiencyType)<option value="{{ $deficiencyType->value }}" @selected(($filters['deficiency_type'] ?? '') === $deficiencyType->value)>{{ $deficiencyType->label() }}</option>@endforeach
+                                                        @foreach($deficiencyOptions as $deficiencyOption)<option value="{{ $deficiencyOption['value'] }}" @selected(($filters['deficiency_type'] ?? '') === $deficiencyOption['value'])>{{ $deficiencyOption['label'] }}</option>@endforeach
                                                     </select>
                                                 </x-column-filter-dropdown>
                                                 @break
@@ -370,7 +370,7 @@
                                                     class="inline-flex items-center gap-2 text-emerald-700 transition hover:underline focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:text-emerald-400 dark:focus:ring-offset-gray-900"
                                                 ><span>{{ $memo->serial_number }}</span><x-urgent-flag :memo="$memo" /></a>
                                             </div>
-                                            @if($lineManagerStatusView && $memo->hasPendingStationManagerCancellationRequest())
+                                            @if(($stationManagerStatusView || $lineManagerStatusView) && $memo->hasPendingStationManagerCancellationRequest())
                                                 <span class="inline-flex rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-900 dark:bg-orange-950 dark:text-orange-200">Cancellation requested by SM</span>
                                             @endif
                                             @if($category === null || $verificationTab)

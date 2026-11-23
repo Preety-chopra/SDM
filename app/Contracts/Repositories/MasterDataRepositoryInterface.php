@@ -21,6 +21,8 @@ interface MasterDataRepositoryInterface
 
     public function stationHasHistoricalSdms(Station $station): bool;
 
+    public function stationHasSectionHistory(Station $station): bool;
+
     public function saveLine(?Line $line, array $attributes): Line;
 
     public function saveStation(?Station $station, array $attributes): Station;

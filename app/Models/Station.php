@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['code', 'name', 'line_id', 'is_active', 'station_id', 'line_code', 'station_name', 'station_code', 'sequence_no'])]
+#[Fillable(['code', 'name', 'line_id', 'line_section_id', 'is_active', 'station_id', 'line_code', 'station_name', 'station_code', 'sequence_no'])]
 class Station extends Model
 {
     use HasFactory;
@@ -22,6 +22,21 @@ class Station extends Model
     public function metroLine(): BelongsTo
     {
         return $this->belongsTo(Line::class, 'line_id');
+    }
+
+    public function lineSection(): BelongsTo
+    {
+        return $this->belongsTo(LineSection::class);
+    }
+
+    public function operationalLineCode(): ?string
+    {
+        return $this->lineSection?->code ?? $this->metroLine?->code;
+    }
+
+    public function operationalLineName(): ?string
+    {
+        return $this->lineSection?->name ?? $this->metroLine?->name;
     }
 
     public function memos(): HasMany

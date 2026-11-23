@@ -173,6 +173,7 @@ class OutsourcedStaffManagementTest extends TestCase
     public function test_guests_are_redirected_to_login(): void
     {
         $this->get('/outsourced-staff')->assertRedirect(route('login'));
+        $this->get('/outsourced-staff/import-template')->assertRedirect(route('login'));
     }
 
     public function test_unprivileged_users_cannot_read_write_or_import_staff(): void
@@ -185,6 +186,7 @@ class OutsourcedStaffManagementTest extends TestCase
         $this->post(route('outsourced-staff.store'), $this->payload($staff->contractor))->assertForbidden();
         $this->put(route('outsourced-staff.update', $staff), $this->payload($staff->contractor))->assertForbidden();
         $this->post(route('outsourced-staff.import'), [])->assertForbidden();
+        $this->get('/outsourced-staff/import-template')->assertForbidden();
         $this->assertDatabaseCount('outsourced_staff', 1);
         $this->assertDatabaseMissing('audit_logs', ['event' => 'outsourced_staff.created']);
     }
@@ -198,6 +200,42 @@ class OutsourcedStaffManagementTest extends TestCase
 
         $this->assertModelExists($staff->contractor);
         $this->assertModelExists($staff);
+    }
+
+    public function test_staff_list_links_to_the_excel_sample(): void
+    {
+        $this->actingAs($this->administrator())->get(route('outsourced-staff.index'))
+            ->assertOk()
+            ->assertSee('href="'.url('/outsourced-staff/import-template').'"', false)
+            ->assertSee('Download sample Excel (.xlsx)');
+    }
+
+    public function test_the_downloaded_excel_sample_can_be_imported(): void
+    {
+        $contractor = Contractor::factory()->create();
+        $filename = 'outsourced-staff-import-sample.xlsx';
+
+        $download = $this->actingAs($this->administrator())->get('/outsourced-staff/import-template')
+            ->assertOk()
+            ->assertDownload($filename)
+            ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        $file = UploadedFile::fake()->createWithContent($filename, file_get_contents($download->baseResponse->getFile()->getPathname()));
+
+        $this->from(route('outsourced-staff.index'))->post(route('outsourced-staff.import'), [
+            'file' => $file,
+            'agency_map' => ['JMD' => $contractor->id],
+            'invalid_aadhaar' => 'reject',
+        ])->assertSessionHasNoErrors()
+            ->assertRedirect(route('outsourced-staff.index'))
+            ->assertSessionHas('import_result.created', 1);
+
+        $staff = OutsourcedStaff::query()->sole();
+        $this->assertSame('SAMPLE-001', $staff->employee_id);
+        $this->assertSame('1990-08-15', $staff->date_of_birth->toDateString());
+        $this->assertNull($staff->aadhaar_number);
+        $this->assertSame('00123D', $staff->entry_permit_number);
+        $this->assertSame($contractor->id, $staff->contractor_id);
     }
 
     public function test_import_combines_dob_preserves_source_labels_and_leading_zeroes_and_reports_bad_aadhaar(): void

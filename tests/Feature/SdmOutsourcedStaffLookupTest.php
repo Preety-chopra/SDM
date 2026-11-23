@@ -55,6 +55,50 @@ class SdmOutsourcedStaffLookupTest extends TestCase
             ->assertOk()->assertExactJson(['status' => 'missing']);
     }
 
+    public function test_employee_id_prefix_suggestions_are_scoped_and_only_include_id_and_name(): void
+    {
+        $staff = OutsourcedStaff::factory()->create(['employee_id' => 'EMP-002', 'name' => 'Second staff', 'aadhaar_number' => '012345678901']);
+        OutsourcedStaff::factory()->for($staff->contractor)->create(['employee_id' => 'EMP-001', 'name' => 'First staff', 'is_active' => false]);
+        OutsourcedStaff::factory()->for($staff->contractor)->create(['employee_id' => 'OTHER-001']);
+        OutsourcedStaff::factory()->create(['employee_id' => 'EMP-003']);
+
+        $this->actingAs($this->creator())->postJson(route('sdm-memos.staff-lookup'), [
+            'staff_identifier' => 'EMP-', 'contractor_id' => $staff->contractor_id, 'suggest' => true,
+        ])->assertOk()->assertExactJson([
+            'status' => 'missing',
+            'suggestions' => [
+                ['employee_number' => 'EMP-001', 'staff_name' => 'First staff'],
+                ['employee_number' => 'EMP-002', 'staff_name' => 'Second staff'],
+            ],
+        ])->assertHeader('Cache-Control', 'no-store, private');
+
+        $this->postJson(route('sdm-memos.staff-lookup'), [
+            'staff_identifier' => '0123', 'contractor_id' => $staff->contractor_id, 'suggest' => true,
+        ])->assertOk()->assertExactJson(['status' => 'missing', 'suggestions' => []]);
+    }
+
+    public function test_employee_suggestions_are_limited_and_treat_search_wildcards_literally(): void
+    {
+        $contractor = Contractor::factory()->create();
+        foreach (range(1, 12) as $number) {
+            OutsourcedStaff::factory()->for($contractor)->create(['employee_id' => sprintf('EMP-%03d', $number)]);
+        }
+        OutsourcedStaff::factory()->for($contractor)->create(['employee_id' => 'EMP_%001', 'name' => 'Literal ID']);
+        $this->actingAs($this->creator());
+
+        $this->postJson(route('sdm-memos.staff-lookup'), [
+            'staff_identifier' => 'EMP-', 'contractor_id' => $contractor->id, 'suggest' => true,
+        ])->assertOk()->assertJsonCount(10, 'suggestions')
+            ->assertJsonPath('suggestions.0.employee_number', 'EMP-001')
+            ->assertJsonPath('suggestions.9.employee_number', 'EMP-010');
+
+        $this->postJson(route('sdm-memos.staff-lookup'), [
+            'staff_identifier' => 'EMP_%', 'contractor_id' => $contractor->id, 'suggest' => true,
+        ])->assertOk()->assertExactJson([
+            'status' => 'missing', 'suggestions' => [['employee_number' => 'EMP_%001', 'staff_name' => 'Literal ID']],
+        ]);
+    }
+
     public function test_existing_inactive_staff_can_still_be_identified_for_an_incident(): void
     {
         $staff = OutsourcedStaff::factory()->create(['is_active' => false]);
@@ -187,8 +231,9 @@ class SdmOutsourcedStaffLookupTest extends TestCase
         $actor->roles()->firstOrFail()->revokePermissionTo(UserPermission::CreateMemos->value);
 
         $this->actingAs($actor->fresh())->postJson(route('sdm-memos.staff-lookup-for-edit', $memo), [
-            'staff_identifier' => $staff->employee_id, 'contractor_id' => $staff->contractor_id,
-        ])->assertOk()->assertJsonPath('staff_name', $staff->name);
+            'staff_identifier' => $staff->employee_id, 'contractor_id' => $staff->contractor_id, 'suggest' => true,
+        ])->assertOk()->assertJsonPath('staff_name', $staff->name)
+            ->assertJsonPath('suggestions.0.employee_number', $staff->employee_id);
 
         $this->actingAs(User::factory()->create())->postJson(route('sdm-memos.staff-lookup-for-edit', $memo), [
             'staff_identifier' => $staff->employee_id, 'contractor_id' => $staff->contractor_id,

@@ -17,7 +17,7 @@
             @endif
 
             @php
-                $selectedLineIds = array_map('strval', old('line_ids', $contract?->lines->pluck('id')->all() ?? []));
+                $selectedLineIds = array_map('strval', old('line_ids', $contract?->stations->pluck('line_id')->filter()->unique()->values()->all() ?: ($contract?->lines->pluck('id')->all() ?? [])));
                 $selectedStationIds = array_map('strval', old('station_ids', $contract?->stations->pluck('id')->all() ?? []));
             @endphp
             <form method="POST" enctype="multipart/form-data" action="{{ $contract ? route('contracts.update', $contract) : route('contracts.store') }}" class="flex flex-col gap-6" x-data="contractForm" data-line-ids="{{ json_encode($selectedLineIds) }}" data-station-ids="{{ json_encode($selectedStationIds) }}" data-stations="{{ $stations->map->only(['id', 'line_id', 'code', 'name', 'sequence_no'])->values()->toJson() }}">

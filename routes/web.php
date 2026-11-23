@@ -7,14 +7,17 @@ use App\Http\Controllers\ContractStationMappingController;
 use App\Http\Controllers\DashboardChartMemosController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DesignationController;
+use App\Http\Controllers\EmployeeHistoryController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\LineController;
 use App\Http\Controllers\LineManagerDashboardMemosController;
+use App\Http\Controllers\LineSectionsController;
 use App\Http\Controllers\MemoApprovalAttachmentController;
 use App\Http\Controllers\MemoAttachmentController;
 use App\Http\Controllers\MemoPenaltyLifecycleController;
 use App\Http\Controllers\MemoPrivateDocumentController;
 use App\Http\Controllers\MemoWorkflowController;
+use App\Http\Controllers\MergeLinesController;
 use App\Http\Controllers\OutsourcedStaffController;
 use App\Http\Controllers\OutsourcedStaffImportController;
 use App\Http\Controllers\ProfileController;
@@ -44,6 +47,11 @@ Route::get('/dashboard/chart-sdms', DashboardChartMemosController::class)
     ->name('dashboard.chart-sdms');
 
 Route::middleware(['auth', 'enabled'])->group(function () {
+    Route::get('/employee-history', [EmployeeHistoryController::class, 'index'])->name('employee-history.index');
+    Route::get('/sdm-memos/{sdm_memo}/employee-history', [EmployeeHistoryController::class, 'show'])->name('sdm-memos.employee-history');
+    Route::post('/lines/merge', MergeLinesController::class)->name('lines.merge');
+    Route::get('/lines/{line}/sections', [LineSectionsController::class, 'edit'])->name('lines.sections.edit');
+    Route::put('/lines/{line}/sections', [LineSectionsController::class, 'update'])->name('lines.sections.update');
     Route::post('/feedback', [FeedbackController::class, 'store'])->middleware('throttle:10,1')->name('feedback.store');
     Route::get('/feedback/replies', [FeedbackController::class, 'inbox'])->name('feedback.inbox');
     Route::get('/feedback/{feedback}/replies', [FeedbackController::class, 'thread'])->name('feedback.thread');
@@ -100,6 +108,7 @@ Route::middleware(['auth', 'enabled'])->group(function () {
     Route::resource('lines', LineController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::resource('stations', StationController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::resource('contractors', ContractorController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::get('/outsourced-staff/import-template', [OutsourcedStaffImportController::class, 'template'])->name('outsourced-staff.import-template');
     Route::post('/outsourced-staff/import', OutsourcedStaffImportController::class)->middleware('throttle:5,1')->name('outsourced-staff.import');
     Route::resource('outsourced-staff', OutsourcedStaffController::class)->except(['show', 'destroy']);
     Route::post('/contracts/{contract}/publish', [ServiceContractController::class, 'publish'])->name('contracts.publish');

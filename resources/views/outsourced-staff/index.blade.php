@@ -16,7 +16,10 @@
             @endif
             <div class="flex flex-wrap items-center justify-between gap-4">
                 <p class="text-sm text-gray-600 dark:text-gray-300">{{ number_format($staff->total()) }} {{ Str::plural('staff record', $staff->total()) }} matching your filters.</p>
-                <a href="{{ route('outsourced-staff.create') }}" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">Add staff member</a>
+                <div class="flex flex-wrap items-center gap-3">
+                    <a href="{{ route('outsourced-staff.import-template') }}" class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-gray-600 dark:text-emerald-300 dark:hover:bg-gray-800">Download sample Excel (.xlsx)</a>
+                    <a href="{{ route('outsourced-staff.create') }}" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">Add staff member</a>
+                </div>
             </div>
             <form method="GET" action="{{ route('outsourced-staff.index') }}" class="grid gap-4 rounded-2xl border border-gray-200 bg-white p-5 sm:grid-cols-2 lg:grid-cols-5 dark:border-gray-700 dark:bg-gray-800">
                 <div>
@@ -76,7 +79,10 @@
                 <summary class="cursor-pointer font-semibold text-gray-900 dark:text-white">Import outsourced staff from Excel</summary>
                 <form method="POST" action="{{ route('outsourced-staff.import') }}" enctype="multipart/form-data" class="mt-5 flex flex-col gap-5">
                     @csrf
-                    <p class="text-sm text-gray-600 dark:text-gray-300">Use the original 13-column staff list (.xlsx, up to 10 MB and 10,000 rows). DATE, MONTH and YEAR become one date of birth. Existing employee IDs are skipped. Source category, gender and verification labels are preserved.</p>
+                    <div class="flex flex-col gap-2 text-sm text-gray-600 dark:text-gray-300">
+                        <p>Replace the sample row with your staff details and keep all 13 column headings in order. Enter the date of birth in the DATE, MONTH and YEAR columns. Use JMD, NCES or SKM in CONTRACTOR AGENCY and match each code you use to a contractor below.</p>
+                        <p>Upload an .xlsx workbook up to 10 MB with at most 10,000 staff rows. Existing employee IDs are skipped. Category, gender and verification labels are preserved.</p>
+                    </div>
                     <div>
                         <x-input-label for="staff_file" value="Excel workbook" required />
                         <input id="staff_file" type="file" name="file" accept=".xlsx" required class="mt-1 block w-full text-sm text-gray-700 file:mr-4 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-4 file:py-2 file:font-semibold file:text-emerald-800 dark:text-gray-300">

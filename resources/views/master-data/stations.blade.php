@@ -75,6 +75,9 @@
                                                         </option>
                                                     @endforeach
                                                 </select>
+                                                @if($station->lineSection)
+                                                    <span class="block text-xs text-emerald-700 dark:text-emerald-400">{{ $station->lineSection->name }}</span>
+                                                @endif
                                             </td>
                                             <td class="px-2 py-2 text-center">
                                                 <input form="station-update-{{ $station->id }}" type="hidden" name="is_active" value="0">

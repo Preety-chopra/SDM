@@ -985,7 +985,8 @@ class SdmWorkflowTest extends TestCase
         ])->assertRedirect();
         $this->actingAs($stationManager)->get(route('sdm-memos.index'))
             ->assertOk()
-            ->assertSee('>Cancellation requested</span>', false);
+            ->assertSee('>Cancellation requested</span>', false)
+            ->assertSeeInOrder([$memo->serial_number, 'Cancellation requested by SM']);
         $this->actingAs($lineManager)->get(route('sdm-memos.index'))
             ->assertOk()
             ->assertSeeInOrder([$memo->serial_number, 'Cancellation requested by SM']);
@@ -1008,6 +1009,10 @@ class SdmWorkflowTest extends TestCase
         ]);
         $this->assertSame(MemoCancellationType::AfterCounselling, $memo->fresh()->cancellation_type);
         $this->actingAs($lineManager)->get(route('sdm-memos.index'))
+            ->assertOk()
+            ->assertSee('Cancelled after counselling by AM/Line')
+            ->assertDontSee('Cancellation requested by SM');
+        $this->actingAs($stationManager)->get(route('sdm-memos.index'))
             ->assertOk()
             ->assertSee('Cancelled after counselling by AM/Line')
             ->assertDontSee('Cancellation requested by SM');

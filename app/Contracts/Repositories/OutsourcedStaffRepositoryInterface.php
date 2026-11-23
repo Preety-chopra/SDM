@@ -15,4 +15,6 @@ interface OutsourcedStaffRepositoryInterface
     public function employeeIds(): array;
 
     public function matchingIdentifier(string $employeeId, ?string $aadhaarHash, int $contractorId): Collection;
+
+    public function employeeIdSuggestions(string $prefix, int $contractorId): Collection;
 }

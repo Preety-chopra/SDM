@@ -85,6 +85,7 @@ class ServiceContract extends Model
     protected function casts(): array
     {
         return [
+            'location_snapshot' => 'array',
             'service_type' => SdmType::class,
             'effective_from' => 'date',
             'effective_to' => 'date',

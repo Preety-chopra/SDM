@@ -57,6 +57,10 @@ final class ServiceContractService
 
     public function locationSummaries(ServiceContract $contract): Collection
     {
+        if ($contract->location_snapshot !== null) {
+            return collect($contract->location_snapshot);
+        }
+
         return $contract->lines
             ->sortBy('code', SORT_NATURAL | SORT_FLAG_CASE)
             ->map(function (Line $line) use ($contract): string {
@@ -186,14 +190,19 @@ final class ServiceContractService
         return DB::transaction(function () use ($contract, $actor): ServiceContract {
             $contract->load('penaltyClauses');
             $this->ensureLocationPivots($contract);
+            $contract->load('stations');
+            $lineIds = $contract->stations->pluck('line_id')->filter()->unique()->values()->all();
+            $lineIds = $lineIds ?: $contract->lines()->pluck('lines.id')->all();
+            $primaryLineId = $contract->stations->firstWhere('id', $contract->station_id)?->line_id ?? ($lineIds[0] ?? $contract->line_id);
             $revision = $this->contracts->create([
                 ...Arr::only($contract->getAttributes(), ['contract_group', 'contractor_id', 'line_id', 'station_id', 'service_type', 'contract_number', 'title', 'effective_from', 'effective_to', 'cmc_staff_id', 'source_document_name', 'source_document_path', 'source_document_mime', 'source_document_size']),
+                'line_id' => $primaryLineId,
                 'version' => ServiceContract::query()->where('contract_group', $contract->contract_group)->max('version') + 1,
                 'status' => 'draft',
                 'created_by' => $actor->id,
                 'updated_by' => $actor->id,
             ]);
-            $revision->lines()->sync($contract->lines()->pluck('lines.id'));
+            $revision->lines()->sync($lineIds);
             $revision->stations()->sync($contract->stations()->pluck('stations.id'));
             $revision->penaltyClauses()->createMany($contract->penaltyClauses->map(fn ($clause) => Arr::except($clause->getAttributes(), ['id', 'service_contract_id', 'created_at', 'updated_at']))->all());
             $this->audit->record($revision, $actor, 'contract.revision_created', after: ['source_contract_id' => $contract->id, 'version' => $revision->version]);
@@ -239,6 +248,8 @@ final class ServiceContractService
 
     private function syncLocations(ServiceContract $contract, array $data): void
     {
+        $contract->location_snapshot = null;
+        $contract->save();
         $contract->lines()->sync($data['line_ids']);
         $contract->stations()->sync($data['station_ids']);
     }

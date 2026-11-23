@@ -30,6 +30,11 @@ class Line extends Model
         return $this->hasMany(Station::class);
     }
 
+    public function sections(): HasMany
+    {
+        return $this->hasMany(LineSection::class);
+    }
+
     public function serviceContracts(): BelongsToMany
     {
         return $this->belongsToMany(ServiceContract::class, 'service_contract_line');

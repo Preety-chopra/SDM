@@ -39,7 +39,32 @@
             </section>
             <div class="flex flex-wrap justify-end gap-3">
                 @if($contract->status === 'draft')<a href="{{ route('contracts.edit', $contract) }}" class="rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-700">Edit draft</a><form method="POST" action="{{ route('contracts.publish', $contract) }}">@csrf<button class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">Publish version</button></form>@if($contract->memos_count === 0)<form method="POST" action="{{ route('contracts.destroy', $contract) }}">@csrf @method('DELETE')<button class="rounded-lg border border-rose-700 px-4 py-2 text-sm font-semibold text-rose-700">Delete draft</button></form>@endif @else<form method="POST" action="{{ route('contracts.revise', $contract) }}">@csrf<button class="rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-700">Create revision</button></form>@endif
-                @if($contract->status === 'published')<form method="POST" action="{{ route('contracts.retire', $contract) }}">@csrf<button class="rounded-lg border border-rose-700 px-4 py-2 text-sm font-semibold text-rose-700">Retire</button></form>@endif
+                @if($contract->status === 'published')
+                    <div x-data="{ submitting: false }">
+                        <button type="button" @click="$refs.retirementDialog.showModal()" aria-haspopup="dialog" aria-controls="retire-contract-confirmation" class="rounded-lg border border-rose-700 px-4 py-2 text-sm font-semibold text-rose-700">Retire</button>
+                        <dialog
+                            id="retire-contract-confirmation"
+                            x-ref="retirementDialog"
+                            aria-labelledby="retire-contract-title"
+                            aria-describedby="retire-contract-description"
+                            @cancel="if (submitting) $event.preventDefault()"
+                            class="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border-0 bg-white p-6 text-gray-900 shadow-2xl backdrop:bg-gray-950/60 dark:bg-gray-800 dark:text-gray-100"
+                        >
+                            <form method="POST" action="{{ route('contracts.retire', $contract) }}" @submit="if (submitting) { $event.preventDefault() } else { submitting = true }" class="flex flex-col gap-5">
+                                @csrf
+                                <div class="flex flex-col gap-2">
+                                    <h2 id="retire-contract-title" class="text-lg font-semibold">Retire contract?</h2>
+                                    <p id="retire-contract-description" class="text-sm text-gray-600 dark:text-gray-300">Are you sure you want to retire this contract?</p>
+                                    <p class="break-words text-sm font-semibold">{{ $contract->contract_number }} · v{{ $contract->version }}</p>
+                                </div>
+                                <div class="flex flex-wrap justify-end gap-3">
+                                    <button type="button" autofocus @click="$refs.retirementDialog.close()" :disabled="submitting" class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-60 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">No</button>
+                                    <button type="submit" :disabled="submitting" class="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-800 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 disabled:opacity-60 dark:focus:ring-offset-gray-800">Yes, retire contract</button>
+                                </div>
+                            </form>
+                        </dialog>
+                    </div>
+                @endif
             </div>
         </div>
     </div>

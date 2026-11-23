@@ -44,6 +44,6 @@ final class AftCashCheckReportRepository implements AftCashCheckReportRepository
 
     public function stationsForUpdate(array $ids): Collection
     {
-        return Station::query()->with('metroLine')->whereKey($ids)->lockForUpdate()->get()->keyBy('id');
+        return Station::query()->with(['metroLine', 'lineSection'])->whereKey($ids)->lockForUpdate()->get()->keyBy('id');
     }
 }

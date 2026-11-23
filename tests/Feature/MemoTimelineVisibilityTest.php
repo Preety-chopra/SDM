@@ -95,6 +95,91 @@ class MemoTimelineVisibilityTest extends TestCase
             ->assertDontSee('Complaint remark <follow-up>.', false);
     }
 
+    #[TestWith([1])]
+    #[TestWith([2])]
+    public function test_remarks_section_displays_each_hierarchy_levels_remarks_and_author_above_history(int $version): void
+    {
+        [$memo] = $this->pendingMemo($version);
+        $stages = $version === 2 ? WorkflowStepType::cases() : WorkflowStage::cases();
+        $expected = [];
+        foreach ($stages as $index => $stage) {
+            $author = $this->user($stage->role());
+            $author->update(['name' => 'Remark author <'.$index.'>']);
+            $remark = "Review <level {$index}>\nPlease verify the evidence.";
+            $attributes = [
+                'assigned_to' => $author->id,
+                'assigned_name' => 'Different assignee',
+                'acted_by' => $author->id,
+                'acted_at' => now(),
+                'decision' => ['forwarded', 'returned', 'approved'][$index % 3],
+                'remarks' => $remark,
+            ];
+            if ($version === 2) {
+                $memo->workflowSteps()->updateOrCreate(['sequence' => $index + 1], [
+                    ...$attributes, 'round' => $index < 8 ? 1 : 2,
+                    'stage' => $stage->value, 'role' => $stage->role()->value,
+                    'actor_name' => $author->name,
+                ]);
+            } else {
+                $memo->approvals()->updateOrCreate(['sequence' => $index + 1], [
+                    ...$attributes, 'role' => $stage->value, 'signer_name' => $author->name,
+                ]);
+            }
+            $expected[] = [$stage->label(), $author->name, $remark];
+        }
+
+        $response = $this->actingAs($this->user(UserRole::Administrator))->get(route('sdm-memos.show', $memo));
+
+        $response->assertOk()->assertSeeInOrder([
+            'SDM remarks', $expected[0][2], $version === 2 ? 'Case timeline' : 'Approval history',
+        ]);
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $rows = $xpath->query('//section[@aria-label="SDM remarks" and not(ancestor::details)]//li');
+        $this->assertCount(count($expected), $rows);
+        foreach ($expected as $index => [$label, $author, $remark]) {
+            $row = $rows->item($index)->textContent;
+            $this->assertStringContainsString($label, $row);
+            $this->assertStringContainsString($author, $row);
+            $this->assertStringContainsString($remark, $row);
+            $response->assertDontSee($remark, false)->assertDontSee($author, false);
+        }
+    }
+
+    public function test_remarks_section_preserves_legacy_return_remarks_with_the_original_authors(): void
+    {
+        [$memo, $sm, $am] = $this->pendingMemo(1);
+        $this->actingAs($sm)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'forward', 'forward_to_employee_number' => $am->employee_number,
+            'remarks' => 'Original SM forwarding remark.',
+        ])->assertSessionHasNoErrors();
+        $this->actingAs($am)->post(route('sdm-memos.workflow.store', $memo), [
+            'action' => 'return', 'remarks' => 'Please correct the station record.',
+        ])->assertSessionHasNoErrors();
+
+        $response = $this->actingAs($sm)->get(route('sdm-memos.show', $memo));
+
+        $response->assertOk()->assertSeeInOrder([
+            'SDM remarks', $sm->name, 'Original SM forwarding remark.',
+            $am->name, 'Please correct the station record.', 'Approval history',
+        ]);
+    }
+
+    #[TestWith([1])]
+    #[TestWith([2])]
+    public function test_remarks_section_respects_hierarchy_visibility_and_omits_blank_remarks(int $version): void
+    {
+        [$memo, $sm] = $this->pendingMemo($version);
+        $relation = $version === 2 ? $memo->workflowSteps() : $memo->approvals();
+        $relation->where('sequence', 1)->update(['remarks' => '   ']);
+        $relation->where('sequence', 3)->update(['remarks' => 'Restricted Manager CMC remark.']);
+
+        $this->actingAs($sm)->get(route('sdm-memos.show', $memo))
+            ->assertOk()->assertDontSee('aria-label="SDM remarks"', false)
+            ->assertDontSee('Restricted Manager CMC remark.');
+    }
+
     /** @return array{ServiceDeficiencyMemo, User, User} */
     private function pendingMemo(int $version): array
     {

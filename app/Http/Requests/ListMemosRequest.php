@@ -12,6 +12,9 @@ use App\Enums\SdmType;
 use App\Enums\StationManagerMemoStatus;
 use App\Enums\UserRole;
 use App\Enums\WorkflowStage;
+use App\Models\Line;
+use App\Models\LineSection;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -33,7 +36,11 @@ class ListMemosRequest extends FormRequest
             'service_type' => ['nullable', Rule::enum(SdmType::class)],
             'deficiency_type' => ['nullable', Rule::enum(DeficiencyType::class)],
             'station_id' => ['nullable', 'integer', Rule::exists('stations', 'id')],
-            'line_code' => ['nullable', 'string', Rule::exists('lines', 'code')],
+            'line_code' => ['nullable', 'string', 'max:30', function (string $attribute, mixed $value, Closure $fail): void {
+                if (! Line::query()->where('code', $value)->exists() && ! LineSection::query()->where('code', $value)->exists()) {
+                    $fail('Select a valid line or section.');
+                }
+            }],
             'incident_date' => ['nullable', 'date_format:Y-m-d'],
             'incident_date_from' => ['nullable', 'date_format:Y-m-d'],
             'incident_date_to' => [

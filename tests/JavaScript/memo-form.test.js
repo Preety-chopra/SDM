@@ -97,6 +97,30 @@ test('removing the last selected deficiency clears the selection', () => {
     assert.equal(form.has('cash_check'), false);
 });
 
+test('choosing a deficiency closes the dropdown and returns focus to its control', () => {
+    const template = readFileSync(new URL('../../resources/views/sdm-memos/form.blade.php', import.meta.url), 'utf8');
+    const checkbox = template.match(/<input\b[^\n]*name="deficiencies\[\]"[^\n]*>/)[0];
+    const handler = checkbox.match(/@change="([^"]+)"/)?.[1];
+    assert.ok(handler, 'Choosing a deficiency needs a change handler');
+    const form = createMemoForm();
+    let focused = false;
+    form.$refs = { deficienciesControl: { focus() { focused = true; } } };
+    form.$nextTick = (callback) => callback();
+
+    for (const type of ['dress_code', 'late_reporting']) {
+        form.deficiencyOpen = true;
+        form.selected.push(type);
+        focused = false;
+
+        runInNewContext(`with ($data) { ${handler} }`, { $data: form });
+
+        assert.equal(form.deficiencyOpen, false);
+        assert.equal(focused, true);
+    }
+
+    assert.deepEqual(form.selected, ['dress_code', 'late_reporting']);
+});
+
 test('the form restores more than five selections from a draft or validation error', () => {
     const form = createMemoForm();
     const selected = ['dress_code', 'mobile_phone_on_duty', 'improper_cleanliness', 'late_reporting', 'misbehavior', 'public_complaint'];
