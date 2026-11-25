@@ -63,8 +63,17 @@ final class WorkflowRoleDashboardRepository implements WorkflowRoleDashboardRepo
 
     public function recentMemos(User $user, UserRole $role, CarbonInterface $from, CarbonInterface $to, ?SdmType $serviceType, ?MemoStatus $status, int $limit = 10): Collection
     {
-        return $this->filteredQuery($user, $role, $from, $to, $serviceType, $status)
-            ->select(['id', 'service_type', 'station_name', 'line_code', 'status', 'submitted_at', 'created_at'])
+        $query = $this->filteredQuery($user, $role, $from, $to, $serviceType, $status)
+            ->select(['id', 'service_type', 'station_name', 'line_code', 'status', 'submitted_at', 'created_at']);
+
+        if (in_array($role, UserRole::cmcRoles(), true)) {
+            CmcSdmTableQuery::forLiveMemos($query->addSelect(['serial_number', 'line_name', 'incident_date', 'contractor_id', 'employee_number']));
+        }
+        if (in_array($role, UserRole::cmcReviewers(), true)) {
+            CmcSdmTableQuery::withStaffProposal($query);
+        }
+
+        return $query
             ->latest('submitted_at')
             ->latest('id')
             ->limit($limit)

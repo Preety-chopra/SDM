@@ -69,9 +69,11 @@ class WorkflowRoleDashboardTest extends TestCase
             ->assertSee('Select a bar to view its SDMs.')
             ->assertSee('chartMemosUrl', false)
             ->assertSee('Select an SDM below to open its full details.')
+            ->assertSeeInOrder(['>SDM Serial Number</th>', '>Line</th>', '>Station</th>', '>Proposed Action</th>', '>Status</th>'], false)
+            ->assertSeeInOrder(['>L-1E</td>', '>Central Station</td>'], false)
             ->assertDontSee('OTHER-AM-CMC')
-            ->assertDontSee($pending->serial_number)
-            ->assertDontSee($completed->serial_number);
+            ->assertSee($pending->serial_number)
+            ->assertSee($completed->serial_number);
     }
 
     public function test_am_cmc_and_downstream_dashboards_do_not_display_draft_status(): void
@@ -117,8 +119,8 @@ class WorkflowRoleDashboardTest extends TestCase
                 && $dashboard['completed_count'] === 1)
             ->assertSee('CMC Staff Dashboard')
             ->assertDontSee('OTHER-CMC')
-            ->assertDontSee($pending->serial_number)
-            ->assertDontSee($lifecycle->serial_number);
+            ->assertSee($pending->serial_number)
+            ->assertSee($lifecycle->serial_number);
     }
 
     public function test_cmc_sm_dashboard_contains_only_sdms_routed_to_that_user(): void
@@ -146,8 +148,8 @@ class WorkflowRoleDashboardTest extends TestCase
             ->assertSee('Select a bar to view its SDMs.')
             ->assertSee('chartMemosUrl', false)
             ->assertDontSee('OTHER-CMC-SM')
-            ->assertDontSee($pending->serial_number)
-            ->assertDontSee($assigned->serial_number);
+            ->assertSee($pending->serial_number)
+            ->assertSee($assigned->serial_number);
     }
 
     public function test_cmc_sm_can_load_only_their_sdms_for_a_selected_status_bar(): void
@@ -171,7 +173,9 @@ class WorkflowRoleDashboardTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'memos')
             ->assertJsonPath('memos.0.id', $selected->id)
-            ->assertJsonMissingPath('memos.0.serial_number')
+            ->assertJsonPath('memos.0.line', 'L-1E')
+            ->assertJsonPath('memos.0.station', 'Central Station')
+            ->assertJsonPath('memos.0.serial_number', $selected->serial_number)
             ->assertJsonPath('memos.0.url', route('sdm-memos.show', $selected));
     }
 
@@ -197,8 +201,8 @@ class WorkflowRoleDashboardTest extends TestCase
                 && $dashboard['completed_count'] === 1)
             ->assertSee('DGM/CMC Dashboard')
             ->assertDontSee('OTHER-DGM')
-            ->assertDontSee($pending->serial_number)
-            ->assertDontSee($approved->serial_number);
+            ->assertSee($pending->serial_number)
+            ->assertSee($approved->serial_number);
     }
 
     public function test_workflow_user_can_load_only_their_sdms_for_a_selected_status_bar(): void
@@ -222,7 +226,7 @@ class WorkflowRoleDashboardTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'memos')
             ->assertJsonPath('memos.0.id', $selected->id)
-            ->assertJsonMissingPath('memos.0.serial_number')
+            ->assertJsonPath('memos.0.serial_number', $selected->serial_number)
             ->assertJsonPath('memos.0.url', route('sdm-memos.show', $selected));
     }
 

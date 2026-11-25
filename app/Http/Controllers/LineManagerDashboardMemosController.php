@@ -28,6 +28,7 @@ class LineManagerDashboardMemosController extends Controller
             'memos' => $memos->take(100)->map(fn (ServiceDeficiencyMemo $memo): array => [
                 'id' => $memo->id,
                 'service' => $memo->service_type->code(),
+                'line' => $memo->line_code ?: 'Not recorded',
                 'station' => $memo->station_name ?: 'Not recorded',
                 'status' => $memo->status->label(),
                 'submitted_at' => $memo->submitted_at?->format('d M Y'),

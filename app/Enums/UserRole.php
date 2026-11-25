@@ -52,6 +52,18 @@ enum UserRole: string
         return $this === self::Station;
     }
 
+    /** @return list<self> */
+    public static function cmcReviewers(): array
+    {
+        return [self::CmcTeamLead, self::ManagerOperations, self::DeputyGeneralManager];
+    }
+
+    /** @return list<self> */
+    public static function cmcRoles(): array
+    {
+        return [self::CmcStaff, ...self::cmcReviewers()];
+    }
+
     public function requiresEmployeeNumber(): bool
     {
         return in_array($this, [self::StationManager, self::AssistantManager, self::ManagerOperations, self::CmcTeamLead, self::CmcStaff, self::DeputyGeneralManager, self::Aft, self::DgmAft], true);

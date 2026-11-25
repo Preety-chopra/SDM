@@ -125,6 +125,7 @@ class ServiceDeficiencyMemoController extends Controller
         }
 
         $cmcStaffAssignmentTab = $category === CmcTeamLeadMemoCategory::PendingStaffAssignment->value;
+        $showSdmTypeTabs = $cmcStaffAssignmentTab || $category === CmcTeamLeadMemoCategory::AssignedToStaff->value;
         $verificationTab = $request->verificationTab();
         $receivedTab = $request->receivedTab();
         $memos = $this->memos->paginateFor($request->user(), $filters, $pendingStage, $category, $receivedTab, $verificationTab);
@@ -156,7 +157,7 @@ class ServiceDeficiencyMemoController extends Controller
             : collect();
         $showActionColumn = ! $isStationManager
             && ! $isLineManager
-            && ! ($isCmcTeamLead && ($category === null || $cmcStaffAssignmentTab || $verificationTab !== null))
+            && ! ($isCmcTeamLead && ($category === null || $showSdmTypeTabs || $verificationTab !== null))
             && $memos->getCollection()->contains(
                 fn (ServiceDeficiencyMemo $memo): bool => $this->hasVisibleTableAction(
                     $request->user(),
@@ -173,14 +174,10 @@ class ServiceDeficiencyMemoController extends Controller
             'stationManagerStatusView' => $isStationManager,
             'lineManagerStatusView' => $isLineManager,
             'cmcTeamLeadTable' => $isCmcTeamLead,
+            'cmcSdmTable' => $request->user()->hasAnyRole(UserRole::cmcRoles()),
             'headerFilterTable' => $usesHeaderFilterTable,
             'sdmTypes' => SdmType::cases(),
-            'deficiencyOptions' => $request->user()->hasAnyRole([
-                UserRole::ManagerOperations->value,
-                UserRole::CmcTeamLead->value,
-                UserRole::CmcStaff->value,
-                UserRole::DeputyGeneralManager->value,
-            ]) ? collect(isset($filters['service_type'])
+            'deficiencyOptions' => $request->user()->hasAnyRole(UserRole::cmcRoles()) ? collect(isset($filters['service_type'])
                 ? DeficiencyCatalog::for(SdmType::from($filters['service_type']))
                 : collect(DeficiencyCatalog::grouped())->flatten(1)->all())
                 ->unique('value')
@@ -197,6 +194,7 @@ class ServiceDeficiencyMemoController extends Controller
                 : collect(),
             'memoCategoryTabs' => $memoCategoryTabs,
             'cmcStaffAssignmentTab' => $cmcStaffAssignmentTab,
+            'showSdmTypeTabs' => $showSdmTypeTabs,
             'verificationTab' => $verificationTab,
             'verificationTabs' => CmcVerificationSdmTab::cases(),
             'receivedTab' => $receivedTab,

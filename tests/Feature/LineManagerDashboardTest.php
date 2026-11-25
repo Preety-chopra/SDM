@@ -72,7 +72,10 @@ class LineManagerDashboardTest extends TestCase
             ->assertSee('Select a station name below to open the SDM details.')
             ->assertDontSee('>Action</th>', false)
             ->assertSee(':href="memo.url" x-text="memo.station"', false)
+            ->assertSee('x-text="memo.line"', false)
+            ->assertSeeInOrder(['>Line</th>', '>Station</th>', '>Status</th>'], false)
             ->assertSee('>L-1E</td>', false)
+            ->assertSee('>South Station</td>', false)
             ->assertSee('>L-3E&amp;4</td>', false)
             ->assertSee('>L-9</td>', false)
             ->assertSee('>AEL</td>', false)
@@ -216,6 +219,8 @@ class LineManagerDashboardTest extends TestCase
             ->assertJsonPath('line_code', 'L-3E&4')
             ->assertJsonCount(1, 'memos')
             ->assertJsonPath('memos.0.id', $selectedMemo->id)
+            ->assertJsonPath('memos.0.line', 'L-3E&4')
+            ->assertJsonPath('memos.0.station', 'Central Station')
             ->assertJsonMissingPath('memos.0.serial_number')
             ->assertJsonPath('memos.0.url', route('sdm-memos.show', $selectedMemo));
     }

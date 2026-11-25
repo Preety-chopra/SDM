@@ -20,7 +20,7 @@ final class UserRepository implements UserRepositoryInterface
     {
         return User::query()
             ->select(['id', 'name', 'email', 'employee_number', 'phone', 'designation', 'station_id', 'is_enabled', 'created_at'])
-            ->with('station:id,code,name')
+            ->with(['station:id,line_id,code,name', 'station.metroLine:id,code,name'])
             ->role($role)
             ->when($search, function (Builder $query, string $search): void {
                 $query->where(function (Builder $query) use ($search): void {

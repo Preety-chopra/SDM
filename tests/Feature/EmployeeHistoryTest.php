@@ -108,7 +108,13 @@ class EmployeeHistoryTest extends TestCase
     public function test_sdm_history_uses_the_memo_identity_excludes_the_current_memo_and_ignores_query_overrides(): void
     {
         $memo = $this->memo(['serial_number' => 'CURRENT-SDM']);
-        $prior = $this->memo(['contractor_id' => $memo->contractor_id, 'serial_number' => 'PRIOR-SDM']);
+        $prior = $this->memo([
+            'contractor_id' => $memo->contractor_id,
+            'serial_number' => 'PRIOR-SDM',
+            'incident_date' => '2026-02-15',
+            'line_code' => 'PAST-LINE',
+            'station_name' => 'Previous Station',
+        ]);
         $other = $this->memo(['serial_number' => 'UNRELATED-SDM']);
 
         $response = $this->actingAs($this->user(UserRole::ManagerOperations))
@@ -116,6 +122,73 @@ class EmployeeHistoryTest extends TestCase
             ->assertOk()->assertSee('PRIOR-SDM')->assertDontSee('UNRELATED-SDM');
 
         $this->assertSame([$prior->id], $response->viewData('memos')->pluck('id')->all());
+
+        $document = new \DOMDocument;
+        $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING);
+        $xpath = new \DOMXPath($document);
+        $table = '//table[caption="SDM records, most recent incident first"]';
+        $cellText = fn (\DOMNode $cell): string => trim($cell->textContent);
+
+        $this->assertSame(
+            ['Line', 'Station', 'Incident Date'],
+            array_map($cellText, iterator_to_array($xpath->query($table.'/thead/tr/th[position() >= 4 and position() <= 6]'))),
+        );
+        $this->assertSame(
+            ['PAST-LINE', 'Previous Station', '15 Feb 2026'],
+            array_map($cellText, iterator_to_array($xpath->query($table.'/tbody/tr/td[position() >= 4 and position() <= 6]'))),
+        );
+    }
+
+    public function test_sdm_history_displays_imported_records_in_cmc_table_column_order(): void
+    {
+        $memo = $this->memo();
+        $this->historical($memo->contractor, [
+            'source_row' => 42,
+            'memo_number' => 'HISTORY-42',
+            'source_line' => '8 E',
+            'source_station' => 'TEST STATION',
+            'employee_name' => 'Workbook Staff',
+            'aadhaar_number' => '1234-5678-9012',
+            'discrepancies' => 'Reported late',
+            'recommended_action' => 'Written warning',
+            'contractor_penalty' => '1234.50',
+            'cp_number' => 'CP/42',
+            'negative_points' => '2.50',
+        ]);
+        $this->historical($memo->contractor, [
+            'memo_number' => 'HISTORY-43',
+            'incident_date' => null,
+            'source_date' => 'Unclear date',
+            'aadhaar_number' => 'Invalid Aadhaar text',
+            'recommended_action' => null,
+            'contractor_penalty' => 0,
+            'negative_points' => 0,
+        ]);
+
+        $response = $this->actingAs($this->user(UserRole::CmcTeamLead))
+            ->get(route('sdm-memos.employee-history', $memo))
+            ->assertOk()
+            ->assertDontSee('1234-5678-9012')
+            ->assertDontSee('Invalid Aadhaar text');
+
+        $document = new \DOMDocument;
+        $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING);
+        $xpath = new \DOMXPath($document);
+        $table = '//table[caption="Imported employee records, most recent incident first"]';
+        $cellText = fn (\DOMNode $cell): string => trim($cell->textContent);
+
+        $this->assertSame([
+            'SDM Serial Number', 'SDM Type', 'SDM Deficiency', 'Line', 'Station', 'Incident Date', 'Proposed Penalty Amount',
+            'Cumulative Negative Points', 'Proposed Negative Points', 'Proposed Action', 'SNO', 'ON DUTY STAFF', 'FILE NO', 'Aadhar Number', 'C&P No',
+        ], array_map($cellText, iterator_to_array($xpath->query($table.'/thead/tr/th'))));
+        $this->assertSame([
+            'HISTORY-42', '—', 'Reported late', '8 E', 'TEST STATION', '01 Jan 2025', '₹1,234.50', '0', '2.5', 'Written warning',
+            '1', 'Workbook Staff', '009001', 'XXXX XXXX 9012', 'CP/42',
+        ], array_map($cellText, iterator_to_array($xpath->query($table.'/tbody/tr[1]/td'))));
+        $this->assertSame([
+            'HISTORY-43', '—', '—', '—', '—', 'Unclear date', '₹0.00', '—', '0', '—',
+            '2', 'History Employee', '009001', '—', '—',
+        ], array_map($cellText, iterator_to_array($xpath->query($table.'/tbody/tr[2]/td'))));
     }
 
     public function test_sdm_history_cannot_bypass_access_to_a_draft(): void
@@ -163,7 +236,7 @@ class EmployeeHistoryTest extends TestCase
         $this->assertStringContainsString('employee_number=009001', $response->viewData('memos')->url(1));
     }
 
-    public function test_history_displays_the_latest_approved_assessment_and_labels_unapproved_proposals(): void
+    public function test_history_shows_the_latest_proposal_even_when_an_older_assessment_was_approved(): void
     {
         $memo = $this->memo(['serial_number' => 'ASSESSED-SDM']);
         $attributes = [
@@ -177,11 +250,11 @@ class EmployeeHistoryTest extends TestCase
         $proposal = $this->memo(['contractor_id' => $memo->contractor_id, 'serial_number' => 'PROPOSED-SDM']);
         $proposal->assessments()->create([...$attributes, 'proposed_by' => $proposal->created_by, 'proposed_total' => 3500, 'status' => 'proposed']);
 
-        $this->actingAs($this->user(UserRole::CmcStaff))->get('/employee-history?'.http_build_query([
+        $response = $this->actingAs($this->user(UserRole::CmcTeamLead))->get('/employee-history?'.http_build_query([
             'contractor_id' => $memo->contractor_id, 'employee_number' => '009001',
-        ]))->assertOk()->assertSee('2,400.00')->assertSee('Approved')->assertSee('10 negative points')
-            ->assertSee('Warning')->assertSee('3,500.00')->assertSee('Proposed')
-            ->assertDontSee('9,999.00')->assertDontSee('1,200.00');
+        ]))->assertOk()->assertSee('9,999.00')->assertSee('Warning')->assertSee('3,500.00')
+            ->assertDontSee('2,400.00')->assertDontSee('1,200.00');
+        $this->assertMatchesRegularExpression('/<td\b[^>]*>\s*Proposed\s*<\/td>/', $response->getContent());
     }
 
     private function user(UserRole $role): User

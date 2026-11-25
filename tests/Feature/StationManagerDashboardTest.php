@@ -43,7 +43,8 @@ class StationManagerDashboardTest extends TestCase
 
         $this->assignedMemo($manager, $central, 'SM-PENDING', MemoStatus::AwaitingStationManager, 'pending', '2026-09-05 09:00:00');
         $this->assignedMemo($manager, $central, 'SM-FORWARDED-1', MemoStatus::LineReview, 'forwarded', '2026-09-10 09:00:00');
-        $this->assignedMemo($manager, $south, 'SM-FORWARDED-2', MemoStatus::AmCmcReview, 'forwarded', '2026-09-15 09:00:00');
+        $forwarded = $this->assignedMemo($manager, $south, 'SM-FORWARDED-2', MemoStatus::AmCmcReview, 'forwarded', '2026-09-15 09:00:00');
+        $forwarded->update(['line_code' => 'BLUE']);
         $this->assignedMemo($otherManager, $south, 'OTHER-MANAGER', MemoStatus::AwaitingStationManager, 'pending', '2026-09-16 09:00:00');
         $this->generatedMemo($manager, $central, 'SM-GENERATED', '2026-09-18 09:00:00');
 
@@ -67,6 +68,8 @@ class StationManagerDashboardTest extends TestCase
             ->assertDontSee('Pending with me')
             ->assertDontSee('Cancelled at SM review')
             ->assertSee('Station-wise SDMs')
+            ->assertSeeInOrder(['>Line</th>', '>Station</th>', '>Status</th>'], false)
+            ->assertSeeInOrder(['>BLUE</td>', '>South Station</td>'], false)
             ->assertDontSee('SM-PENDING')
             ->assertDontSee('SM-FORWARDED-2')
             ->assertDontSee('OTHER-MANAGER');

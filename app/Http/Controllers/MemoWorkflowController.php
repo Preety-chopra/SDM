@@ -27,7 +27,8 @@ class MemoWorkflowController extends Controller
             return redirect()->route('sdm-memos.show', $sdmMemo)->with('status', 'SDM reverted to AM/Manager (Line).');
         }
 
-        if ($request->user()->hasRole(UserRole::AssistantManager->value)) {
+        if ($request->user()->hasRole(UserRole::AssistantManager->value)
+            || ($data['action'] === 'forward' && $request->user()->hasRole(UserRole::CmcStaff->value))) {
             $message = match ($data['action']) {
                 'cancel_after_counselling' => 'SDM cancelled after counselling.',
                 'cancel' => 'SDM cancelled.',

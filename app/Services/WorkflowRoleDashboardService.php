@@ -29,6 +29,7 @@ final class WorkflowRoleDashboardService
 
         return [
             ...$this->presentation($role),
+            'cmc_sdm_table' => in_array($role, UserRole::cmcRoles(), true),
             'total_received' => $summary['total'],
             'pending_count' => $summary['pending'],
             'completed_count' => $summary['completed'],

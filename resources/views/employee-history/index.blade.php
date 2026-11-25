@@ -42,37 +42,47 @@
                 {{ $memo ? 'This SDM has no contractor or employee number. Use the employee history search to find records.' : 'Select a contractor and enter an employee number to see their history.' }}
             </p>
         @else
+            @php($cmcSdmHeadings = ['SDM Serial Number', 'SDM Type', 'SDM Deficiency', 'Line', 'Station', 'Incident Date'])
             <p class="text-sm text-gray-600 dark:text-gray-300">Employee number: <strong>{{ $filters['employee_number'] }}</strong>. Records are matched within the selected contractor. Draft SDMs are excluded.</p>
             <section class="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                <h3 class="font-semibold text-gray-900 dark:text-white">SDM records ({{ $memos->total() }})</h3>
-                <div class="overflow-x-auto">
+                <h3 id="live-history-heading" class="font-semibold text-gray-900 dark:text-white">SDM records ({{ $memos->total() }})</h3>
+                <div class="overflow-x-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500" role="region" aria-labelledby="live-history-heading" tabindex="0">
                     <table class="min-w-full text-left text-sm text-gray-700 dark:text-gray-200">
                         <caption class="sr-only">SDM records, most recent incident first</caption>
                         <thead class="border-b border-gray-200 text-xs uppercase text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                            <tr><th scope="col" class="px-3 py-3">SDM / Employee</th><th scope="col" class="px-3 py-3">Incident / Station</th><th scope="col" class="px-3 py-3">Deficiencies</th><th scope="col" class="px-3 py-3">Status</th><th scope="col" class="px-3 py-3">Assessment</th></tr>
+                            <tr>
+                                @foreach ($cmcSdmHeadings as $heading)
+                                    <th scope="col" class="whitespace-nowrap px-3 py-3">{{ $heading }}</th>
+                                @endforeach
+                                <x-cmc-sdm-assessment-headings />
+                                <th scope="col" class="whitespace-nowrap px-3 py-3">Employee</th>
+                                <th scope="col" class="whitespace-nowrap px-3 py-3">Status</th>
+                                <th scope="col" class="whitespace-nowrap px-3 py-3">Assessment status</th>
+                            </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                             @forelse($memos as $record)
-                                <tr>
-                                    <td class="px-3 py-4 align-top">
-                                        <a href="{{ route('sdm-memos.show', $record) }}" class="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">{{ $record->serial_number ?: 'SDM #'.$record->id }}</a>
-                                        <p class="mt-1">{{ $record->staff_name ?: '—' }}</p><p class="text-xs text-gray-500 dark:text-gray-400">{{ $record->service_type->label() }}</p>
+                                @php($highlightedProposal = \App\Support\CmcSdmTableRow::highlightedProposal($record))
+                                <tr @if($highlightedProposal) data-cmc-proposal="{{ $highlightedProposal }}" @endif>
+                                    @php($row = \App\Support\CmcSdmTableRow::fromMemo($record))
+                                    <td class="whitespace-nowrap px-3 py-4 align-top">
+                                        <a href="{{ route('sdm-memos.show', $record) }}" class="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">{{ $row['serial_number'] ?? 'SDM #'.$record->id }}</a>
+                                        <x-cmc-proposal-label :proposal="$highlightedProposal" />
                                     </td>
-                                    <td class="px-3 py-4 align-top"><p class="whitespace-nowrap">{{ $record->incident_date?->format('d-m-Y') ?? '—' }}</p><p class="mt-1">{{ $record->station_name ?: '—' }}</p></td>
-                                    <td class="px-3 py-4 align-top">{{ $record->deficiencyLabels()->join(', ') ?: '—' }}</td>
+                                    <td class="px-3 py-4 align-top">{{ $row['service'] ?? '—' }}</td>
+                                    <td class="min-w-56 px-3 py-4 align-top">{{ $row['deficiency'] ?? '—' }}</td>
+                                    <td class="whitespace-nowrap px-3 py-4 align-top">{{ $row['line'] ?? '—' }}</td>
+                                    <td class="px-3 py-4 align-top">{{ $row['station'] ?? '—' }}</td>
+                                    <td class="whitespace-nowrap px-3 py-4 align-top">{{ $row['incident_date'] ?? '—' }}</td>
+                                    <x-cmc-sdm-assessment-cells :row="$row" />
+                                    <td class="whitespace-nowrap px-3 py-4 align-top">{{ $record->staff_name ?: '—' }}</td>
                                     <td class="px-3 py-4 align-top">{{ $record->status->label() }}</td>
-                                    <td class="px-3 py-4 align-top">
-                                        @if($assessment = $assessments->get($record->id))
-                                            <p class="font-semibold">₹{{ number_format((float) $assessment->proposed_total, 2) }} · {{ str($assessment->status)->headline() }}</p>
-                                            <p class="mt-1">{{ $assessment->negative_points ?? '—' }} negative points</p>
-                                            <p>{{ filled($assessment->staff_action) ? str($assessment->staff_action)->headline() : '—' }}</p>
-                                        @else
-                                            <span class="text-gray-500 dark:text-gray-400">No assessment recorded</span>
-                                        @endif
+                                    <td class="whitespace-nowrap px-3 py-4 align-top">
+                                        {{ $record->latestAssessment ? str($record->latestAssessment->status)->headline() : 'No assessment recorded' }}
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="5" class="px-3 py-6 text-gray-500 dark:text-gray-400">No SDM records found.</td></tr>
+                                <tr><td colspan="13" class="px-3 py-6 text-gray-500 dark:text-gray-400">No SDM records found.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
@@ -81,24 +91,42 @@
             </section>
 
             <section class="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                <div><h3 class="font-semibold text-gray-900 dark:text-white">Imported historical records ({{ $historicalRecords->total() }})</h3><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Values retained from historical imports.</p></div>
-                <div class="overflow-x-auto">
+                <div><h3 id="imported-history-heading" class="font-semibold text-gray-900 dark:text-white">Imported historical records ({{ $historicalRecords->total() }})</h3><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Values retained from historical imports.</p></div>
+                <div class="overflow-x-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500" role="region" aria-labelledby="imported-history-heading" tabindex="0">
                     <table class="min-w-full text-left text-sm text-gray-700 dark:text-gray-200">
                         <caption class="sr-only">Imported employee records, most recent incident first</caption>
-                        <thead class="border-b border-gray-200 text-xs uppercase text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                            <tr><th scope="col" class="px-3 py-3">Memo / Employee</th><th scope="col" class="px-3 py-3">Incident / Station</th><th scope="col" class="px-3 py-3">Discrepancies / Action</th><th scope="col" class="px-3 py-3">Contractor penalty</th><th scope="col" class="px-3 py-3">Negative points</th></tr>
+                        <thead class="border-b border-gray-200 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                            <tr>
+                                @foreach($cmcSdmHeadings as $heading)
+                                    <th scope="col" class="whitespace-nowrap px-3 py-3">{{ $heading }}</th>
+                                @endforeach
+                                <x-cmc-sdm-assessment-headings />
+                                <th scope="col" class="px-3 py-3">SNO</th>
+                                <th scope="col" class="whitespace-nowrap px-3 py-3">ON DUTY STAFF</th>
+                                <th scope="col" class="whitespace-nowrap px-3 py-3">FILE NO</th>
+                                <th scope="col" class="whitespace-nowrap px-3 py-3">Aadhar Number</th>
+                                <th scope="col" class="whitespace-nowrap px-3 py-3">C&amp;P No</th>
+                            </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                             @forelse($historicalRecords as $record)
                                 <tr>
-                                    <td class="px-3 py-4 align-top"><p class="font-semibold">{{ $record->memo_number ?: 'Historical #'.$record->id }}</p><p class="mt-1">{{ $record->employee_name ?: '—' }}</p>@if($record->cp_number)<p class="text-xs text-gray-500 dark:text-gray-400">CP: {{ $record->cp_number }}</p>@endif</td>
-                                    <td class="px-3 py-4 align-top"><p class="whitespace-nowrap">{{ $record->incident_date?->format('d-m-Y') ?? $record->source_date ?? '—' }}</p><p class="mt-1">{{ $record->source_station ?: '—' }}</p><p class="text-xs text-gray-500 dark:text-gray-400">{{ $record->source_line }}</p></td>
-                                    <td class="px-3 py-4 align-top"><p class="whitespace-pre-wrap break-words">{{ $record->discrepancies ?: '—' }}</p><p class="mt-2 whitespace-pre-wrap break-words text-gray-500 dark:text-gray-400">{{ $record->recommended_action ?: '—' }}</p></td>
-                                    <td class="whitespace-nowrap px-3 py-4 align-top">{{ $record->contractor_penalty !== null ? '₹'.number_format((float) $record->contractor_penalty, 2) : '—' }}</td>
-                                    <td class="px-3 py-4 align-top">{{ $record->negative_points ?? '—' }}</td>
+                                    @php($row = \App\Support\CmcSdmTableRow::fromHistorical($record))
+                                    <td class="whitespace-nowrap px-3 py-4 align-top font-semibold">{{ $row['serial_number'] ?? '—' }}</td>
+                                    <td class="px-3 py-4 align-top">{{ $row['service'] ?? '—' }}</td>
+                                    <td class="min-w-56 px-3 py-4 align-top"><p class="max-w-xs whitespace-pre-wrap break-words">{{ $row['deficiency'] ?? '—' }}</p></td>
+                                    <td class="whitespace-nowrap px-3 py-4 align-top">{{ $row['line'] ?? '—' }}</td>
+                                    <td class="whitespace-nowrap px-3 py-4 align-top">{{ $row['station'] ?? '—' }}</td>
+                                    <td class="whitespace-nowrap px-3 py-4 align-top">{{ $row['incident_date'] ?? '—' }}</td>
+                                    <x-cmc-sdm-assessment-cells :row="$row" />
+                                    <td class="px-3 py-4 align-top tabular-nums">{{ $historicalRecords->firstItem() + $loop->index }}</td>
+                                    <td class="px-3 py-4 align-top">{{ $record->employee_name ?? '—' }}</td>
+                                    <td class="whitespace-nowrap px-3 py-4 align-top">{{ $record->employee_number ?? '—' }}</td>
+                                    <td class="whitespace-nowrap px-3 py-4 align-top">{{ $record->masked_aadhaar ?? '—' }}</td>
+                                    <td class="px-3 py-4 align-top">{{ $record->cp_number ?? '—' }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="5" class="px-3 py-6 text-gray-500 dark:text-gray-400">No imported records found.</td></tr>
+                                <tr><td colspan="15" class="px-3 py-6 text-gray-500 dark:text-gray-400">No imported records found.</td></tr>
                             @endforelse
                         </tbody>
                     </table>

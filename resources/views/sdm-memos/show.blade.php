@@ -83,14 +83,14 @@
             <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                 <dl class="grid gap-5 md:grid-cols-3">
                     @foreach([
-                        'Type'=>$memo->service_type->label(),
-                        'Station'=>$memo->station_name,
                         'Line'=>collect([$memo->line_code, $memo->line_name])->filter()->join(', '),
+                        'Station'=>$memo->station_name,
                         'Contractor'=>$memo->contractor_name,
-                        'Contract'=>$memo->serviceContract?->contract_number,
+                        'SDM Type'=>$memo->service_type->label(),
+                        // 'Contract'=>$memo->serviceContract?->contract_number,
                         'Incident date'=>$memo->incident_date?->format('d-m-Y'),
                         'Incident time (IST)'=>filled($memo->incident_time) ? substr($memo->incident_time, 0, 5) : null,
-                        'Staff'=>$memo->staff_name,
+                        'Outsourced Staff Name'=>$memo->staff_name,
                         'Employee number'=>$memo->employee_number,
                         'Remarks'=>$memo->station_record_brief_remarks,
                         // 'Staff mobile'=>$memo->staffAcknowledgement?->mobile_number,

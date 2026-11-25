@@ -113,6 +113,7 @@
                     <thead class="bg-gray-50 dark:bg-gray-900/60">
                         <tr class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                             {{-- <th scope="col" class="px-5 py-3 sm:px-6">SDM</th> --}}
+                            <th scope="col" class="px-5 py-3 sm:px-6">Line</th>
                             <th scope="col" class="px-5 py-3 sm:px-6">Station</th>
                             <th scope="col" class="px-5 py-3 sm:px-6">Status</th>
                             <th scope="col" class="px-5 py-3 text-right sm:px-6">Submitted</th>
@@ -121,6 +122,7 @@
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         @forelse ($dashboard['recent_sdms'] as $memo)
                             <tr class="transition hover:bg-emerald-50/60 dark:hover:bg-emerald-950/20">
+                                <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300 sm:px-6">{{ $memo->line_code ?: 'Not recorded' }}</td>
                                 <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300 sm:px-6">{{ $memo->station_name ?: 'Not recorded' }}</td>
                                 <td class="whitespace-nowrap px-5 py-4 text-sm font-semibold text-gray-700 dark:text-gray-200 sm:px-6">{{ $memo->status->label() }}</td>
                                 <td class="whitespace-nowrap px-5 py-4 text-right text-sm text-gray-600 dark:text-gray-300 sm:px-6">{{ $memo->submitted_at?->format('d M Y') }}</td>

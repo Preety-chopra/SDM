@@ -100,6 +100,35 @@ class HistoricalSdmImportTest extends TestCase
         $this->assertDatabaseCount('stations', 0);
     }
 
+    public function test_nces_history_uses_the_worksheet_columns_after_the_repeated_aadhaar_heading(): void
+    {
+        $agency = Contractor::factory()->create();
+        $sheet = 'RECORD(NCES.79)';
+        $headers = ['Unique S No', 'S No', 'Date', 'Aadhar Number', 'Memo No/Checked from', 'Line', 'Station', 'Employee Name', 'File No', 'Aadhar Number', 'Discrepancies', 'Recommended Action', 'Penalty on Contractor(in Rs)', 'SDM S No', 'C&P', 'C&P', 'Negative points'];
+        $row = ['42', '1', '45658', '012345678901', 'NCES-MEMO-1', '7E', 'TEST', 'Source employee', 'NC001', '012345678901', 'Cash shortage', 'Warning', '750', '1', 'NCES.79', 'SOP', '3'];
+        $path = $this->workbook([$row], $headers, $sheet);
+
+        $result = app(HistoricalSdmImportService::class)->import($path, $agency->id, null, sheet: $sheet);
+
+        $this->assertSame(1, $result['created']);
+        $record = HistoricalSdm::query()->sole();
+        $this->assertSame($sheet, $record->import->source_sheet);
+        $this->assertSame(2, $record->source_row);
+        $this->assertSame('42', $record->source_usn);
+        $this->assertSame('2025-01-01', $record->incident_date->toDateString());
+        $this->assertSame('NCES-MEMO-1', $record->memo_number);
+        $this->assertSame('7E', $record->source_line);
+        $this->assertSame('TEST', $record->source_station);
+        $this->assertSame('Source employee', $record->employee_name);
+        $this->assertSame('NC001', $record->employee_number);
+        $this->assertSame('012345678901', $record->aadhaar_number);
+        $this->assertSame('Cash shortage', $record->discrepancies);
+        $this->assertSame('Warning', $record->recommended_action);
+        $this->assertSame('750.00', $record->contractor_penalty);
+        $this->assertSame('NCES.79', $record->cp_number);
+        $this->assertSame('3.00', $record->negative_points);
+    }
+
     public function test_reimport_skips_the_same_workbook_but_keeps_distinct_rows_with_repeated_memo_numbers(): void
     {
         $agency = Contractor::factory()->create();
@@ -326,11 +355,11 @@ class HistoricalSdmImportTest extends TestCase
         return ['1', '1', '45658', 'AM/Ops/L-8E', '8 E', 'IGDA', 'Source employee', '009001', '012345678901', 'Cash shortage', 'Warning', '1667', '1', 'JMD.1', '', '5'];
     }
 
-    private function workbook(array $rows): string
+    private function workbook(array $rows, ?array $headers = null, string $sheet = 'previous records of JMD'): string
     {
         $path = tempnam(sys_get_temp_dir(), 'sdm-history-');
         $this->workbooks[] = $path;
-        $headers = ['USN', 'SNO', 'DATE', 'MEMO NO', 'LINE', 'STATION', 'ON DUTY STAFF', 'FILE NO', 'Aadhar Number', 'BRIEF DETAIL OF VIOLATION', 'RECOMMENDED ACTIONS', 'PENALTY ON M/s JMD (in ₹)', 'Sr. No.', 'C&P No', '', 'Negative Points'];
+        $headers ??= ['USN', 'SNO', 'DATE', 'MEMO NO', 'LINE', 'STATION', 'ON DUTY STAFF', 'FILE NO', 'Aadhar Number', 'BRIEF DETAIL OF VIOLATION', 'RECOMMENDED ACTIONS', 'PENALTY ON M/s JMD (in ₹)', 'Sr. No.', 'C&P No', '', 'Negative Points'];
         $xml = '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
         foreach ([$headers, ...$rows] as $index => $row) {
             $number = $index + 1;
@@ -344,7 +373,7 @@ class HistoricalSdmImportTest extends TestCase
         $xml .= '</sheetData></worksheet>';
         $zip = new ZipArchive;
         $zip->open($path, ZipArchive::OVERWRITE);
-        $zip->addFromString('xl/workbook.xml', '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="previous records of JMD" sheetId="1" r:id="rId1"/></sheets></workbook>');
+        $zip->addFromString('xl/workbook.xml', '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="'.htmlspecialchars($sheet, ENT_XML1).'" sheetId="1" r:id="rId1"/></sheets></workbook>');
         $zip->addFromString('xl/_rels/workbook.xml.rels', '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>');
         $zip->addFromString('xl/worksheets/sheet1.xml', $xml);
         $zip->close();

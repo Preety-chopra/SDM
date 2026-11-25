@@ -11,14 +11,16 @@ use Illuminate\Database\Eloquent\Builder;
 
 final class EmployeeHistoryRepository implements EmployeeHistoryRepositoryInterface
 {
-    public function memos(int $contractorId, string $employeeNumber, ?int $excludeMemoId = null): LengthAwarePaginator
+    public function memos(int $contractorId, string $employeeNumber, ?int $excludeMemoId = null, bool $highlightStaffProposal = false): LengthAwarePaginator
     {
         return ServiceDeficiencyMemo::query()
+            ->select('service_deficiency_memos.*')
             ->where('contractor_id', $contractorId)
             ->where('employee_number', $employeeNumber)
             ->where('status', '!=', MemoStatus::Draft->value)
             ->when($excludeMemoId, fn (Builder $query) => $query->whereKeyNot($excludeMemoId))
-            ->with(['deficiencies', 'assessments' => fn ($query) => $query->orderBy('id')])
+            ->tap(CmcSdmTableQuery::forLiveMemos(...))
+            ->when($highlightStaffProposal, CmcSdmTableQuery::withStaffProposal(...))
             ->orderByDesc('incident_date')->orderByDesc('id')
             ->paginate(20, ['*'], 'memos_page')->withQueryString();
     }
@@ -29,10 +31,11 @@ final class EmployeeHistoryRepository implements EmployeeHistoryRepositoryInterf
             ->where('contractor_id', $contractorId)
             ->where('employee_number', $employeeNumber)
             ->select([
-                'id', 'memo_number', 'employee_name', 'employee_number', 'incident_date', 'source_date',
+                'id', 'memo_number', 'employee_name', 'employee_number', 'aadhaar_number', 'incident_date', 'source_date',
                 'source_station', 'source_line', 'discrepancies', 'recommended_action',
                 'contractor_penalty', 'negative_points', 'cp_number',
             ])
+            ->tap(CmcSdmTableQuery::forImportedMemos(...))
             ->orderByDesc('incident_date')->orderByDesc('id')
             ->paginate(20, ['*'], 'historical_page')->withQueryString();
     }

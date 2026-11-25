@@ -52,9 +52,18 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
             ];
         }
 
-        return ServiceDeficiencyMemo::query()
+        $query = ServiceDeficiencyMemo::query()
             ->select(['id', 'service_type', 'serial_number', 'is_urgent', 'station_name', 'line_code', 'line_name', 'incident_date', 'status', 'cancellation_type', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'cmc_staff_id', 'created_by', 'submitted_at', 'created_at', 'updated_at'])
-            ->with($relations)
+            ->with($relations);
+
+        if ($user->hasAnyRole(UserRole::cmcRoles())) {
+            CmcSdmTableQuery::forLiveMemos($query->addSelect(['contractor_id', 'employee_number']));
+        }
+        if ($user->hasAnyRole(UserRole::cmcReviewers())) {
+            CmcSdmTableQuery::withStaffProposal($query);
+        }
+
+        return $query
             ->where(function (Builder $query) use ($user): void {
                 $query->where('status', '!=', MemoStatus::Draft->value)
                     ->orWhere('created_by', $user->id);
@@ -198,7 +207,7 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
     public function recentSubmittedBy(User $user, int $limit = 10): Collection
     {
         return ServiceDeficiencyMemo::query()
-            ->select(['id', 'service_type', 'serial_number', 'is_urgent', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'created_by', 'submitted_at', 'station_manager_opened_at'])
+            ->select(['id', 'service_type', 'serial_number', 'is_urgent', 'line_code', 'line_name', 'station_name', 'status', 'workflow_version', 'current_stage', 'current_workflow_step_id', 'created_by', 'submitted_at', 'station_manager_opened_at'])
             ->whereBelongsTo($user, 'creator')
             ->whereNotNull('submitted_at')
             ->with([
@@ -229,7 +238,7 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
     public function paginateDraftsBy(User $user): LengthAwarePaginator
     {
         return ServiceDeficiencyMemo::query()
-            ->select(['id', 'service_type', 'serial_number', 'is_urgent', 'status', 'created_by', 'updated_at'])
+            ->select(['id', 'service_type', 'serial_number', 'is_urgent', 'line_code', 'line_name', 'station_name', 'status', 'created_by', 'updated_at'])
             ->whereBelongsTo($user, 'creator')
             ->where('status', MemoStatus::Draft->value)
             ->with('deficiencies:id,memo_id,type')
@@ -251,6 +260,15 @@ final class ServiceDeficiencyMemoRepository implements ServiceDeficiencyMemoRepo
                     ->orWhereHas('latestActedWorkflowStep', fn (Builder $step) => $step
                         ->where('stage', WorkflowStepType::AmCmcToDgm->value)
                         ->where('decision', 'returned')));
+        }
+
+        if ($category === CmcTeamLeadMemoCategory::AssignedToStaff->value) {
+            return $query->where('workflow_version', '>=', 2)
+                ->whereHas('currentWorkflowStep', fn (Builder $step) => $step
+                    ->where('stage', WorkflowStepType::CmcAssessment->value)
+                    ->where('role', UserRole::CmcStaff->value)
+                    ->where('decision', 'pending')
+                    ->whereNotNull('assigned_to'));
         }
 
         if ($category === CmcTeamLeadMemoCategory::ProcessedByStaff->value) {

@@ -7,6 +7,7 @@ use App\Http\Requests\DashboardChartMemosRequest;
 use App\Models\ServiceDeficiencyMemo;
 use App\Services\StationControllerDashboardService;
 use App\Services\WorkflowRoleDashboardService;
+use App\Support\CmcSdmTableRow;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
 
@@ -49,7 +50,7 @@ class DashboardChartMemosController extends Controller
             );
 
         return response()->json([
-            'memos' => $this->serialize($memos->take(100), $workflowRole === null),
+            'memos' => $this->serialize($memos->take(100), $workflowRole),
             'has_more' => $memos->count() > 100,
         ]);
     }
@@ -58,17 +59,24 @@ class DashboardChartMemosController extends Controller
      * @param  Collection<int, ServiceDeficiencyMemo>  $memos
      * @return Collection<int, array<string, int|string|null>>
      */
-    private function serialize(Collection $memos, bool $maskAfterStationManager): Collection
+    private function serialize(Collection $memos, ?UserRole $workflowRole): Collection
     {
+        $cmcSdmTable = in_array($workflowRole, UserRole::cmcRoles(), true);
+        $highlightStaffProposal = in_array($workflowRole, UserRole::cmcReviewers(), true);
+
         return $memos->map(fn (ServiceDeficiencyMemo $memo): array => [
             'id' => $memo->id,
             'service' => $memo->service_type->code(),
+            'line' => $memo->line_code ?: 'Not recorded',
             'station' => $memo->station_name ?: 'Not recorded',
-            'status' => $maskAfterStationManager
+            'status' => $workflowRole === null
                 ? $this->stationDashboard->visibleStatusLabel($memo->status)
                 : $memo->status->label(),
             'submitted_at' => ($memo->submitted_at ?? $memo->created_at)?->format('d M Y'),
             'url' => route('sdm-memos.show', $memo),
+            ...($cmcSdmTable ? CmcSdmTableRow::fromMemo($memo) : []),
+            ...($highlightStaffProposal
+                ? ['highlighted_proposal' => CmcSdmTableRow::highlightedProposal($memo)] : []),
         ])->values();
     }
 }

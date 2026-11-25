@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Support\OutsourcedStaffIdentifier;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -29,6 +31,15 @@ class HistoricalSdm extends Model
     public function station(): BelongsTo
     {
         return $this->belongsTo(Station::class);
+    }
+
+    protected function maskedAadhaar(): Attribute
+    {
+        return Attribute::get(function (): ?string {
+            $number = OutsourcedStaffIdentifier::aadhaar($this->aadhaar_number ?? '');
+
+            return $number === null ? null : OutsourcedStaffIdentifier::mask($number);
+        });
     }
 
     protected function casts(): array

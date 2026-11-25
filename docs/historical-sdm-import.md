@@ -17,11 +17,13 @@ Historical records are stored in `historical_sdms`, separately from live `servic
 | Aadhar Number | `aadhaar_number` (encrypted and hidden from serialization) |
 | BRIEF DETAIL OF VIOLATION | `discrepancies` |
 | RECOMMENDED ACTIONS | `recommended_action` |
-| PENALTY ON M/s JMD (in ₹) | `contractor_penalty` (decimal, INR) |
+| PENALTY ON M/s JMD (in ₹) / Penalty on Contractor(in Rs) | `contractor_penalty` (decimal, INR) |
 | C&P No | `cp_number` |
 | Negative Points | `negative_points` (decimal) |
 
 The worksheet row number and USN are retained. Blank amounts and points stay null, distinct from zero. Invalid dates stay null with the original cell value retained. Invalid Aadhaar text is retained encrypted and flagged. No master data is created or overwritten from historical snapshots. The `AUTH` staff reference sheet is not imported.
+
+NCES worksheet `RECORD(NCES.79)` uses the same historical fields. The importer uses the Aadhaar column beside File No (J), the C&P reference in O, and the negative points in Q. The additional C&P status in P and notes beyond Q remain in the original workbook.
 
 Employee IDs are matched within the selected contractor, including inactive staff. A conflicting Aadhaar leaves the staff link unset. Aadhaar alone is used only when File No is blank and exactly one staff record matches. Stations are matched by station code and line. Direction suffixes such as `8 E` and `8W` normalize to line 8. Explicit interchange codes such as `LJPN-06` normalize only when their suffix matches the source line. Typos and ambiguous matches remain unlinked, with issue codes in `import_issues`.
 
@@ -36,7 +38,7 @@ Keep the source workbook in private storage, outside Git and the public web root
 
 On Windows PowerShell, use `docker compose exec laravel.test php artisan` in place of `./vendor/bin/sail artisan`.
 
-The default worksheet is `previous records of JMD`; `--sheet` selects another worksheet using the same column layout. Malformed layout or financial values abort the whole import. Records and the `historical_sdm.imported` audit event are committed together. The audit contains counts and provenance, without Aadhaar or employee names.
+The default worksheet is `previous records of JMD`. For the NCES workbook, pass `--sheet='RECORD(NCES.79)'`. Malformed layouts or financial values abort the whole import. Records and the `historical_sdm.imported` audit event are committed together. The audit contains counts and provenance, without Aadhaar or employee names.
 
 The same file, contractor and worksheet can be rerun without duplicate records or duplicate audits. Repeated memo numbers and even identical source rows are retained as separate historical entries. A modified or resaved workbook has a different checksum and is treated as a new import. Review it before importing to avoid overlapping historical datasets.
 
@@ -53,9 +55,9 @@ The migration's `down()` removes both history tables and their imported data. Ba
 ## Seed the historical data on an existing server
 
 `HistoricalSdmSeeder` imports the prepared historical workbooks through the same
-validated importer. The local bundle contains the original JMD workbook with
-5,217 historical SDMs. It uses contractor names rather than localhost database
-IDs, and does not require a server user ID or a copy of the local encryption key.
+validated importer. The local bundle contains 5,217 JMD and 11,273 NCES historical
+SDMs. It matches existing contractors by name and uses the destination application's
+encryption key.
 
 Deploy these code files together:
 
@@ -63,27 +65,30 @@ Deploy these code files together:
 database/seeders/HistoricalSdmSeeder.php
 app/Services/HistoricalSdmSeedService.php
 app/Services/HistoricalSdmImportService.php
+app/Support/HistoricalSdmWorkbookReader.php
 ```
 
-Separately upload these two private files from localhost into the same relative
+Separately upload these private files from localhost into the same relative
 paths on the server:
 
 ```text
 storage/app/private/seed-data/historical-sdms.json
 storage/app/private/seed-data/JMD Staff records.xlsx
+storage/app/private/seed-data/NCES staff records-1.xlsx
 ```
 
-Use the existing SSH/WinSCP connection. The workbook contains personal data and
-is excluded from Git. Keep both files outside `public/`, readable only by the
-application's operating-system user. Upload the workbook without opening and
-resaving it: its SHA-256 must match the manifest. A Git pull does not transfer
+Use the existing SSH/WinSCP connection. The workbooks contain personal data and
+are excluded from Git. Keep the bundle outside `public/`, readable only by the
+application's operating-system user. Upload the original workbooks so their
+SHA-256 checksums match the manifest. A Git pull does not transfer
 these private files. The preparation and verification scripts in the local
 directory are not needed on the server.
 
-Ensure the history migration has been applied and the contractor master exists
-under `JMD Consultants Global Pvt. Ltd.`. Import stations and outsourced staff
-before history so the importer can link them using the destination's IDs. If
-needed, use the standalone station, service contract and outsourced staff
+Ensure the history migration has been applied and the contractor masters exist
+under `JMD Consultants Global Pvt. Ltd.` and
+`NCES (Nuvision Commercial & Escort Services)`. Import stations and outsourced
+staff before history so the importer can link them using the destination's IDs.
+If needed, use the standalone station, service contract and outsourced staff
 seeders documented in [reference data seeders](../database/seeders/README.md) and
 [staff deployment](outsourced-staff.md#seed-an-existing-server-from-localhost).
 Existing contractors, stations and staff are not modified by the history seeder.
@@ -102,8 +107,10 @@ php artisan db:seed --class=HistoricalSdmSeeder --force
 ```
 
 The command reports created and skipped rows, followed by source issue counts.
-The first import should create 5,217 rows; an identical existing import should
-skip all 5,217. Avoid running the full `DatabaseSeeder` for this upload because it
+The first import on a server with no historical data should create 16,490 rows.
+If JMD is already present, the first run with the updated bundle should create
+11,273 rows and skip 5,217. An identical rerun should skip all 16,490. Avoid
+running the full `DatabaseSeeder` for this upload because it
 also resets administrator credentials and role assignments.
 
 The manifest has `version: 1` and an `imports` list. Each entry specifies

@@ -790,6 +790,29 @@ class UserManagementTest extends TestCase
         $this->actingAs($administrator)->get('/users/'.UserRole::Administrator->value)->assertNotFound();
     }
 
+    public function test_user_directory_displays_line_and_station_in_separate_columns(): void
+    {
+        $administrator = $this->userWithRole(UserRole::Administrator);
+        $line = Line::query()->create(['code' => 'RED', 'name' => 'Red Line']);
+        $station = Station::query()->create(['code' => 'RED-01', 'name' => 'Red Station', 'line_id' => $line->id]);
+        $this->userWithRole(UserRole::Station, ['name' => 'Assigned User', 'station_id' => $station->id]);
+        $this->userWithRole(UserRole::Station, ['name' => 'Unassigned User']);
+
+        $response = $this->actingAs($administrator)->get(route('users.index', UserRole::Station->value));
+
+        $response->assertOk();
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+
+        $this->assertSame('Line', $xpath->evaluate('normalize-space(//table/thead/tr/th[3])'));
+        $this->assertSame('Station', $xpath->evaluate('normalize-space(//table/thead/tr/th[4])'));
+        $this->assertSame('RED · Red Line', $xpath->evaluate('normalize-space(//table/tbody/tr[td[1]/p = "Assigned User"]/td[3])'));
+        $this->assertSame('RED-01 · Red Station', $xpath->evaluate('normalize-space(//table/tbody/tr[td[1]/p = "Assigned User"]/td[4])'));
+        $this->assertSame('—', $xpath->evaluate('normalize-space(//table/tbody/tr[td[1]/p = "Unassigned User"]/td[3])'));
+        $this->assertSame('—', $xpath->evaluate('normalize-space(//table/tbody/tr[td[1]/p = "Unassigned User"]/td[4])'));
+    }
+
     public function test_administrator_can_filter_role_directory_and_change_status(): void
     {
         $administrator = $this->userWithRole(UserRole::Administrator);

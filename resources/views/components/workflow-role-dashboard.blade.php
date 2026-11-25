@@ -2,6 +2,7 @@
 
 @php
     $filters = $dashboard['filters'];
+    $cmcSdmTable = $dashboard['cmc_sdm_table'];
     $total = max(1, $dashboard['total_received']);
     $chartConfig = [
         'monthlyTrend' => $dashboard['monthly_trend'],
@@ -93,42 +94,67 @@
         </article>
     </div>
 
-    <div class="grid grid-cols-1 gap-5 xl:grid-cols-5">
-        <article class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 xl:col-span-3">
+    <div @class(['grid grid-cols-1 gap-5', 'xl:grid-cols-5' => ! $cmcSdmTable])>
+        <article @class(['rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800', 'xl:col-span-3' => ! $cmcSdmTable])>
             <h2 class="text-lg font-black text-gray-950 dark:text-white">Current workflow status</h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Where your assigned SDMs currently sit in the workflow. Select a bar to view its SDMs.</p>
             <div class="mt-5 h-72 min-w-0"><canvas x-ref="workflowRoleStatuses" role="img" aria-label="Assigned SDMs grouped by current workflow status"></canvas></div>
         </article>
 
-        <article class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 xl:col-span-2">
+        <article @class(['overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800', 'xl:col-span-2' => ! $cmcSdmTable])>
             <div class="flex items-end justify-between gap-3 border-b border-gray-100 px-5 py-5 dark:border-gray-700 sm:px-6">
                 <div>
-                    <h2 class="text-lg font-black text-gray-950 dark:text-white">Recent assigned SDMs</h2>
+                    <h2 id="recent-workflow-sdms" class="text-lg font-black text-gray-950 dark:text-white">Recent assigned SDMs</h2>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Latest records within your rights.</p>
                 </div>
                 <a href="{{ route('sdm-memos.index') }}" class="shrink-0 text-sm font-bold text-emerald-700 hover:underline dark:text-emerald-400">View all →</a>
             </div>
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-500"
+                @if ($cmcSdmTable) role="region" aria-labelledby="recent-workflow-sdms" tabindex="0" @endif>
                 <table class="min-w-full divide-y divide-gray-200 text-left dark:divide-gray-700">
                     <thead class="bg-gray-50 dark:bg-gray-900/60">
                         <tr class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                            <th scope="col" class="px-5 py-3 sm:px-6">Open SDM</th>
+                            @if ($cmcSdmTable)
+                                <th scope="col" class="whitespace-nowrap px-5 py-3 sm:px-6">SDM Serial Number</th>
+                                <th scope="col" class="whitespace-nowrap px-5 py-3">SDM Type</th>
+                                <th scope="col" class="min-w-48 px-5 py-3">SDM deficiency</th>
+                            @else
+                                <th scope="col" class="px-5 py-3 sm:px-6">Open SDM</th>
+                            @endif
+                            <th scope="col" class="px-5 py-3">Line</th>
+                            <th scope="col" class="px-5 py-3">Station</th>
+                            @if ($cmcSdmTable)
+                                <th scope="col" class="whitespace-nowrap px-5 py-3">Incident date</th>
+                                <x-cmc-sdm-assessment-headings />
+                            @endif
                             <th scope="col" class="px-5 py-3">Status</th>
                             <th scope="col" class="px-5 py-3 text-right sm:px-6">Received</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         @forelse ($dashboard['recent_sdms'] as $memo)
-                            <tr class="transition hover:bg-emerald-50/60 dark:hover:bg-emerald-950/20">
-                                <td class="px-5 py-4 text-sm sm:px-6">
-                                    <a href="{{ route('sdm-memos.show', $memo) }}" class="font-black text-emerald-700 hover:underline dark:text-emerald-400">Open SDM</a>
-                                    <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{{ $memo->station_name ?: 'Station not recorded' }}</span>
+                            @php($row = $cmcSdmTable ? \App\Support\CmcSdmTableRow::fromMemo($memo) : null)
+                            @php($highlightedProposal = \App\Support\CmcSdmTableRow::highlightedProposal($memo))
+                            <tr class="transition hover:bg-emerald-50/60 dark:hover:bg-emerald-950/20" @if($highlightedProposal) data-cmc-proposal="{{ $highlightedProposal }}" @endif>
+                                <td @class(['px-5 py-4 text-sm sm:px-6', 'whitespace-nowrap' => $cmcSdmTable])>
+                                    <a href="{{ route('sdm-memos.show', $memo) }}" class="font-black text-emerald-700 hover:underline dark:text-emerald-400">{{ $row['serial_number'] ?? 'Open SDM' }}</a>
+                                    <x-cmc-proposal-label :proposal="$highlightedProposal" />
                                 </td>
+                                @if ($cmcSdmTable)
+                                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $row['service'] }}</td>
+                                    <td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $row['deficiency'] ?? '—' }}</td>
+                                @endif
+                                <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ ($row['line'] ?? $memo->line_code) ?: 'Not recorded' }}</td>
+                                <td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ ($row['station'] ?? $memo->station_name) ?: 'Station not recorded' }}</td>
+                                @if ($cmcSdmTable)
+                                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $row['incident_date'] ?? '—' }}</td>
+                                    <x-cmc-sdm-assessment-cells :row="$row" />
+                                @endif
                                 <td class="whitespace-nowrap px-5 py-4 text-sm font-semibold text-gray-700 dark:text-gray-200">{{ $memo->status->label() }}</td>
                                 <td class="whitespace-nowrap px-5 py-4 text-right text-sm text-gray-600 dark:text-gray-300 sm:px-6">{{ $memo->submitted_at?->format('d M Y') }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="3" class="px-5 py-12 text-center text-sm text-gray-500 dark:text-gray-400 sm:px-6">No SDMs match the selected filters.</td></tr>
+                            <tr><td colspan="{{ $cmcSdmTable ? 12 : 5 }}" class="px-5 py-12 text-center text-sm text-gray-500 dark:text-gray-400 sm:px-6">No SDMs match the selected filters.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -136,5 +162,5 @@
         </article>
     </div>
 
-    <x-dashboard-sdm-modal />
+    <x-dashboard-sdm-modal :cmc-sdm-table="$cmcSdmTable" />
 </section>

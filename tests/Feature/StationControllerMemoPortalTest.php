@@ -118,6 +118,28 @@ class StationControllerMemoPortalTest extends TestCase
             ->assertDontSee($other->serial_number);
     }
 
+    #[TestWith(['sdm-memos.index', MemoStatus::Submitted, 'RED', 'RED'])]
+    #[TestWith(['sdm-memos.drafts', MemoStatus::Draft, null, 'Red Line'])]
+    public function test_station_controller_lists_line_and_station_in_separate_columns(string $route, MemoStatus $status, ?string $lineCode, string $expectedLine): void
+    {
+        [$controller] = $this->stationControllerWithHierarchy();
+        $memo = $this->memo($controller, 'SDM-LOCATION', $status, $status === MemoStatus::Draft ? null : now());
+        $memo->update(['line_code' => $lineCode]);
+
+        $response = $this->actingAs($controller)->get(route($route))->assertOk();
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $lineHeader = '//thead/tr/th[normalize-space(.) = "Line"]';
+
+        $this->assertSame('Station', $xpath->evaluate('normalize-space('.$lineHeader.'/following-sibling::th[1])'));
+        $lineColumn = (int) $xpath->evaluate('count('.$lineHeader.'/preceding-sibling::th)') + 1;
+        $this->assertSame($expectedLine, $xpath->evaluate("normalize-space(//tbody/tr/td[{$lineColumn}])"));
+        $stationColumn = $lineColumn + 1;
+        $this->assertSame('Red Station', $xpath->evaluate("normalize-space(//tbody/tr/td[{$stationColumn}])"));
+    }
+
     #[TestWith([1])]
     #[TestWith([2])]
     public function test_view_all_shows_edit_for_unopened_sdms_regardless_of_submission_age(int $workflowVersion): void

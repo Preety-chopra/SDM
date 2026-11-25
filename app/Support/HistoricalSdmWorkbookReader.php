@@ -52,10 +52,11 @@ final class HistoricalSdmWorkbookReader
             }
             $records = [];
             $headerChecked = false;
+            $hasRepeatedAadhaarColumn = false;
             foreach ($rows as $row) {
-                $values = array_fill(0, 16, '');
+                $values = array_fill(0, 17, '');
                 foreach ($row->children() as $cell) {
-                    if (! preg_match('/^([A-P])[0-9]+$/D', (string) $cell['r'], $matches)) {
+                    if (! preg_match('/^([A-Q])[0-9]+$/D', (string) $cell['r'], $matches)) {
                         continue;
                     }
                     $values[ord($matches[1]) - 65] = trim(match ((string) $cell['t']) {
@@ -63,6 +64,16 @@ final class HistoricalSdmWorkbookReader
                         'inlineStr' => $this->cellText($cell),
                         default => (string) $cell->v,
                     });
+                }
+                if (! $headerChecked) {
+                    $hasRepeatedAadhaarColumn = mb_strtoupper($values[3]) === 'AADHAR NUMBER'
+                        && mb_strtoupper($values[9]) === 'AADHAR NUMBER';
+                }
+                if ($hasRepeatedAadhaarColumn) {
+                    // NCES repeats Aadhaar in D. Keep the copy beside File No so the remaining fields align with JMD.
+                    array_splice($values, 3, 1);
+                } else {
+                    array_pop($values);
                 }
                 // Ignore formatting-only rows and formulas outside the historical data columns.
                 if (count(array_filter($values, fn (string $value): bool => $value !== '')) === 0) {

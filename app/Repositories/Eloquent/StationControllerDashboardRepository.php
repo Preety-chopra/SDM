@@ -124,6 +124,7 @@ final class StationControllerDashboardRepository implements StationControllerDas
             ->select([
                 "{$memoTable}.id",
                 "{$memoTable}.service_type",
+                "{$memoTable}.line_code",
                 "{$memoTable}.station_name",
                 "{$memoTable}.status",
                 "{$memoTable}.submitted_at",

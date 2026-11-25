@@ -561,7 +561,8 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertSee('SDM serial number')
             ->assertSee('SDM type')
             ->assertSee('SDM deficiency')
-            ->assertSee('Line / station')
+            ->assertSee('aria-label="Open Line filter"', false)
+            ->assertSee('aria-label="Open Station filter"', false)
             ->assertSee('Incident date')
             ->assertSee('Submitted on')
             ->assertSee('Current status')
@@ -635,7 +636,8 @@ class ContractPenaltyWorkflowTest extends TestCase
             ->assertSee('SDM serial number')
             ->assertSee('SDM type')
             ->assertSee('SDM deficiency')
-            ->assertSee('Line / station')
+            ->assertSee('aria-label="Open Line filter"', false)
+            ->assertSee('aria-label="Open Station filter"', false)
             ->assertSee('Incident date')
             ->assertSee('Submitted on')
             ->assertSee('Current status')
@@ -728,7 +730,10 @@ class ContractPenaltyWorkflowTest extends TestCase
             'negative_points' => 2,
             'staff_action' => 'warning',
             'assessment_pdf' => UploadedFile::fake()->create('cmc-staff-assessment.pdf', 50, 'application/pdf'),
-        ])->assertRedirect()->assertSessionHasNoErrors();
+        ])->assertRedirectToRoute('sdm-memos.index', ['category' => 'pending'])->assertSessionHasNoErrors();
+        $this->get(route('sdm-memos.index', ['category' => 'pending']))
+            ->assertOk()
+            ->assertViewHas('memos', fn ($memos): bool => ! $memos->contains('id', $memo->id));
         $cmcAssessment = $memo->assessments()
             ->where('source_stage', WorkflowStepType::CmcAssessment->value)
             ->sole();
@@ -798,7 +803,7 @@ class ContractPenaltyWorkflowTest extends TestCase
             'staff_action' => 'warning',
             'bill_month' => '2026-08',
             'monthly_bill_value' => '10000.00',
-        ])->assertRedirect()->assertSessionHasNoErrors();
+        ])->assertRedirectToRoute('sdm-memos.index', ['category' => 'pending'])->assertSessionHasNoErrors();
         $this->actingAs($cmcStaff)->get(route('sdm-memos.show', $memo))
             ->assertOk()
             ->assertSee('CMC Review 2')

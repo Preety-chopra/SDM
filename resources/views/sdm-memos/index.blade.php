@@ -39,7 +39,7 @@
                 @endforeach
             </div>
         </nav>
-        @if($cmcStaffAssignmentTab)
+        @if($showSdmTypeTabs)
             <nav aria-label="Assignment by SDM type" class="mb-5 flex flex-wrap gap-2">
                 @foreach ([null, ...$sdmTypes] as $type)
                     @php
@@ -156,7 +156,7 @@
             <form id="sdm-filter-form" method="GET" action="{{ route('sdm-memos.index') }}">
                 @if($category)<input type="hidden" name="category" value="{{ $category }}">@endif
                 @if($queueTab)<input type="hidden" name="{{ $queueTabParameter }}" value="{{ $queueTab->value }}">@endif
-                @if($cmcStaffAssignmentTab && isset($filters['service_type']))<input type="hidden" name="service_type" value="{{ $filters['service_type'] }}">@endif
+                @if($showSdmTypeTabs && isset($filters['service_type']))<input type="hidden" name="service_type" value="{{ $filters['service_type'] }}">@endif
                 @if($pendingStage)<input type="hidden" name="pending_stage" value="{{ $pendingStage->value }}">@endif
             </form>
         @endunless
@@ -247,7 +247,7 @@
             @endif
         @endif
         <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-500" @if($cmcSdmTable) role="region" aria-label="SDM list" tabindex="0" @endif>
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                     <thead class="bg-gray-50 dark:bg-gray-900">
                         <tr>
@@ -259,12 +259,15 @@
                                     </label>
                                 </th>
                             @endif
-                            @foreach(array_filter(['SDM serial number', 'SDM type', 'SDM deficiency', 'Line / station', 'Incident date', 'Submitted on', 'Current status', 'Last updated on', $showActionColumn ? 'Action' : null]) as $heading)
+                            @foreach(array_filter(['SDM serial number', 'SDM type', 'SDM deficiency', 'Line', 'Station', 'Incident date', 'Submitted on', 'Current status', 'Last updated on', $showActionColumn ? 'Action' : null]) as $heading)
+                                @if($cmcSdmTable && $heading === 'Submitted on')
+                                    <x-cmc-sdm-assessment-headings />
+                                @endif
                                 <th scope="col" class="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                                     @if($headerFilterTable)
                                         @switch($heading)
                                             @case('SDM type')
-                                                @if($cmcStaffAssignmentTab)
+                                                @if($showSdmTypeTabs)
                                                     {{ $heading }}
                                                     @break
                                                 @endif
@@ -287,12 +290,24 @@
                                                     </select>
                                                 </x-column-filter-dropdown>
                                                 @break
-                                            @case('Line / station')
-                                                <x-column-filter-dropdown label="Line / station" :active="filled($filters['line_code'] ?? null) || filled($filters['station_id'] ?? null)" width="w-64">
-                                                    <div class="grid gap-3">
-                                                        <label class="grid gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300">Line<select x-ref="picker" data-filter-picker form="sdm-filter-form" name="line_code" aria-label="Filter by line" @change="$el.form.requestSubmit()" class="block w-full rounded-md border-gray-300 text-sm font-normal dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"><option value="">All lines</option>@foreach($lines as $line)<option value="{{ $line->code }}" @selected(($filters['line_code'] ?? '') === $line->code)>{{ $line->code }}</option>@endforeach</select></label>
-                                                        <label class="grid gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300">Station<select form="sdm-filter-form" name="station_id" aria-label="Filter by station" @change="$el.form.requestSubmit()" class="block w-full rounded-md border-gray-300 text-sm font-normal dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"><option value="">All stations</option>@foreach($stations as $station)<option value="{{ $station->id }}" @selected((string) ($filters['station_id'] ?? '') === (string) $station->id)>{{ $station->code }}</option>@endforeach</select></label>
-                                                    </div>
+                                            @case('Line')
+                                                <x-column-filter-dropdown label="Line" :active="filled($filters['line_code'] ?? null)">
+                                                    <select x-ref="picker" data-filter-picker form="sdm-filter-form" name="line_code" aria-label="Filter by line" @change="$el.form.requestSubmit()" class="block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
+                                                        <option value="">All lines</option>
+                                                        @foreach($lines as $line)
+                                                            <option value="{{ $line->code }}" @selected(($filters['line_code'] ?? '') === $line->code)>{{ $line->code }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </x-column-filter-dropdown>
+                                                @break
+                                            @case('Station')
+                                                <x-column-filter-dropdown label="Station" :active="filled($filters['station_id'] ?? null)" width="w-64">
+                                                    <select x-ref="picker" data-filter-picker form="sdm-filter-form" name="station_id" aria-label="Filter by station" @change="$el.form.requestSubmit()" class="block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
+                                                        <option value="">All stations</option>
+                                                        @foreach($stations as $station)
+                                                            <option value="{{ $station->id }}" @selected((string) ($filters['station_id'] ?? '') === (string) $station->id)>{{ $station->code }}</option>
+                                                        @endforeach
+                                                    </select>
                                                 </x-column-filter-dropdown>
                                                 @break
                                             @case('Incident date')
@@ -327,6 +342,7 @@
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         @forelse($memos as $memo)
                             @php
+                                $highlightedProposal = \App\Support\CmcSdmTableRow::highlightedProposal($memo);
                                 $statusLabel = $stationManagerStatusView
                                     ? $memo->stationManagerListStatusLabel()
                                     : ($memo->cancellationLabel()
@@ -343,7 +359,7 @@
                                     \App\Enums\UserPermission::ViewRoutedMemos->value,
                                 ]) || $memo->created_by === auth()->id();
                             @endphp
-                            <tr class="align-top">
+                            <tr class="align-top" @if($highlightedProposal) data-cmc-proposal="{{ $highlightedProposal }}" @endif>
                                 @if($bulkFormId)
                                     <td class="whitespace-nowrap px-5 py-4">
                                         <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
@@ -380,14 +396,18 @@
                                     @else
                                         —
                                     @endif
+                                    <x-cmc-proposal-label :proposal="$highlightedProposal" />
                                 </td>
                                 <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $memo->service_type->code() }}</td>
                                 <td class="min-w-64 px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $memo->deficiencyLabels()->join(', ') ?: '—' }}</td>
-                                <td class="min-w-48 px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
-                                    <span class="block font-medium text-gray-900 dark:text-gray-100">{{ $headerFilterTable ? ($memo->line_code ?: '—') : ($memo->line_name ?: '—') }}</span>
-                                    <span class="block text-xs text-gray-500 dark:text-gray-400">{{ $memo->station_name ?: '—' }}</span>
+                                <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">
+                                    {{ ($headerFilterTable ? ($memo->line_code ?: $memo->line_name) : ($memo->line_name ?: $memo->line_code)) ?: '—' }}
                                 </td>
+                                <td class="min-w-40 px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $memo->station_name ?: '—' }}</td>
                                 <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $memo->incident_date?->format('d-m-Y') ?? '—' }}</td>
+                                @if($cmcSdmTable)
+                                    <x-cmc-sdm-assessment-cells :row="\App\Support\CmcSdmTableRow::fromMemo($memo)" />
+                                @endif
                                 <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{ $memo->submitted_at?->format('d-m-Y H:i') ?? '—' }}</td>
                                 <td class="whitespace-nowrap px-5 py-4">
                                     <span @class([
@@ -431,7 +451,7 @@
                                 @endif
                             </tr>
                         @empty
-                            <tr><td colspan="{{ 8 + ($showActionColumn ? 1 : 0) + ($bulkFormId ? 1 : 0) }}" class="px-5 py-12 text-center text-gray-500 dark:text-gray-400">{{ match ($category) { 'pending', 'pending_action' => 'No memos are currently pending with you.', 'urgent_pending_action' => 'No urgent memos are currently pending with you.', 'transferred' => 'No transferred memos are currently pending with you.', default => 'No memos match the selected filters.' } }}</td></tr>
+                            <tr><td colspan="{{ 9 + ($cmcSdmTable ? 4 : 0) + ($showActionColumn ? 1 : 0) + ($bulkFormId ? 1 : 0) }}" class="px-5 py-12 text-center text-gray-500 dark:text-gray-400">{{ match ($category) { 'pending', 'pending_action' => 'No memos are currently pending with you.', 'urgent_pending_action' => 'No urgent memos are currently pending with you.', 'transferred' => 'No transferred memos are currently pending with you.', default => 'No memos match the selected filters.' } }}</td></tr>
                         @endforelse
                     </tbody>
                 </table>

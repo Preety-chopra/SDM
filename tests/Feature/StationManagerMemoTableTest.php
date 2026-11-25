@@ -70,14 +70,26 @@ class StationManagerMemoTableTest extends TestCase
             ->assertSee('id="sdm-filter-form"', false)
             ->assertSee('form="sdm-filter-form"', false)
             ->assertSee('aria-label="Open SDM type filter"', false)
-            ->assertSee('aria-label="Open Line / station filter"', false)
+            ->assertSee('aria-label="Open Line filter"', false)
+            ->assertSee('aria-label="Open Station filter"', false)
             ->assertSee('aria-label="Open Incident date filter"', false)
             ->assertSee('aria-label="Open Submitted on filter"', false)
             ->assertSee('aria-label="Open Current status filter"', false)
             ->assertDontSee('id="service_type"', false)
-            ->assertSee($line->code)
             ->assertDontSee($line->name)
             ->assertDontSee('name="_method" value="DELETE"', false);
+
+        $document = new \DOMDocument;
+        $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING);
+        $xpath = new \DOMXPath($document);
+        $locationHeaders = '//th[.//summary[@aria-label="Open Line filter"] or .//summary[@aria-label="Open Station filter"]]';
+        $this->assertCount(2, $xpath->query($locationHeaders));
+        $this->assertSame(
+            ['line_code', 'station_id'],
+            array_map(fn (\DOMAttr $name): string => $name->value, iterator_to_array($xpath->query($locationHeaders.'//select/@name'))),
+        );
+        $this->assertSame($line->code, $xpath->evaluate('normalize-space(//tbody/tr/td[4])'));
+        $this->assertSame($station->name, $xpath->evaluate('normalize-space(//tbody/tr/td[5])'));
 
         $this->assertDoesNotMatchRegularExpression('/>\s*Action\s*</', $response->getContent());
     }

@@ -38,6 +38,7 @@
                             <tr>
                                 <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">User</th>
                                 <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Personnel</th>
+                                <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Line</th>
                                 <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Station</th>
                                 <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Status</th>
                                 <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Actions</th>
@@ -45,9 +46,13 @@
                         </thead>
                         <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                             @forelse ($users as $managedUser)
+                                @php($line = $managedUser->station?->metroLine)
                                 <tr>
                                     <td class="px-5 py-4"><p class="font-semibold text-gray-900 dark:text-gray-100">{{ $managedUser->name }}</p><p class="text-sm text-gray-500 dark:text-gray-400">{{ $managedUser->email }}</p></td>
                                     <td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300"><p>{{ $managedUser->employee_number ?: '—' }}</p><p class="text-gray-400">{{ $managedUser->phone ?: 'No phone' }}</p></td>
+                                    <td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
+                                        {{ $line ? $line->code.' · '.$line->name : '—' }}
+                                    </td>
                                     <td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
                                         {{ $managedUser->station ? $managedUser->station->code.' · '.$managedUser->station->name : '—' }}
                                     </td>
@@ -70,7 +75,7 @@
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="5" class="px-5 py-12 text-center text-sm text-gray-500 dark:text-gray-400">No users match the selected filters.</td></tr>
+                                <tr><td colspan="6" class="px-5 py-12 text-center text-sm text-gray-500 dark:text-gray-400">No users match the selected filters.</td></tr>
                             @endforelse
                         </tbody>
                     </table>

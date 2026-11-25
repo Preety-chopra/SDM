@@ -13,8 +13,8 @@
                     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead class="bg-gray-50 dark:bg-gray-900">
                             <tr>
-                                @foreach (['S. No.', 'SDM serial number', 'SDM type', 'Deficiency', 'Submitted on', 'Submitted to', 'Status', 'Actions'] as $heading)
-                                    <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ $heading }}</th>
+                                @foreach (['S. No.', 'SDM serial number', 'SDM type', 'Deficiency', 'Line', 'Station', 'Submitted on', 'Submitted to', 'Status', 'Actions'] as $heading)
+                                    <th scope="col" class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ $heading }}</th>
                                 @endforeach
                             </tr>
                         </thead>
@@ -39,6 +39,8 @@
                                     <td class="min-w-64 px-4 py-4 text-sm text-gray-700 dark:text-gray-200">
                                         {{ $memo->deficiencyLabels()->join(', ') ?: '—' }}
                                     </td>
+                                    <td class="whitespace-nowrap px-4 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->line_code ?: ($memo->line_name ?: '—') }}</td>
+                                    <td class="px-4 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->station_name ?: '—' }}</td>
                                     <td class="whitespace-nowrap px-4 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->submitted_at?->format('d-m-Y H:i') ?? '—' }}</td>
                                     <td class="px-4 py-4 text-sm text-gray-700 dark:text-gray-200">
                                         <span class="block font-medium text-gray-900 dark:text-white">{{ $submittedTo?->assigned_name ?: '—' }}</span>
@@ -64,7 +66,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="8" class="px-5 py-12 text-center text-gray-500 dark:text-gray-400">You have not submitted any SDMs yet.</td>
+                                    <td colspan="10" class="px-5 py-12 text-center text-gray-500 dark:text-gray-400">You have not submitted any SDMs yet.</td>
                                 </tr>
                             @endforelse
                         </tbody>

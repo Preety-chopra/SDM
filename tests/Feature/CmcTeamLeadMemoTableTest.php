@@ -53,7 +53,8 @@ class CmcTeamLeadMemoTableTest extends TestCase
             ->assertSee('name="service_type"', false)
             ->assertSee('name="line_code"', false)
             ->assertSee('aria-label="Open SDM type filter"', false)
-            ->assertSee('aria-label="Open Line / station filter"', false)
+            ->assertSee('aria-label="Open Line filter"', false)
+            ->assertSee('aria-label="Open Station filter"', false)
             ->assertSee('aria-label="Open Incident date filter"', false)
             ->assertSee('aria-label="Open Submitted on filter"', false)
             ->assertSee('aria-label="Open Current status filter"', false)
@@ -95,7 +96,8 @@ class CmcTeamLeadMemoTableTest extends TestCase
                 ->assertOk()
                 ->assertSee('form="sdm-filter-form"', false)
                 ->assertSee('aria-label="Open SDM type filter"', false)
-                ->assertSee('aria-label="Open Line / station filter"', false)
+                ->assertSee('aria-label="Open Line filter"', false)
+                ->assertSee('aria-label="Open Station filter"', false)
                 ->assertSee('aria-label="Open Incident date filter"', false)
                 ->assertSee('aria-label="Open Submitted on filter"', false)
                 ->assertSee('aria-label="Open Current status filter"', false)
@@ -147,6 +149,59 @@ class CmcTeamLeadMemoTableTest extends TestCase
 
         $this->actingAs($firstStaff)->from(route('sdm-memos.index'))
             ->get(route('sdm-memos.index', ['category' => 'pending_cmc_staff_assignment']))
+            ->assertRedirect(route('sdm-memos.index'))
+            ->assertSessionHasErrors('category');
+    }
+
+    public function test_cmc_sm_can_filter_sdms_assigned_to_cmc_staff_by_service_type(): void
+    {
+        $cmcSm = $this->user(UserRole::CmcTeamLead, 'ASSIGNED-SM');
+        $otherCmcSm = $this->user(UserRole::CmcTeamLead, 'ASSIGNED-OTHER-SM');
+        $staff = $this->user(UserRole::CmcStaff, 'ASSIGNED-STAFF');
+        $otherStaff = $this->user(UserRole::CmcStaff, 'ASSIGNED-OTHER-STAFF');
+        $memosByType = [];
+
+        foreach (SdmType::cases() as $type) {
+            [$teamLead, $assignee] = $type === SdmType::BaggageHandling ? [$otherCmcSm, $otherStaff] : [$cmcSm, $staff];
+            $memo = $this->memoAtStage('ASSIGNED-'.$type->value, $teamLead, WorkflowStepType::CmcAssessment, $assignee);
+            $memo->update(['service_type' => $type]);
+            $memosByType[$type->value] = $memo->id;
+        }
+
+        $this->memoAtStage('ASSIGNED-FUTURE', $cmcSm, WorkflowStepType::CmcAssignment, $staff);
+        $this->memoAtStage('ASSIGNED-UNASSIGNED', $cmcSm, WorkflowStepType::CmcAssessment);
+        $this->memoAtStage('ASSIGNED-FORWARDED', $cmcSm, WorkflowStepType::CmcVerification, $staff);
+        $this->memoAtStage('ASSIGNED-DECIDED', $cmcSm, WorkflowStepType::CmcAssessment, $staff)
+            ->currentWorkflowStep->update(['decision' => 'forwarded']);
+        $this->memoAtStage('ASSIGNED-DIRECT', $cmcSm, WorkflowStepType::CmcAssessment)
+            ->currentWorkflowStep->update(['assigned_to' => $cmcSm->id, 'role' => UserRole::CmcTeamLead->value]);
+
+        $queue = ['category' => 'assigned_to_cmc_staff'];
+        $this->actingAs($cmcSm)->get(route('sdm-memos.index', ['acknowledge_notifications' => 1]))
+            ->assertOk()
+            ->assertSee('href="'.route('sdm-memos.index', $queue).'"', false)
+            ->assertSeeInOrder(['SDMs Pending for CMC Staff Assignment', 'SDMs assigned to CMC staff', 'SDMs Processed by CMC Staff']);
+
+        $response = $this->get(route('sdm-memos.index', $queue))
+            ->assertOk()
+            ->assertSeeInOrder(['All types', 'CFA', 'TVS', 'W&amp;W', 'Marshal', 'BHS'], false)
+            ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->sort()->values()->all() === array_values($memosByType))
+            ->assertDontSee('id="bulk-cmc-form"', false)
+            ->assertDontSee('name="memo_ids[]"', false);
+
+        foreach ($memosByType as $type => $memoId) {
+            $typeUrl = route('sdm-memos.index', [...$queue, 'service_type' => $type]);
+            $response->assertSee('href="'.e($typeUrl).'"', false);
+
+            $this->get($typeUrl)
+                ->assertOk()
+                ->assertViewHas('memos', fn ($memos): bool => $memos->pluck('id')->all() === [$memoId])
+                ->assertSee('name="service_type" value="'.$type.'"', false)
+                ->assertDontSee('aria-label="Open SDM type filter"', false);
+        }
+
+        $this->actingAs($staff)->from(route('sdm-memos.index'))
+            ->get(route('sdm-memos.index', $queue))
             ->assertRedirect(route('sdm-memos.index'))
             ->assertSessionHasErrors('category');
     }

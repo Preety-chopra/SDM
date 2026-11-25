@@ -89,6 +89,11 @@ class ServiceDeficiencyMemo extends Model
         return $this->hasMany(MemoAssessment::class, 'memo_id')->orderBy('version');
     }
 
+    public function latestAssessment(): HasOne
+    {
+        return $this->hasOne(MemoAssessment::class, 'memo_id')->latestOfMany('version');
+    }
+
     public function staffAcknowledgement(): HasOne
     {
         return $this->hasOne(MemoStaffAcknowledgement::class, 'memo_id');

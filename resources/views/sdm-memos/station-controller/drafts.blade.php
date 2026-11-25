@@ -13,8 +13,8 @@
                     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead class="bg-gray-50 dark:bg-gray-900">
                             <tr>
-                                @foreach (['S. No.', 'SDM type', 'Deficiency', 'Last saved', 'Actions'] as $heading)
-                                    <th class="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ $heading }}</th>
+                                @foreach (['S. No.', 'SDM type', 'Deficiency', 'Line', 'Station', 'Last saved', 'Actions'] as $heading)
+                                    <th scope="col" class="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ $heading }}</th>
                                 @endforeach
                             </tr>
                         </thead>
@@ -24,6 +24,8 @@
                                     <td class="px-5 py-4 text-sm font-semibold text-gray-900 dark:text-white">{{ $memos->firstItem() + $loop->index }}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->service_type === \App\Enums\SdmType::Marshal ? $memo->service_type->label() : $memo->service_type->code() }}</td>
                                     <td class="min-w-64 px-5 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->deficiencyLabels()->join(', ') ?: '—' }}</td>
+                                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->line_code ?: ($memo->line_name ?: '—') }}</td>
+                                    <td class="px-5 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->station_name ?: '—' }}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-200">{{ $memo->updated_at?->format('d-m-Y H:i') ?? '—' }}</td>
                                     <td class="px-5 py-4">
                                         <div class="flex items-center justify-end gap-4">
@@ -38,7 +40,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="5" class="px-5 py-12 text-center text-gray-500 dark:text-gray-400">You do not have any drafts.</td>
+                                    <td colspan="7" class="px-5 py-12 text-center text-gray-500 dark:text-gray-400">You do not have any drafts.</td>
                                 </tr>
                             @endforelse
                         </tbody>

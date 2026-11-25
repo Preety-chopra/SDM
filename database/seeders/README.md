@@ -5,8 +5,8 @@ snapshot. See [outsourced staff deployment instructions](../../docs/outsourced-s
 Personal staff data is excluded from Git and from the default database seeder.
 
 For historical SDMs, use the standalone `HistoricalSdmSeeder` after the contractor,
-station and staff masters are in place. Upload its private manifest and original
-XLSX workbook separately. See [historical data server upload](../../docs/historical-sdm-import.md#seed-the-historical-data-on-an-existing-server)
+station and staff masters are in place. Upload its private manifest and the original
+JMD and NCES workbooks separately. See [historical data server upload](../../docs/historical-sdm-import.md#seed-the-historical-data-on-an-existing-server)
 for the files and server command. This seeder is excluded from `DatabaseSeeder`;
 reruns skip an identical import without changing existing records or audits.
 
